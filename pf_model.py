@@ -12,6 +12,7 @@ import pandas as pd
 
 import pf_core as C
 import pf_decide as DC
+import pf_remstat as RS
 import pf_stats
 
 DASH = "—"
@@ -207,11 +208,13 @@ def project(d: dict, P: dict, K: dict | None = None) -> dict:
     p["contractor_risk"] = DC.contractor_risk(p, ct)
     p["decisions"] = DC.decisions(p, ct)
     p["forecast"] = DC.forecast(p)
+    p["rem"] = RS.compute(A, d["key"])
+    p["trend"] = [int(x) for x in wk["Просрочено на конец недели, кв."]]
     p["capacity"] = int(full["Передано, квартир"].iloc[-8:].max())
     return p
 
 
-DEFAULT_PRICES = {"bunino": 10.0, "proksh": 8.7, "zen": 12.4}   # млн ₽ за квартиру; цен ДДУ в данных нет — допущение по каждому ЖК
+DEFAULT_PRICES = {"bunino": 10.0, "proksh": 8.7, "zen": 12.4, "desn": 8.2, "scandc": 9.4, "yuzh": 8.8, "vsev": 6.4, "lag": 6.9, "zorge": 15.2, "scands": 9.9}   # млн ₽ за квартиру; цен ДДУ в данных нет — допущение по каждому ЖК
 
 
 def build(D: dict, P: dict, K: dict | None = None) -> dict:
@@ -239,7 +242,7 @@ def totals(projects: list[dict]) -> dict:
         risk_target=s("risk_target"), burn_pace=s("burn_pace"), target_burn=s("target_burn"), gross_left=s("gross_left"), inflow=s("inflow"),
         ladder={k: sum(p["ladder"][k] for p in projects) for k in projects[0]["ladder"]} if projects else {},
         reasons={k: dict(n=sum(p["reasons"][k]["n"] for p in projects), risk=sum(p["reasons"][k]["risk"] for p in projects)) for k in DC.REASON_KEYS},
-        capacity=s("capacity"),
+        capacity=s("capacity"), rem=RS.combine([p["rem"] for p in projects]) if projects else {},
         remarks=s("remarks"), critical=s("critical"), remarks_over=s("remarks_over"), blocking=s("blocking"),
         remarks_cost=s("remarks_cost"), claim_potential=s("claim_potential"), units=s("units"), units_kv=s("units_kv"),
         transferred=s("transferred"),
@@ -363,6 +366,36 @@ def table_rows(projects: list[dict], style_bad: str = "") -> list[list]:
         rows.append([p["name"], f(p["overdue_kv"]), f(p["ready"]), (f(round(p["risk_day"])) if ok else DASH),
                      (f(round(p["risk_day"] / p["overdue_kv"])) if ok and p["overdue_kv"] else DASH),
                      (C.fmt_pct(p["risk_day"] / tr, 1) if ok else DASH), (ch_t, style_bad if bad else ""), pf_, dec_t])
+    return rows
+
+
+def headline(projects: list[dict], tot: dict) -> str:
+    """Вывод одной фразой для верха экрана."""
+    pr = priority(projects)
+    if not pr:
+        return "Просрочки по ДДУ в портфеле нет"
+    worse = sum(1 for p in projects if p["risk_vs_target"] > 0)
+    d0 = pr["decisions"][0] if pr["decisions"] else None
+    p = pr["project"]
+    s = (f"Главный риск — {pr['name']}: {C.fmt_money(pr['risk_day'])} в сутки, {C.fmt_pct(pr['share'])} портфеля; просрочено {C.fmt_int(p['overdue_kv'])} квартир, "
+         f"готовы к передаче {C.fmt_int(p['ready'])}.")
+    if d0:
+        s += f" Решение: {d0['short'].lower()} — минус {C.fmt_money(d0['effect'])} риска за 4 недели."
+    s += f" За неделю ухудшились относительно ориентира {worse} из {len(projects)} ЖК."
+    return s
+
+
+def screen_rows(projects: list[dict]) -> list[dict]:
+    """Строки таблицы первого экрана (по убыванию риска) в виде данных для вёрстки."""
+    ranked = by_risk(projects)
+    tr = sum(p["risk_day"] for p in ranked) or 1.0
+    rows = []
+    for p in ranked:
+        dec = p["decisions"][0] if p.get("decisions") else None
+        rs = p["rem"]
+        rows.append(dict(name=p["name"], key=p["key"], over=p["overdue_kv"], d_over=p["overdue_delta"], ready=p["ready"], risk=p["risk_day"], share=p["risk_day"] / tr,
+                         worse=p["risk_vs_target"] > 0, vs=vs_target(p)[0], trend=p["trend"], left=rs["left_cum"], fixed_pct=rs["fixed"] / rs["total"] if rs["total"] else 0.0,
+                         decision=(f"{dec['short']}: −{C.fmt_money(dec['effect'])} за 4 нед." if dec else "Сохранять темп передачи")))
     return rows
 
 

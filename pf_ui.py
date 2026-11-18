@@ -98,6 +98,17 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
 .prio .dr { font-size: 12px; color: var(--ink2); margin-top: 2px; }
 .prio .pr { font-size: 13px; color: var(--ink2); margin-top: 8px; }
 table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px; }
+.tw { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 0 6px; }
+.tw table.fin th:first-child, .tw table.fin td:first-child { position: sticky; left: 0; background: var(--paper); z-index: 1; box-shadow: 1px 0 0 var(--line); }
+.tw table.fin th:first-child { background: #F3F5F8; } .tw table.fin tr.tot td:first-child { background: #F3F5F8; }
+.fin td.r { white-space: nowrap; } .fin td .sub { display: block; white-space: nowrap; font-size: 11px; color: var(--ink3); font-weight: 400; } .fin td .wr { color: var(--risk); font-weight: 600; }
+.fin td .sp { vertical-align: middle; } .fin td.nw { white-space: nowrap; }
+.concl.one { border-left-color: var(--navy); padding: 16px 22px; } .concl.one .t { font-size: clamp(17px, 1.7vw, 22px); font-weight: 600; line-height: 1.35; }
+@media (max-width: 640px) {
+  .hm { display: none; } .fin { font-size: 12px; } .fin td, .fin th { padding: 7px 8px; }
+  .kgrid.big { grid-template-columns: 1fr; } .ladder { grid-template-columns: 1fr; } .ladder .ar { display: none; } .ladder .st { margin-bottom: 8px; }
+  .prio { grid-template-columns: 1fr; gap: 16px; } .cmp { grid-template-columns: 1fr; } .pfnav { overflow-x: auto; gap: 14px; }
+}
 .note { font-size: 12px; color: var(--ink3); line-height: 1.5; margin: 6px 0 10px; }
 .pf-role { display: inline-block; font-size: 12px; color: var(--navy); background: #EEF2F7; border: 1px solid #C9D2DE; border-radius: 3px; padding: 1px 8px; margin: 2px 4px 2px 0; }
 /* финансовые таблицы */
@@ -160,9 +171,11 @@ def chart(fig, key=None, height=320):
     st.plotly_chart(fig, width="stretch", theme=None, config={"displayModeBar": False, "locale": "ru"}, key=key)
 
 
-def fin_table(head, rows, right=(), total_last=False, cls=""):
-    """HTML-таблица в банковском стиле: числа вправо, итоговая строка выделена. rows: списки готовых строк (str)."""
-    th = "".join(f'<th class="{"r" if i in right else ""}">{html.escape(h)}</th>' for i, h in enumerate(head))
+def fin_table(head, rows, right=(), total_last=False, cls="", hide=()):
+    """HTML-таблица в банковском стиле: числа вправо, итоговая строка выделена, первая колонка закреплена при прокрутке.
+    rows: списки готовых ячеек (str, (str, style) или HTML, начинающийся с «<»). hide — номера колонок, скрываемых на узком экране."""
+    hm = lambda i: " hm" if i in hide else ""
+    th = "".join(f'<th class="{"r" if i in right else ""}{hm(i)}">{html.escape(h)}</th>' for i, h in enumerate(head))
     body = []
     for n, r in enumerate(rows):
         tr = ' class="tot"' if total_last and n == len(rows) - 1 else ""
@@ -172,11 +185,24 @@ def fin_table(head, rows, right=(), total_last=False, cls=""):
             if isinstance(c, tuple):
                 c, style = c
             style = f' style="{style}"' if style else ""
-            txt = c if str(c).startswith("<") else html.escape(str(c))
-            cells.append(f'<td class="{"r" if i in right else ""}"{style}>{txt}</td>')
-        tds = "".join(cells)
-        body.append(f"<tr{tr}>{tds}</tr>")
-    st.markdown(f'<table class="fin {cls}"><thead><tr>{th}</tr></thead><tbody>{"".join(body)}</tbody></table>', unsafe_allow_html=True)
+            txt = c if str(c).startswith("<") or "<span" in str(c) else html.escape(str(c))
+            cells.append(f'<td class="{"r" if i in right else ""}{hm(i)}"{style}>{txt}</td>')
+        body.append(f"<tr{tr}>{''.join(cells)}</tr>")
+    st.markdown(f'<div class="tw"><table class="fin {cls}"><thead><tr>{th}</tr></thead><tbody>{"".join(body)}</tbody></table></div>', unsafe_allow_html=True)
+
+
+def spark(values, bad=False, w=84, h=22) -> str:
+    """Мини-график ряда (SVG). Цвет — только при ухудшении относительно ориентира."""
+    v = [float(x) for x in values]
+    if len(v) < 2:
+        return ""
+    lo, hi = min(v), max(v)
+    span = (hi - lo) or 1.0
+    pts = [(2 + i * (w - 4) / (len(v) - 1), h - 3 - (x - lo) / span * (h - 6)) for i, x in enumerate(v)]
+    col = "#B3261E" if bad else "#5B7BA6"
+    line = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    return (f'<svg class="sp" width="{w}" height="{h}" viewBox="0 0 {w} {h}" aria-hidden="true"><polyline fill="none" stroke="{col}" stroke-width="1.6" points="{line}"/>'
+            f'<circle cx="{pts[-1][0]:.1f}" cy="{pts[-1][1]:.1f}" r="2.4" fill="{col}"/></svg>')
 
 
 def sources(notes_html: str):

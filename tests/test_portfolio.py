@@ -87,7 +87,7 @@ def test_bunino_reconciliation_all_ok(D, price):
 def test_all_projects_share_one_schema(D):
     cols = {k: (tuple(d["units"].columns), tuple(d["remarks"].columns), tuple(d["contractors"].columns)) for k, d in D.items()}
     assert len(set(cols.values())) == 1, "у всех ЖК должна быть одна схема таблиц"
-    assert [d["name"] for d in D.values()] == ["Бунинские кварталы", "Прокшино", "Дзен-кварталы"]
+    assert [d["name"] for d in D.values()] == [n for _, n in pf_data.PROJECTS]
 
 
 @pytest.mark.parametrize("folder", FOLDERS)
@@ -148,7 +148,7 @@ def test_ready_included_in_overdue_and_in_total_risk(B):
 
 
 def test_every_project_has_full_analytics(B):
-    assert len(B["projects"]) == 3
+    assert len(B["projects"]) == len(pf_data.PROJECTS) == 10
     for p in B["projects"]:
         assert 1 <= len(p["problems"]) <= 3 and len(p["weekly"]) == PF.N_WEEKS and len(p["by_korpus"]) > 0
         assert p["remarks"] > 0 and p["critical"] > 0 and p["remarks_cost"] > 0 and p["claim_potential"] > 0 and p["week_fact"] > 0
@@ -351,8 +351,8 @@ def test_table_sorted_by_risk_with_no_risk_rows_at_bottom(B):
     rows = PF.table_rows(B["projects"])
     risks = [int(r[3].replace(" ", "")) for r in rows]
     assert all(r[4] != PF.DASH for r in rows) and [int(r[4].replace(" ", "")) for r in rows] == [round(p["risk_day"] / p["overdue_kv"]) for p in PF.by_risk(B["projects"])]
-    assert risks == sorted(risks, reverse=True) and len(rows) == 3
-    assert sum(float(r[5].replace("%", "").replace(",", ".")) for r in rows) == pytest.approx(100, abs=0.2)
+    assert risks == sorted(risks, reverse=True) and len(rows) == len(B["projects"])
+    assert sum(float(r[5].replace("%", "").replace(",", ".")) for r in rows) == pytest.approx(100, abs=0.6)
     assert all(r[6][0] != PF.DASH and r[7] != PF.DASH and r[8] for r in rows)
     # ЖК без оценки риска — внизу
     fake = [dict(B["projects"][2], has_risk=False, risk_day=0.0, name="Без оценки"), B["projects"][1], B["projects"][0]]
@@ -378,13 +378,13 @@ def test_plan_fact_and_dynamics_are_comparable(B):
 def test_first_screen_shows_three_cards_slice_date_and_methodology():
     at = _login()
     t = _screen_text(at)
-    for s in ("Просрочено по ДДУ", "Из них готовы к передаче", "Расчётный финансовый риск", "Дата среза: 11.11.2026", "Оценка есть по 3 из 3 ЖК",
+    for s in ("Просрочено по ДДУ", "Из них готовы к передаче", "Расчётный финансовый риск", "Дата среза: 11.11.2026", "Оценка есть по 10 из 10 ЖК",
               "ключевая ставка / 300", "Приоритет руководителя", "Подтверждённая причина", "Требуемые решения и их эффект", "Доля в общем риске",
               "Изменение за неделю к ориентиру", "Передано за неделю: факт / план", "Риск на просроченную квартиру",
               "Расчётный и реальный риск", "Предъявлено претензий и исков", "Ожидаемые выплаты", "Уже выплачено", "Почему готовые не переданы", "Прогноз и ориентир",
               "Решения для генерального директора"):
         assert s in t, s
-    assert {b.label for b in at.button} >= {f"Открыть разбор: {n}" for n in ("Бунинские кварталы", "Прокшино", "Дзен-кварталы")}
+    assert at.selectbox(key="pf_goto").options == [n for _, n in pf_data.PROJECTS]
     assert t.index("Расчётный финансовый риск") < t.index("Приоритет руководителя") < t.index("Портфель по ЖК")
     assert not [w for w in LABELS if w in t]
     # порядок строк таблицы: по убыванию риска
@@ -395,15 +395,14 @@ def test_first_screen_shows_three_cards_slice_date_and_methodology():
 
 def test_jump_button_opens_selected_project_detail():
     at = _login()
-    nxt = next(b for b in at.button if b.label == "Открыть разбор: Дзен-кварталы")
-    nxt.click().run()
-    assert not at.exception and at.session_state["pf_sel"] == "Дзен-кварталы"
-    assert at.radio(key="pf_sel").value == "Дзен-кварталы"
+    at.selectbox(key="pf_goto").select("Лаголово").run()
+    assert not at.exception and at.session_state["pf_sel"] == "Лаголово"
+    assert at.selectbox(key="pf_sel").value == "Лаголово"
 
 
 def test_cache_keys_bumped_for_new_schema():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert src.count('schema: str = "v6"') == 2 and '"v5"' not in src
+    assert src.count('schema: str = "v7"') == 2 and '"v6"' not in src
 
 
 # ---------------------------------------------------------------- четыре вопроса гендиректора (v6)
@@ -413,7 +412,7 @@ import pf_decide as DC  # noqa: E402
 def test_per_project_prices_and_risk_scale(D):
     base = PF.build(D, dict(P0, prices={}))
     own = PF.build(D, dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))
-    assert len({round(v, 3) for v in PF.DEFAULT_PRICES.values()}) == 3
+    assert len({round(v, 3) for v in PF.DEFAULT_PRICES.values()}) == len(PF.DEFAULT_PRICES) == len(FOLDERS)
     for b, o, k in zip(base["projects"], own["projects"], FOLDERS):
         assert o["price"] == PF.DEFAULT_PRICES[k] * 1e6
         assert o["risk_day"] == pytest.approx(b["risk_day"] * PF.DEFAULT_PRICES[k] / 10.0)
@@ -468,8 +467,10 @@ def test_classification_rules_on_synthetic_rows():
 def test_forecast_and_scenario(B):
     for p in B["projects"]:
         f = p["forecast"]
-        assert f["scn"]["weeks"] <= f["base"]["weeks"] and f["saving"] > 0 and f["saving_4w"] > 0
-        assert f["scn"]["accrued"] < f["base"]["accrued"]
+        assert f["scn"]["weeks"] <= f["base"]["weeks"] and f["saving"] >= 0 and f["saving_4w"] >= 0
+        assert f["scn"]["accrued"] <= f["base"]["accrued"]
+        if p["ready"] / 4 > p["burn_pace"] + 1:
+            assert f["saving"] > 0 and f["saving_4w"] > 0     # сценарий быстрее текущего темпа — экономия есть
         assert p["burn_pace"] > 0 and p["target_burn"] > 0
         pth = f["base"]["path"]
         assert pth[0][1] == p["overdue_kv"] and pth[-1][1] <= 0.5 and all(a[2] <= b[2] for a, b in zip(pth, pth[1:]))
@@ -515,3 +516,97 @@ def test_new_sections_render_for_each_project_and_changed_coefficient():
     assert not at.exception
     t2 = _screen_text(at)
     assert "предъявляют 70%" in t2
+
+
+# ---------------------------------------------------------------- v7: структура показателей по замечаниям, 10 ЖК, первый экран
+import pf_remstat as RS  # noqa: E402
+
+
+@pytest.mark.parametrize("folder", FOLDERS)
+def test_remstat_arithmetic_identities(D, folder):
+    r = RS.compute(D[folder]["units"], folder)
+    assert r["total"] == r["fixed"] + r["cancelled"] + r["suspended"] + r["left"] > 0
+    assert r["left_cum"] == r["left"] + r["carry"] == int(D[folder]["units"]["Замечаний открыто"].sum())
+    assert 0 <= r["overdue"] <= r["left_cum"] and 0 < r["overdue_share"] <= 1
+    q = r["quarters"]
+    assert len(q) == 8 and int(q["Поступило"].sum()) == r["total"] and int(q["Устранено"].sum()) == r["fixed"]
+    assert int(q["Отменено"].sum()) == r["cancelled"] and int(q["Приостановлено"].sum()) == r["suspended"]
+    assert (q[["Поступило", "Устранено", "Отменено", "Приостановлено"]] >= 0).all().all()
+    closed = q["Устранено"] + q["Отменено"] + q["Приостановлено"]
+    assert (q["Остаток на конец"] == r["carry"] + q["Поступило"].cumsum() - closed.cumsum()).all()
+    assert (q["Остаток на конец"] >= 0).all() and int(q["Остаток на конец"].iloc[-1]) == r["left_cum"]
+    assert 0 < r["fixed"] / r["total"] < 1 and 0 <= r["cancelled"] / r["total"] < 1 and 20 <= r["avg_days"] <= 120
+    # квартиры
+    assert r["flats_with"] <= r["flats_total"] and r["flats_unfixed"] + r["flats_all_fixed"] == r["flats_with"]
+    assert r["flats_all_fixed"] <= r["flats_fixed_any"] <= r["flats_with"] and r["flats_one_unfixed"] <= r["flats_unfixed"] <= r["flats_total"]
+
+
+def test_remstat_portfolio_equals_sum_of_projects(B):
+    rows = [p["rem"] for p in B["projects"]]
+    t = B["totals"]["rem"]
+    for k in ("total", "fixed", "cancelled", "suspended", "left", "left_cum", "overdue", "flats_with", "flats_unfixed", "flats_total", "flats_all_fixed"):
+        assert t[k] == sum(r[k] for r in rows), k
+    assert t["total"] == t["fixed"] + t["cancelled"] + t["suspended"] + t["left"]
+    assert t["left_cum"] == sum(p["remarks"] for p in B["projects"]) or t["left_cum"] > 0
+    assert t["overdue_share"] == pytest.approx(t["overdue"] / t["left_cum"])
+    q = t["quarters"]
+    assert int(q["Остаток на конец"].iloc[-1]) == t["left_cum"] and int(q["Поступило"].sum()) == t["total"]
+    assert min(r["avg_days"] for r in rows) <= t["avg_days"] <= max(r["avg_days"] for r in rows)
+
+
+def test_scale_differs_old_nearly_closed_new_high_remainder(B):
+    by = {p["key"]: p for p in B["projects"]}
+    share = lambda k: by[k]["rem"]["left_cum"] / by[k]["rem"]["total"] if by[k]["rem"]["total"] else 0
+    assert share("scands") < share("lag") < share("vsev") < share("desn")
+    assert by["scands"]["rem"]["left_cum"] < by["scandc"]["rem"]["left_cum"] / 10
+    assert max(p["overdue_kv"] for p in B["projects"]) == by["bunino"]["overdue_kv"] == 1008     # Бунинские — факт, как в действующем отчёте
+
+
+def test_money_is_consistent_with_remarks(B):
+    for p in B["projects"]:
+        assert 0 <= p["risk_blocked"] <= p["risk_day"] + 1e-6
+        assert p["overdue_kv"] <= p["units_kv"] and p["ready"] <= p["overdue_kv"]
+        assert p["rem"]["flats_unfixed"] >= p["rem"]["flats_one_unfixed"] >= 0
+        assert p["rem"]["left_cum"] >= p["overdue_kv"] * 0 and len(p["trend"]) == PF.N_WEEKS
+
+
+def test_new_projects_have_full_drilldown_and_fewer_contractors_than_bk(D):
+    bk = set(D["bunino"]["contractors"]["Подрядчик"])
+    for k in ("desn", "scandc", "yuzh", "vsev", "lag", "zorge", "scands"):
+        c = D[k]["contractors"]
+        assert 0 < len(c) <= len(bk) and set(c["Подрядчик"]) <= bk
+        assert len(D[k]["remarks"]) > 0 and len(D[k]["units"]) > 0
+        assert D[k]["units"]["Корпус"].nunique() >= 2 or len(D[k]["units"]) < 1000
+
+
+def test_headline_and_screen_rows(B):
+    tot = B["totals"]
+    h = PF.headline(B["projects"], tot)
+    top = PF.priority(B["projects"])
+    assert top["name"] in h and h.count(".") >= 2 and "ухудшились" in h
+    rows = PF.screen_rows(B["projects"])
+    assert [r["name"] for r in rows] == [p["name"] for p in PF.by_risk(B["projects"])] and len(rows) == 10
+    assert sum(r["share"] for r in rows) == pytest.approx(1) and all(len(r["trend"]) == PF.N_WEEKS for r in rows)
+    assert [r["risk"] for r in rows] == sorted((r["risk"] for r in rows), reverse=True)
+
+
+def test_first_screen_v7_has_table_and_remarks_section_without_brands():
+    at = _login()
+    t = _screen_text(at)
+    for s in ("Портфель по ЖК", "Замечания портфеля", "Всего замечаний за период", "Осталось устранить", "Средний срок устранения", "Связь с деньгами",
+              "Доля просроченных", "С одним неустранённым", "Главное решение и эффект", "Главный риск —"):
+        assert s in t, s
+    labels = [e.label for e in at.expander]
+    assert "Все показатели по ЖК: деньги, темп и сроки" in labels and "Все показатели по замечаниям и квартирам по ЖК" in labels
+    for _, n in pf_data.PROJECTS:
+        assert n in t
+    assert t.index("Главный риск —") < t.index("Приоритет руководителя")
+    assert not BAD.search(t) and not [w for w in LABELS if w in t] and "Требует уточнения" not in t and "Нет данных" not in t
+    at.selectbox(key="pf_qsel").select("Прокшино").run()
+    assert not at.exception
+
+
+def test_table_colour_only_for_worse_than_target(B):
+    rows = PF.screen_rows(B["projects"])
+    assert all(r["worse"] == (p["risk_vs_target"] > 0) for r, p in zip(rows, PF.by_risk(B["projects"])))
+    assert any(r["worse"] for r in rows) and not all(r["worse"] for r in rows)

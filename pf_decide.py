@@ -185,5 +185,6 @@ def decisions(p: dict, ct: pd.DataFrame) -> list[dict]:
                         title=f"Включить удержания и штрафы по договору {c0['name']} за блокирующие замечания — на него {C.fmt_pct(c0['share'])} риска ЖК",
                         short=f"Удержания по договору {c0['name']}", roles=["Генеральный директор", "Договорной отдел", "Служба качества"],
                         effect=eff, basis=f"замечания в {C.fmt_int(c0['units'])} квартирах, блокирует {C.fmt_int(c0['blocked'])}; потенциал удержаний до {C.fmt_money(c0['claim'])}", claim=c0["claim"]))
+    out = [x for x in out if x["effect"] > 0]
     out.sort(key=lambda d: -d["effect"])
     return out
