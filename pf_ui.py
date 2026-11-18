@@ -82,11 +82,20 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
 .cmp .rdy { position: absolute; left: 0; top: 3px; bottom: 3px; background: #9FB1C8; z-index: 2; border-radius: 2px; }
 .cmp .prv { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--risk); z-index: 3; }
 .cmp .vl { font-variant-numeric: tabular-nums; } .cmp .vl span { color: var(--ink3); font-size: 12px; font-weight: 400; }
-.prio { border: 1px solid var(--line); border-left: 5px solid var(--risk); border-radius: 4px; background: var(--paper); padding: 20px 26px; display: grid; grid-template-columns: 1fr 1.5fr 1.3fr; gap: 28px; }
+.prio { border: 1px solid var(--line); border-left: 5px solid var(--risk); border-radius: 4px; background: var(--paper); padding: 20px 26px; display: grid; grid-template-columns: .9fr 1.4fr 1.5fr; gap: 28px; }
 .prio .pn { font-size: 24px; font-weight: 700; color: var(--ink); line-height: 1.15; } .prio .pm { font-size: 15px; color: var(--ink2); margin-top: 10px; line-height: 1.5; }
 .prio .pm b { font-size: 30px; color: var(--risk); display: block; letter-spacing: -.01em; } .prio .pm span { color: var(--ink2); }
 .prio .pl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--ink3); margin-bottom: 6px; }
 .prio .pt { font-size: 14px; color: var(--ink); line-height: 1.5; } .prio ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink2); line-height: 1.5; }
+.ladder { display: grid; grid-template-columns: 1fr 22px 1fr 22px 1fr 22px 1fr; align-items: stretch; gap: 0; margin: 4px 0 6px; }
+.ladder .st { background: var(--paper); border: 1px solid var(--line); border-top: 3px solid var(--navy); border-radius: 4px; padding: 12px 16px; }
+.ladder .st.top { border-top-color: var(--risk); } .ladder .ar { display: flex; align-items: center; justify-content: center; font-size: 26px; color: var(--ink3); }
+.ladder .l { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; color: var(--ink2); min-height: 30px; line-height: 1.3; }
+.ladder .v { font-size: 26px; font-weight: 700; color: var(--navy); margin: 4px 0; letter-spacing: -.01em; } .ladder .st.top .v { color: var(--risk); }
+.ladder .s { font-size: 11.5px; color: var(--ink3); line-height: 1.35; }
+.prio .dc { border-top: 1px solid var(--line); padding: 8px 0; } .prio .dc:first-of-type { border-top: 0; padding-top: 0; }
+.prio .dt { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.4; } .prio .de { font-size: 13px; font-weight: 700; color: var(--risk); margin-top: 2px; }
+.prio .dr { font-size: 12px; color: var(--ink2); margin-top: 2px; }
 .prio .pr { font-size: 13px; color: var(--ink2); margin-top: 8px; }
 table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px; }
 .note { font-size: 12px; color: var(--ink3); line-height: 1.5; margin: 6px 0 10px; }

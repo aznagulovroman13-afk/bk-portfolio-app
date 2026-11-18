@@ -129,6 +129,11 @@ def fmt_money(v: float) -> str:
     return f"{v:.0f} ₽"
 
 
+def fmt_k(v: float) -> str:
+    """Сумма в тысячах рублей для сравнения близких величин: «1 288 тыс. ₽»."""
+    return f"{fmt_int(abs(v) / 1000)} тыс. ₽"
+
+
 def plural(n: int, one: str, few: str, many: str) -> str:
     n = abs(int(n))
     if n % 10 == 1 and n % 100 != 11:

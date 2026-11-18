@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 import pf_core as C
+import pf_decide as DC
 import pf_stats
 
 DASH = "—"
@@ -140,7 +141,7 @@ def weekly(A: pd.DataFrame, cd: pd.Timestamp) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def project(d: dict, P: dict) -> dict:
+def project(d: dict, P: dict, K: dict | None = None) -> dict:
     """Все показатели одного ЖК: один набор для каждого сегмента портфеля."""
     A, cd = d["units"], d["calc_date"]
     price = P["price"]
@@ -151,12 +152,24 @@ def project(d: dict, P: dict) -> dict:
     wk = weekly(A, cd)
     full = wk[~wk["partial"]]
     last, prev = full.iloc[-1], (full.iloc[-2] if len(full) > 1 else None)
-    s_now, s_prev = C.units_state_at(A, cd), C.units_state_at(A, cd - pd.Timedelta(days=7))
-    now_kv, wk_kv = s_now["nt_overdue_kv"], s_prev["nt_overdue_kv"]
-    m_now, m_prev = s_now["mask_nt_kv"], s_prev["mask_nt_kv"]
+    K = {**DC.DEFAULT_K, **(K or {})}
+    ad = min(cd, A["Дата принятия собственником"].max())            # дата последних загруженных актов приёма
     rate = _rub_day(A["Ставка ЦБ на срок ДДУ, %"].fillna(0), price)
+    sts = [C.units_state_at(A, ad - pd.Timedelta(days=7 * k)) for k in range(6)]
+    ms = [x["mask_nt_kv"] for x in sts]
+    Ns = [int(x["nt_overdue_kv"]) for x in sts]
+    Rs = [float(rate[m_].sum()) for m_ in ms]
+    now_kv, wk_kv = Ns[0], Ns[1]
+    m_now, m_prev = ms[0], ms[1]
     left, entered = m_prev & ~m_now, m_now & ~m_prev
-    risk_delta = float(rate[m_now].sum() - rate[m_prev].sum())
+    risk_delta = Rs[0] - Rs[1]
+    gross_left = [int((ms[k + 1] & ~ms[k]).sum()) for k in range(5)]
+    inflow = [int((ms[k] & ~ms[k + 1]).sum()) for k in range(5)]
+    burn_w = [Ns[k + 1] - Ns[k] for k in range(5)]                  # чистое сокращение просрочки за неделю k (0 — последняя)
+    burn_pace = float(np.mean(burn_w[:4]))
+    target_burn = float(np.mean(burn_w[1:5])) * PLAN_UPLIFT
+    r_start = Rs[1] / Ns[1] if Ns[1] else 0.0
+    risk_target = -target_burn * r_start
     base4 = full["Передано, квартир"].iloc[-5:-1]
     week_plan = int(round(float(base4.mean()) * PLAN_UPLIFT)) if len(base4) else None
     groups = _real_groups(kv, cd, price)
@@ -164,7 +177,7 @@ def project(d: dict, P: dict) -> dict:
     n_rem = int(A["Замечаний открыто"].sum())
     rm = lambda m: int(rem.loc[m, "n"].sum())
     ct = d["contractors"]
-    return dict(
+    p = dict(
         name=d["name"], key=d["key"], groups=groups, weekly=wk,
         overdue_kv=u["nt_overdue_kv"], overdue_all=u["nt_overdue"], ready=ready_n,
         risk_day=pen["daily"], risk_day_total=pen["daily_total"], ready_risk=ready_daily,
@@ -173,7 +186,9 @@ def project(d: dict, P: dict) -> dict:
         transferred=u["transferred"], late_transferred=u["late_transferred"], refusals=u["refusals"],
         week_fact=int(last["Передано, квартир"]), week_all=int(last["Передано, всего"]),
         week_prev=int(prev["Передано, квартир"]) if prev is not None else None,
-        overdue_delta=int(now_kv - wk_kv), overdue_prev=int(wk_kv), risk_delta=risk_delta, risk_prev=float(pen["daily"] - risk_delta),
+        overdue_delta=int(now_kv - wk_kv), overdue_prev=int(wk_kv), risk_delta=risk_delta, risk_prev=float(pen["daily"] - risk_delta), risk_target=risk_target,
+        risk_vs_target=risk_delta - risk_target, burn_pace=burn_pace, target_burn=target_burn, gross_left=float(np.mean(gross_left[:4])),
+        inflow=float(np.mean(inflow[:4])), act_date=ad, price=price,
         left_n=int(left.sum()), left_risk=float(rate[left].sum()), entered_n=int(entered.sum()), entered_risk=float(rate[entered].sum()),
         week_plan=week_plan, week_dev=(int(last["Передано, квартир"]) - week_plan) if week_plan is not None else None,
         has_risk=True,
@@ -186,10 +201,26 @@ def project(d: dict, P: dict) -> dict:
         by_korpus=(kv.assign(r=_rub_day(kv["Ставка ЦБ на срок ДДУ, %"].fillna(0), price), k=kv["Корпус"].astype(str))
                    .groupby("k").agg(n=("Объект", "size"), risk=("r", "sum")).reset_index().sort_values("risk", ascending=False)),
     )
+    p["risk_blocked"] = float(_rub_day(kv.loc[kv["Замечаний открыто"].gt(0) & ~C.ready_mask(kv), "Ставка ЦБ на срок ДДУ, %"].fillna(0), price).sum())
+    p["reasons"] = DC.classify_ready(A, price)
+    p["ladder"] = DC.ladder(pen["accrued_up"], pen["accrued_lo"], K)
+    p["contractor_risk"] = DC.contractor_risk(p, ct)
+    p["decisions"] = DC.decisions(p, ct)
+    p["forecast"] = DC.forecast(p)
+    p["capacity"] = int(full["Передано, квартир"].iloc[-8:].max())
+    return p
 
 
-def build(D: dict, P: dict) -> dict:
-    projects = [project(d, P) for d in D.values()]
+DEFAULT_PRICES = {"bunino": 10.0, "proksh": 8.7, "zen": 12.4}   # млн ₽ за квартиру; цен ДДУ в данных нет — допущение по каждому ЖК
+
+
+def build(D: dict, P: dict, K: dict | None = None) -> dict:
+    """P: price (по умолчанию для всех ЖК), prices — {папка: цена, ₽} для отдельных ЖК; K — коэффициенты лесенки."""
+    prices = P.get("prices") or {}
+    projects = []
+    for d in D.values():
+        Pk = dict(price=prices.get(d["key"], P["price"]), price_mm=P["price_mm"], price_nhp=P["price_nhp"])
+        projects.append(project(d, Pk, K))
     return dict(projects=projects, totals=totals(projects))
 
 
@@ -205,6 +236,10 @@ def totals(projects: list[dict]) -> dict:
         week_prev=(sum(wk_prev) if all(x is not None for x in wk_prev) else None),
         risk_delta=s("risk_delta"), risk_prev=s("risk_prev"), overdue_prev=s("overdue_prev"), left_n=s("left_n"), left_risk=s("left_risk"),
         entered_n=s("entered_n"), entered_risk=s("entered_risk"), week_plan=s("week_plan"),
+        risk_target=s("risk_target"), burn_pace=s("burn_pace"), target_burn=s("target_burn"), gross_left=s("gross_left"), inflow=s("inflow"),
+        ladder={k: sum(p["ladder"][k] for p in projects) for k in projects[0]["ladder"]} if projects else {},
+        reasons={k: dict(n=sum(p["reasons"][k]["n"] for p in projects), risk=sum(p["reasons"][k]["risk"] for p in projects)) for k in DC.REASON_KEYS},
+        capacity=s("capacity"),
         remarks=s("remarks"), critical=s("critical"), remarks_over=s("remarks_over"), blocking=s("blocking"),
         remarks_cost=s("remarks_cost"), claim_potential=s("claim_potential"), units=s("units"), units_kv=s("units_kv"),
         transferred=s("transferred"),
@@ -260,23 +295,35 @@ def by_risk(projects: list[dict]) -> list[dict]:
 
 
 def risk_change(tot: dict, projects: list[dict]) -> tuple[bool, str]:
-    """Отдельное пояснение изменения риска за 7 дней в деньгах (по образцу «significant item»)."""
+    """Отдельное пояснение изменения риска за неделю в деньгах и относительно ориентира (по образцу «significant item»)."""
     prev = tot["risk_prev"]
-    d = tot["risk_delta"]
+    d, tgt = tot["risk_delta"], tot["risk_target"]
     pct = d / prev if prev else 0.0
     material = abs(pct) >= RISK_MATERIAL
+    diff = d - tgt                                  # отрицательное = риск снижается быстрее ориентира
     mv = max(projects, key=lambda p: abs(p["risk_delta"]))
-    sg = lambda x: ("+" if x > 0 else "−" if x < 0 else "") + C.fmt_money(abs(x))
-    txt = (f"За 7 дней расчётный риск {'снизился' if d < 0 else 'вырос' if d > 0 else 'не изменился'}"
-           + (f" на {C.fmt_money(abs(d))} в сутки ({C.fmt_pct(abs(pct), 1)} к состоянию 7 дней назад)" if d else "")
-           + f": передано {C.fmt_int(tot['left_n'])} кв. (−{C.fmt_money(tot['left_risk'])}), "
-           f"новые просрочки {C.fmt_int(tot['entered_n'])} кв. (+{C.fmt_money(tot['entered_risk'])}). "
+    sg = lambda x: ("+" if x > 0 else "−" if x < 0 else "") + C.fmt_k(abs(x))
+    verdict = ("лучше ориентира на " + C.fmt_k(abs(diff))) if diff < 0 else ("хуже ориентира на " + C.fmt_k(abs(diff))) if diff > 0 else "в точности по ориентиру"
+    txt = (f"За неделю расчётный риск {'снизился' if d < 0 else 'вырос' if d > 0 else 'не изменился'}"
+           + (f" на {C.fmt_k(abs(d))} в сутки ({C.fmt_pct(abs(pct), 1)} к началу недели)" if d else "")
+           + f": передано {C.fmt_int(tot['left_n'])} кв. (−{C.fmt_k(tot['left_risk'])}), "
+           f"новые просрочки {C.fmt_int(tot['entered_n'])} кв. (+{C.fmt_k(tot['entered_risk'])}). "
+           f"Ориентир недели — {sg(tgt)} в сутки (на 10% быстрее среднего за четыре предыдущие недели): итог {verdict}. "
            f"Наибольшее изменение — {mv['name']}: {sg(mv['risk_delta'])} в сутки.")
     return material, txt
 
 
+def vs_target(p: dict) -> tuple[str, bool]:
+    """Изменение риска за неделю относительно ориентира: текст и признак «хуже ориентира»."""
+    d, t = p["risk_delta"], p["risk_target"]
+    diff = d - t
+    sg = lambda x: ("+" if x > 0 else "−" if x < 0 else "") + C.fmt_k(abs(x))
+    txt = f"{sg(d)} при ориентире {sg(t)}: " + ("лучше" if diff < 0 else "хуже" if diff > 0 else "по ориентиру")
+    return txt, diff > 0
+
+
 def priority(projects: list[dict]) -> dict | None:
-    """ЖК с наибольшим расчётным риском: сумма, доля, причина и решение (роли, без имён и сроков)."""
+    """ЖК с наибольшим расчётным риском: сумма, доля, причина и решения с эффектом в ₽ (роли, без имён и сроков)."""
     ranked = [p for p in by_risk(projects) if p.get("has_risk", True)]
     if not ranked:
         return None
@@ -284,32 +331,38 @@ def priority(projects: list[dict]) -> dict | None:
     tot_risk = sum(x["risk_day"] for x in ranked) or 1.0
     pr = p["problems"][0] if p["problems"] else None
     if pr:
-        cause = (f"{pr['title']}: {C.fmt_int(pr['n'])} кв., ≈{C.fmt_money(pr['risk'])} в сутки ({C.fmt_pct(pr['share_risk'])} риска ЖК). {pr['cause']}.")
-        decision, roles = pr["action"], list(pr["roles"])
+        cause = (f"{pr['title']}: {C.fmt_int(pr['n'])} кв., ≈{C.fmt_k(pr['risk'])} в сутки ({C.fmt_pct(pr['share_risk'])} риска ЖК). {pr['cause']}.")
     else:
         cause = "Просрочки по ДДУ нет: риск формируется только накопленной неустойкой по уже переданным квартирам."
-        decision, roles = "Сохранять темп передачи и контроль новых сроков по ДДУ", ["Отдел заселения"]
-    drivers = [f"Блокирующих замечаний {C.fmt_int(p['blocking'])}; у {C.fmt_int(p['blocking_units'])} непереданных помещений есть критические замечания."]
-    if p["top_contractors"]:
-        drivers.append("Подрядчики с наибольшим баллом риска: " + ", ".join(p["top_contractors"]) + ".")
+    rs = p["reasons"]
+    top_r = max(DC.REASONS, key=lambda kv: rs[kv[0]]["n"])
+    drivers = [f"Главная причина непередачи готовых: «{top_r[1].lower()}» — {C.fmt_int(rs[top_r[0]]['n'])} из {C.fmt_int(p['ready'])} квартир.",
+               f"Блокирующих замечаний {C.fmt_int(p['blocking'])}; у {C.fmt_int(p['blocking_units'])} непереданных помещений есть критические замечания."]
+    if p["contractor_risk"]:
+        drivers.append("Доля подрядчиков в риске ЖК: " + "; ".join(f"{c['name']} — {C.fmt_pct(c['share'], 1)}" for c in p["contractor_risk"][:3]) + ".")
+    decs = p["decisions"][:3]
     return dict(project=p, name=p["name"], risk_day=p["risk_day"], accrued_up=p["accrued_up"], share=p["risk_day"] / tot_risk,
-                cause=cause, drivers=drivers, decision=decision, roles=roles, short=PROBLEMS[pr["key"]]["short"] if pr else "Сохранять темп передачи")
+                cause=cause, drivers=drivers, decisions=decs,
+                decision=decs[0]["title"] if decs else "Сохранять темп передачи и контроль новых сроков по ДДУ",
+                roles=decs[0]["roles"] if decs else ["Отдел заселения"])
 
 
-def table_rows(projects: list[dict]) -> list[list]:
+def table_rows(projects: list[dict], style_bad: str = "") -> list[list]:
     """Строки таблицы первого экрана: одна на ЖК, по убыванию риска."""
     ranked = by_risk(projects)
     tr = sum(p["risk_day"] for p in ranked if p.get("has_risk", True)) or 1.0
-    f, fm = C.fmt_int, C.fmt_money
+    f, fm = C.fmt_int, C.fmt_k
     sg = lambda x: ("+" if x > 0 else "−" if x < 0 else "") + f(abs(x))
     rows = []
     for p in ranked:
         ok = p.get("has_risk", True)
-        pr = p["problems"][0] if p["problems"] else None
-        ch = f"{sg(p['overdue_delta'])} кв. · {'+' if p['risk_delta'] > 0 else '−' if p['risk_delta'] < 0 else ''}{fm(abs(p['risk_delta']))}" if ok else DASH
+        ch_t, bad = vs_target(p) if ok else (DASH, False)
         pf_ = (f"{f(p['week_fact'])} / {f(p['week_plan'])} ({sg(p['week_dev'])})" if p.get("week_plan") is not None else f(p["week_fact"]))
-        rows.append([p["name"], f(p["overdue_kv"]), f(p["ready"]), (f(round(p["risk_day"])) if ok else DASH), (C.fmt_pct(p["risk_day"] / tr, 1) if ok else DASH),
-                     ch, pf_, (f"{pr['short']} — {f(pr['n'])} кв." if pr else "Сохранять темп передачи")])
+        dec = p["decisions"][0] if p.get("decisions") else None
+        dec_t = f"{dec['short']}: −{fm(dec['effect'])} риска за 4 нед." if dec else "Сохранять темп передачи"
+        rows.append([p["name"], f(p["overdue_kv"]), f(p["ready"]), (f(round(p["risk_day"])) if ok else DASH),
+                     (f(round(p["risk_day"] / p["overdue_kv"])) if ok and p["overdue_kv"] else DASH),
+                     (C.fmt_pct(p["risk_day"] / tr, 1) if ok else DASH), (ch_t, style_bad if bad else ""), pf_, dec_t])
     return rows
 
 

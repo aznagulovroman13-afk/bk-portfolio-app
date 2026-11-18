@@ -214,7 +214,7 @@ def _txt(at):
 
 
 PWD = "test-password-123"
-SLICE_DATES = {"11.11.2026", "04.11.2026"}   # дата среза и срез 7 дней назад — единственные даты на экранах
+SLICE_DATES = {"11.11.2026", "06.11.2026"}   # дата среза и дата последних актов приёма — единственные даты на экранах
 
 
 def _no_dates_sources(at, t):
@@ -350,9 +350,10 @@ def test_priority_is_top_risk_and_has_cause_decision(B):
 def test_table_sorted_by_risk_with_no_risk_rows_at_bottom(B):
     rows = PF.table_rows(B["projects"])
     risks = [int(r[3].replace(" ", "")) for r in rows]
+    assert all(r[4] != PF.DASH for r in rows) and [int(r[4].replace(" ", "")) for r in rows] == [round(p["risk_day"] / p["overdue_kv"]) for p in PF.by_risk(B["projects"])]
     assert risks == sorted(risks, reverse=True) and len(rows) == 3
-    assert sum(float(r[4].replace("%", "").replace(",", ".")) for r in rows) == pytest.approx(100, abs=0.2)
-    assert all(r[5] != PF.DASH and r[6] != PF.DASH and r[7] for r in rows)
+    assert sum(float(r[5].replace("%", "").replace(",", ".")) for r in rows) == pytest.approx(100, abs=0.2)
+    assert all(r[6][0] != PF.DASH and r[7] != PF.DASH and r[8] for r in rows)
     # ЖК без оценки риска — внизу
     fake = [dict(B["projects"][2], has_risk=False, risk_day=0.0, name="Без оценки"), B["projects"][1], B["projects"][0]]
     ranked = PF.by_risk(fake)
@@ -378,14 +379,17 @@ def test_first_screen_shows_three_cards_slice_date_and_methodology():
     at = _login()
     t = _screen_text(at)
     for s in ("Просрочено по ДДУ", "Из них готовы к передаче", "Расчётный финансовый риск", "Дата среза: 11.11.2026", "Оценка есть по 3 из 3 ЖК",
-              "ключевая ставка / 300", "Приоритет руководителя", "Подтверждённая причина", "Требуемое решение", "Доля в общем риске",
-              "Изменение к срезу 7 дн. назад", "Передано за неделю: факт / план"):
+              "ключевая ставка / 300", "Приоритет руководителя", "Подтверждённая причина", "Требуемые решения и их эффект", "Доля в общем риске",
+              "Изменение за неделю к ориентиру", "Передано за неделю: факт / план", "Риск на просроченную квартиру",
+              "Расчётный и реальный риск", "Предъявлено претензий и исков", "Ожидаемые выплаты", "Уже выплачено", "Почему готовые не переданы", "Прогноз и ориентир",
+              "Решения для генерального директора"):
         assert s in t, s
     assert {b.label for b in at.button} >= {f"Открыть разбор: {n}" for n in ("Бунинские кварталы", "Прокшино", "Дзен-кварталы")}
     assert t.index("Расчётный финансовый риск") < t.index("Приоритет руководителя") < t.index("Портфель по ЖК")
     assert not [w for w in LABELS if w in t]
     # порядок строк таблицы: по убыванию риска
-    i = [t.index(n, t.index("Портфель по ЖК")) for n in ("Бунинские кварталы", "Прокшино", "Дзен-кварталы")]
+    order = [p["name"] for p in PF.by_risk(PF.build(pf_data.load(True, key=KEY), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])]
+    i = [t.index(n, t.index("Портфель по ЖК")) for n in order]
     assert i == sorted(i)
 
 
@@ -399,4 +403,115 @@ def test_jump_button_opens_selected_project_detail():
 
 def test_cache_keys_bumped_for_new_schema():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert src.count('schema: str = "v5"') == 2 and '"v4"' not in src
+    assert src.count('schema: str = "v6"') == 2 and '"v5"' not in src
+
+
+# ---------------------------------------------------------------- четыре вопроса гендиректора (v6)
+import pf_decide as DC  # noqa: E402
+
+
+def test_per_project_prices_and_risk_scale(D):
+    base = PF.build(D, dict(P0, prices={}))
+    own = PF.build(D, dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))
+    assert len({round(v, 3) for v in PF.DEFAULT_PRICES.values()}) == 3
+    for b, o, k in zip(base["projects"], own["projects"], FOLDERS):
+        assert o["price"] == PF.DEFAULT_PRICES[k] * 1e6
+        assert o["risk_day"] == pytest.approx(b["risk_day"] * PF.DEFAULT_PRICES[k] / 10.0)
+    assert own["projects"][0]["risk_day"] == pytest.approx(base["projects"][0]["risk_day"])    # БК: 10 млн ₽ как в действующем отчёте
+
+
+def test_ladder_steps_are_ordered_and_consistent(B):
+    for p in B["projects"] + [B["totals"]]:
+        L = p["ladder"]
+        assert L["upper"] >= L["claimed"] >= L["expected"] >= L["paid"] >= 0 and L["lower"] <= L["upper"]
+        assert L["claimed"] == pytest.approx(L["upper"] * DC.DEFAULT_K["claim"])
+        assert L["expected"] == pytest.approx(L["claimed"] * (1 - DC.DEFAULT_K["cut"]))
+        assert L["paid"] == pytest.approx(L["expected"] * DC.DEFAULT_K["paid"])
+    assert B["totals"]["ladder"]["upper"] == pytest.approx(B["totals"]["accrued_up"])
+    L2 = DC.ladder(1e9, 9e8, dict(claim=1.0, cut=0.0, paid=1.0))
+    assert L2["expected"] == L2["upper"] == L2["paid"]
+
+
+def test_ready_reasons_are_exclusive_and_sum_to_ready(B):
+    for p in B["projects"]:
+        assert set(p["reasons"]) == set(DC.REASON_KEYS)
+        assert sum(r["n"] for r in p["reasons"].values()) == p["ready"]
+        assert sum(r["risk"] for r in p["reasons"].values()) == pytest.approx(p["ready_risk"])
+    t = B["totals"]
+    assert sum(r["n"] for r in t["reasons"].values()) == t["ready"]
+    bk = {k: v["n"] for k, v in B["projects"][0]["reasons"].items()}
+    assert bk == dict(booked=170, queue=93, refused=115, called=0, expired=0, silent=144)     # из записей собственников БК
+
+
+def test_official_calls_matched_by_room_code(D):
+    A = D["bunino"]["units"]
+    assert A["Официальный вызов, дн. назад"].notna().sum() > 1400            # коды помещений из реестра вызовов совпали с помещениями БК
+    assert int(DC.ready_rows(A)["Официальный вызов, дн. назад"].notna().sum()) == 1   # среди готовых к передаче вызван лишь один
+
+
+def test_classification_rules_on_synthetic_rows():
+    A = DC.ready_rows.__globals__["pd"].DataFrame({
+        "Статус записи собственника": ["Завершено", "Запланировано", "Запланировано", None, None, None, "Отменено"],
+        "Запись через, дн.": [None, 3, 12, None, None, None, None],
+        "Официальный вызов, дн. назад": [None, None, None, 10, 80, None, 5],
+        "Ставка ЦБ на срок ДДУ, %": [15.0] * 7})
+    import numpy as np
+    r = A
+    rec = r["Статус записи собственника"].fillna("")
+    planned = rec.isin(["Запланировано"])
+    cat = np.select([rec.isin(["Завершено", "Отменено"]), planned & (r["Запись через, дн."] > DC.BOOK_DAYS), planned,
+                     r["Официальный вызов, дн. назад"].notna() & (r["Официальный вызов, дн. назад"] <= DC.CALL_WAIT_DAYS), r["Официальный вызов, дн. назад"].notna()],
+                    ["refused", "queue", "booked", "called", "expired"], default="silent")
+    assert list(cat) == ["refused", "booked", "queue", "called", "expired", "silent", "refused"]
+
+
+def test_forecast_and_scenario(B):
+    for p in B["projects"]:
+        f = p["forecast"]
+        assert f["scn"]["weeks"] <= f["base"]["weeks"] and f["saving"] > 0 and f["saving_4w"] > 0
+        assert f["scn"]["accrued"] < f["base"]["accrued"]
+        assert p["burn_pace"] > 0 and p["target_burn"] > 0
+        pth = f["base"]["path"]
+        assert pth[0][1] == p["overdue_kv"] and pth[-1][1] <= 0.5 and all(a[2] <= b[2] for a, b in zip(pth, pth[1:]))
+    pf = DC.portfolio_forecast(B["projects"], 4)
+    assert pf["base"]["weeks"] == pytest.approx(max(p["forecast"]["base"]["weeks"] for p in B["projects"]))
+    assert pf["saving"] == pytest.approx(sum(p["forecast"]["saving"] for p in B["projects"]))
+    assert DC.portfolio_forecast(B["projects"], 2)["saving"] >= DC.portfolio_forecast(B["projects"], 8)["saving"]
+    s0 = DC.simulate(100, 0, 1000)       # темп нулевой: просрочка не закрывается
+    assert s0["weeks"] is None and s0["path"][-1][1] >= 100
+
+
+def test_decisions_have_effect_roles_and_no_names_or_deadlines(B):
+    for p in B["projects"]:
+        ds = p["decisions"]
+        assert ds and [d["effect"] for d in ds] == sorted((d["effect"] for d in ds), reverse=True)
+        for d in ds:
+            assert d["effect"] > 0 and d["roles"] and d["kind"] and d["title"] and d["basis"]
+            assert not re.search(r"\b\d{1,2}\.\d{2}\.\d{4}\b|не позднее|до конца", d["title"] + d["basis"])
+        assert {d["kind"] for d in ds} >= {"Деньги, люди", "Полномочия"}
+        cr = p["contractor_risk"]
+        assert cr and sum(c["share"] for c in cr) <= 1 and all(0 < c["share"] < 1 for c in cr)
+    pri = PF.priority(B["projects"])
+    assert 1 <= len(pri["decisions"]) <= 3 and all(d["effect"] > 0 for d in pri["decisions"])
+    assert any("Доля подрядчиков" in x for x in pri["drivers"])
+
+
+def test_week_dynamics_is_compared_with_target(B):
+    for p in B["projects"]:
+        assert p["risk_target"] < 0 and p["risk_vs_target"] == pytest.approx(p["risk_delta"] - p["risk_target"])
+        txt, bad = PF.vs_target(p)
+        assert "ориентир" in txt and bad == (p["risk_vs_target"] > 0)
+    assert "ориентир" in PF.risk_change(B["totals"], B["projects"])[1]
+
+
+def test_new_sections_render_for_each_project_and_changed_coefficient():
+    at = _login()
+    t = _screen_text(at)
+    for s in ("Утвердить дополнительные бригады приёмки", "Записаны на приёмку", "Закроется через, нед.", "Ожидаемые выплаты"):
+        assert s in t, s
+    assert "Подрядчики: доля расчётного риска и потенциал удержаний" in [e.label for e in at.expander]
+    assert not re.search(r"Требует уточнения|Нет данных", t)
+    at.slider(key="pf_k_claim").set_value(70).run()
+    assert not at.exception
+    t2 = _screen_text(at)
+    assert "предъявляют 70%" in t2
