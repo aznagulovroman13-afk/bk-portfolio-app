@@ -152,7 +152,7 @@ def test_every_project_has_full_analytics(B):
     for p in B["projects"]:
         assert 1 <= len(p["problems"]) <= 3 and len(p["weekly"]) == PF.N_WEEKS and len(p["by_korpus"]) > 0
         assert p["remarks"] > 0 and p["critical"] > 0 and p["remarks_cost"] > 0 and p["claim_potential"] > 0 and p["week_fact"] > 0
-        assert p["claims"] is None and p["confirmed"] is None
+        assert p["has_risk"] and p["week_plan"] and p["week_plan"] > 0 and p["overdue_prev"] > 0
         for pr in p["problems"]:
             assert pr["roles"] and pr["metric"] and pr["action"] and pr["cause"]
         w = p["weekly"]
@@ -200,10 +200,11 @@ def test_data_has_no_pii_columns_and_sources_are_clean(D):
     assert "badge" not in src
 
 
-def test_model_note_is_single_constant():
-    assert PF.MODEL_NOTE == "Прокшино и Дзен-кварталы — модельный сценарий."
-    src = [(f, (ROOT / f).read_text(encoding="utf-8")) for f in ("app.py", "pf_model.py", "pf_ui.py", "pf_detail.py", "pf_stats.py", "pf_core.py")]
-    assert [f for f, s in src if "модельн" in s] == ["pf_model.py"]
+def test_no_model_note_and_no_placeholders_in_code():
+    assert not hasattr(PF, "MODEL_NOTE") and not hasattr(PF, "NO_DATA")
+    src = " ".join((ROOT / f).read_text(encoding="utf-8") for f in ("app.py", "pf_model.py", "pf_ui.py", "pf_detail.py", "pf_stats.py", "pf_core.py"))
+    for w in ("модельн", "Нет данных", "Требует уточнения"):
+        assert w not in src, w
 
 
 def _txt(at):
@@ -213,12 +214,13 @@ def _txt(at):
 
 
 PWD = "test-password-123"
+SLICE_DATES = {"11.11.2026", "04.11.2026"}   # дата среза и срез 7 дней назад — единственные даты на экранах
 
 
 def _no_dates_sources(at, t):
     """Даты среза, источники и сверка с действующим отчётом на экранах не показываются."""
-    assert not re.search(r"\b\d{1,2}\.\d{2}\.\d{4}\b", t), re.findall(r"\b\d{1,2}\.\d{2}\.\d{4}\b", t)
-    for w in ("срез", "Источник", "источник", "Сверка", "сверк", "kpis", "json", "parquet", "1С", "Совпало"):
+    assert set(re.findall(r"\b\d{1,2}\.\d{2}\.\d{4}\b", t)) <= SLICE_DATES, re.findall(r"\b\d{1,2}\.\d{2}\.\d{4}\b", t)
+    for w in ("Источник", "источник", "Сверка", "сверк", "kpis", "json", "parquet", "1С", "Совпало"):
         assert w not in t, w
     cols = " ".join(" ".join(map(str, d.value.columns)) for d in at.dataframe)
     assert "срез" not in cols.lower() and "Дат" not in cols
@@ -276,20 +278,14 @@ def test_app_locked_without_flag():
 def test_full_report_after_login_has_no_labels_and_no_toggle():
     at = _login()
     t = _screen_text(at)
-    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Нет данных", "Допущения модели", "Портфель:", "Матрица рисков", "Ориентир"):
+    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения модели", "Приоритет руководителя", "Матрица рисков", "Ориентир"):
         assert s in t, s
+    for s in ("Нет данных", "Требует уточнения", "модельн", "Предъявленные требования", "Подтверждённые суммы"):
+        assert s not in t, s
     assert not BAD.search(t)
     assert not [w for w in LABELS[:8] if w in t], [w for w in LABELS[:8] if w in t]
     assert not at.get("segmented_control") and "pf_mode" not in at.session_state
-    assert t.count(PF.MODEL_NOTE) == 1 and "Допущения модели" in t.split(PF.MODEL_NOTE)[0]
     _no_dates_sources(at, t)
-
-
-def test_model_note_disappears_when_constant_is_empty(monkeypatch):
-    monkeypatch.setattr(PF, "MODEL_NOTE", "")
-    at = _login()
-    t = _screen_text(at)
-    assert "модельн" not in t and "Допущения модели" in t
 
 
 @pytest.mark.parametrize("name", ["Бунинские кварталы", "Прокшино", "Дзен-кварталы"])
@@ -301,7 +297,7 @@ def test_each_project_gets_identical_set_of_blocks(name):
     assert [t.label for t in at.tabs] == ["Обзор", "Шахматка", "Замечания", "Подрядчики", "Деньги", "Динамика"]
     t = _screen_text(at)
     for s in ("Три главные проблемы", "Подключить", "Проверим на следующем совещании", "Корпуса", "Открытых замечаний", "Балл риска",
-              "Мало данных", "Потенциал претензий", "Предъявленные требования", "Блокируют передачу",
+              "Мало данных", "Потенциал претензий", "Блокируют передачу",
               "срок ДДУ нарушен", "Открыта к передаче", "Не принята"):
         assert s in t, s
     assert not [w for w in LABELS[:8] if w in t]
@@ -323,3 +319,84 @@ def test_other_projects_use_the_same_contractors_as_bunino(D):
     a, b = (D[k]["contractors"].set_index("Подрядчик")["Замечаний"] for k in ("proksh", "zen"))
     common = a.index.intersection(b.index)
     assert len(common) >= 15 and not (a[common] == b[common]).any()
+
+
+# ---------------------------------------------------------------- первый экран по новому ТЗ
+def test_ready_is_counted_strictly(D, B):
+    """Готовы = просрочены по ДДУ, не переданы, готовность подтверждена И ноль открытых замечаний."""
+    for (folder, _), p in zip(pf_data.PROJECTS, B["projects"]):
+        A = D[folder]["units"]
+        kv = A[A["Тип объекта"].eq("Квартира") & A["Просрочка ДДУ"].eq(C.NT_OVERDUE)]
+        strict = int((kv["Исходный статус"].eq("Открыта к передаче") & kv["Готовность подтверждена"].astype(bool) & kv["Замечаний открыто"].eq(0)).sum())
+        loose = int((kv["Исходный статус"].eq("Открыта к передаче") & kv["Замечаний открыто"].eq(0)).sum())
+        assert p["ready"] == strict <= loose, folder
+    bk = B["projects"][0]
+    assert (bk["overdue_kv"], bk["ready"]) == (1008, 522)      # прежнее определение давало 523: одна квартира без подтверждения готовности
+    n, _ = C.ready_overdue_daily(D["bunino"]["units"], P0["price"])
+    assert n == 522
+
+
+def test_priority_is_top_risk_and_has_cause_decision(B):
+    pr = PF.priority(B["projects"])
+    top = max(B["projects"], key=lambda p: p["risk_day"])
+    assert pr["name"] == top["name"] and pr["risk_day"] == top["risk_day"]
+    assert pr["share"] == pytest.approx(top["risk_day"] / B["totals"]["risk_day"]) and 0 < pr["share"] <= 1
+    assert pr["cause"] and pr["decision"] and pr["roles"] and pr["drivers"]
+    txt = pr["cause"] + pr["decision"] + " ".join(pr["roles"] + pr["drivers"])
+    assert "Требует уточнения" not in txt and "Нет данных" not in txt
+    assert not re.search(r"\b\d{1,2}\.\d{2}\.\d{4}\b|до \d|не позднее", pr["decision"])
+
+
+def test_table_sorted_by_risk_with_no_risk_rows_at_bottom(B):
+    rows = PF.table_rows(B["projects"])
+    risks = [int(r[3].replace(" ", "")) for r in rows]
+    assert risks == sorted(risks, reverse=True) and len(rows) == 3
+    assert sum(float(r[4].replace("%", "").replace(",", ".")) for r in rows) == pytest.approx(100, abs=0.2)
+    assert all(r[5] != PF.DASH and r[6] != PF.DASH and r[7] for r in rows)
+    # ЖК без оценки риска — внизу
+    fake = [dict(B["projects"][2], has_risk=False, risk_day=0.0, name="Без оценки"), B["projects"][1], B["projects"][0]]
+    ranked = PF.by_risk(fake)
+    assert ranked[-1]["name"] == "Без оценки" and [p["name"] for p in ranked[:2]] == [B["projects"][0]["name"], B["projects"][1]["name"]]
+    assert PF.table_rows(fake)[-1][3] == PF.DASH
+
+
+def test_plan_fact_and_dynamics_are_comparable(B):
+    for p in B["projects"]:
+        w = p["weekly"][~p["weekly"]["partial"]]
+        base = w["Передано, квартир"].iloc[-5:-1].mean()
+        assert p["week_plan"] == int(round(base * PF.PLAN_UPLIFT))
+        assert p["week_dev"] == p["week_fact"] - p["week_plan"]
+        assert p["overdue_prev"] - p["overdue_kv"] == -p["overdue_delta"]
+        assert p["risk_prev"] + p["risk_delta"] == pytest.approx(p["risk_day"])
+    t = B["totals"]
+    assert t["risk_delta"] == pytest.approx(sum(p["risk_delta"] for p in B["projects"]))
+    assert t["left_risk"] > 0 and t["entered_risk"] >= 0
+    assert t["risk_delta"] == pytest.approx(t["entered_risk"] - t["left_risk"])
+
+
+def test_first_screen_shows_three_cards_slice_date_and_methodology():
+    at = _login()
+    t = _screen_text(at)
+    for s in ("Просрочено по ДДУ", "Из них готовы к передаче", "Расчётный финансовый риск", "Дата среза: 11.11.2026", "Оценка есть по 3 из 3 ЖК",
+              "ключевая ставка / 300", "Приоритет руководителя", "Подтверждённая причина", "Требуемое решение", "Доля в общем риске",
+              "Изменение к срезу 7 дн. назад", "Передано за неделю: факт / план"):
+        assert s in t, s
+    assert {b.label for b in at.button} >= {f"Открыть разбор: {n}" for n in ("Бунинские кварталы", "Прокшино", "Дзен-кварталы")}
+    assert t.index("Расчётный финансовый риск") < t.index("Приоритет руководителя") < t.index("Портфель по ЖК")
+    assert not [w for w in LABELS if w in t]
+    # порядок строк таблицы: по убыванию риска
+    i = [t.index(n, t.index("Портфель по ЖК")) for n in ("Бунинские кварталы", "Прокшино", "Дзен-кварталы")]
+    assert i == sorted(i)
+
+
+def test_jump_button_opens_selected_project_detail():
+    at = _login()
+    nxt = next(b for b in at.button if b.label == "Открыть разбор: Дзен-кварталы")
+    nxt.click().run()
+    assert not at.exception and at.session_state["pf_sel"] == "Дзен-кварталы"
+    assert at.radio(key="pf_sel").value == "Дзен-кварталы"
+
+
+def test_cache_keys_bumped_for_new_schema():
+    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    assert src.count('schema: str = "v5"') == 2 and '"v4"' not in src

@@ -68,6 +68,27 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
 .dec .k { font-size: 10.5px; font-weight: 700; color: var(--ink3); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
 .dec .v { font-size: 13px; color: var(--ink); line-height: 1.5; }
 .dec .big { font-size: 22px; font-weight: 700; color: var(--risk); display: block; font-variant-numeric: tabular-nums; }
+.kgrid.big { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.kgrid.big .kcard { padding: 20px 26px 16px; } .kgrid.big .kcard .val { font-size: clamp(40px, 4.2vw, 64px); margin: 10px 0 8px; } .kgrid.big .kcard .val.sm { font-size: clamp(34px, 3.4vw, 52px); }
+.kgrid.big .kcard .dl { font-size: 15px; } .kgrid.big .kcard .foot { font-size: 12.5px; }
+.slice { font-size: 13px; color: var(--ink2); margin: 2px 0 6px; } .slice b { color: var(--ink); }
+.dev { border: 1px solid var(--line); border-left: 4px solid var(--navy); border-radius: 4px; background: var(--paper); padding: 10px 16px; margin: 8px 0 14px; font-size: 13.5px; color: var(--ink2); line-height: 1.5; }
+.dev .k { display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--navy); margin-right: 10px; }
+.cmph { font-size: 12px; color: var(--ink3); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; margin: 10px 0 6px; }
+.cmp { display: grid; grid-template-columns: 190px 1fr 420px; gap: 14px; align-items: center; padding: 4px 0; font-size: 13px; color: var(--ink2); }
+.cmp.tot { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px; font-weight: 600; color: var(--ink); }
+.cmp .trk { position: relative; height: 14px; background: var(--line2, rgba(128,140,160,.15)); border-radius: 2px; }
+.cmp .now { position: absolute; left: 0; top: 0; bottom: 0; background: var(--navy); border-radius: 2px; opacity: .85; }
+.cmp .rdy { position: absolute; left: 0; top: 3px; bottom: 3px; background: #9FB1C8; z-index: 2; border-radius: 2px; }
+.cmp .prv { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--risk); z-index: 3; }
+.cmp .vl { font-variant-numeric: tabular-nums; } .cmp .vl span { color: var(--ink3); font-size: 12px; font-weight: 400; }
+.prio { border: 1px solid var(--line); border-left: 5px solid var(--risk); border-radius: 4px; background: var(--paper); padding: 20px 26px; display: grid; grid-template-columns: 1fr 1.5fr 1.3fr; gap: 28px; }
+.prio .pn { font-size: 24px; font-weight: 700; color: var(--ink); line-height: 1.15; } .prio .pm { font-size: 15px; color: var(--ink2); margin-top: 10px; line-height: 1.5; }
+.prio .pm b { font-size: 30px; color: var(--risk); display: block; letter-spacing: -.01em; } .prio .pm span { color: var(--ink2); }
+.prio .pl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--ink3); margin-bottom: 6px; }
+.prio .pt { font-size: 14px; color: var(--ink); line-height: 1.5; } .prio ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink2); line-height: 1.5; }
+.prio .pr { font-size: 13px; color: var(--ink2); margin-top: 8px; }
+table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px; }
 .note { font-size: 12px; color: var(--ink3); line-height: 1.5; margin: 6px 0 10px; }
 .pf-role { display: inline-block; font-size: 12px; color: var(--navy); background: #EEF2F7; border: 1px solid #C9D2DE; border-radius: 3px; padding: 1px 8px; margin: 2px 4px 2px 0; }
 /* финансовые таблицы */
@@ -111,7 +132,7 @@ def section(title: str, sub: str = "", anchor: str | None = None, num: str = "")
                 + (f'<div class="secsub">{sub}</div>' if sub else ""), unsafe_allow_html=True)
 
 
-def kpi_cards(items):
+def kpi_cards(items, big=False):
     out = []
     for it in items:
         d_txt, d_cls = it.get("delta") or ("", "flat")
@@ -121,7 +142,7 @@ def kpi_cards(items):
             f'<div class="val{" sm" if len(str(it["value"])) >= 10 else ""}">{html.escape(str(it["value"]))}</div>'
             f'<div class="dl {d_cls}">{arrow}{html.escape(d_txt)}</div>'
             f'<div class="foot">{html.escape(it.get("foot", ""))}</div></div>')
-    st.markdown(f'<div class="kgrid">{"".join(out)}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="kgrid{" big" if big else ""}">{"".join(out)}</div>', unsafe_allow_html=True)
 
 
 def chart(fig, key=None, height=320):
@@ -143,7 +164,7 @@ def fin_table(head, rows, right=(), total_last=False, cls=""):
                 c, style = c
             style = f' style="{style}"' if style else ""
             txt = c if str(c).startswith("<") else html.escape(str(c))
-            cells.append(f'<td class="{"r" if i in right else ""}{" nd" if c == "Нет данных" else ""}"{style}>{txt}</td>')
+            cells.append(f'<td class="{"r" if i in right else ""}"{style}>{txt}</td>')
         tds = "".join(cells)
         body.append(f"<tr{tr}>{tds}</tr>")
     st.markdown(f'<table class="fin {cls}"><thead><tr>{th}</tr></thead><tbody>{"".join(body)}</tbody></table>', unsafe_allow_html=True)

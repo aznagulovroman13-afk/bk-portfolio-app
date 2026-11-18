@@ -97,10 +97,15 @@ def penalty(a: pd.DataFrame, price: float = ILLUSTR_PRICE, price_mm: float = MM_
             "daily_total": daily + d_mm + d_nh, "accrued_total": up + up_mm + up_nh}
 
 
+def ready_mask(a: pd.DataFrame) -> pd.Series:
+    """Готовы к передаче: статус «Открыта к передаче», готовность подтверждена (дата готовности, нет отмены/отказа), открытых замечаний нет."""
+    return (a["Исходный статус"].eq("Открыта к передаче") & a["Готовность подтверждена"].fillna(False).astype(bool)
+            & a["Замечаний открыто"].eq(0))
+
+
 def ready_overdue_daily(a: pd.DataFrame, price: float = ILLUSTR_PRICE) -> tuple[int, float]:
     """Готовые к передаче квартиры без замечаний с нарушенным ДДУ: штук и ₽/сутки неустойки."""
-    m = (a["Исходный статус"].eq("Открыта к передаче") & a["Замечаний открыто"].eq(0)
-         & a["Просрочка ДДУ"].eq(NT_OVERDUE) & a["Тип объекта"].eq("Квартира"))
+    m = ready_mask(a) & a["Просрочка ДДУ"].eq(NT_OVERDUE) & a["Тип объекта"].eq("Квартира")
     return int(m.sum()), float((a.loc[m, "Ставка ЦБ на срок ДДУ, %"].fillna(0) / 100 / 150).sum()) * price
 
 
