@@ -41,7 +41,7 @@ st.markdown(
 
 
 @st.cache_data(show_spinner="Загрузка данных…")
-def _load_projects(schema: str = "v8"):   # schema — часть ключа кэша: при смене формата данных старый кэш не подхватывается
+def _load_projects(schema: str = "v9"):   # schema — часть ключа кэша: при смене формата данных старый кэш не подхватывается
     return pf_data.load(True)
 
 
@@ -77,7 +77,7 @@ st.markdown('<div class="rh"><div class="kick">Отчёт для генерал�
 
 
 @st.cache_data(show_spinner="Расчёт показателей…")
-def _build(prices: tuple, coefs: tuple, schema: str = "v8"):
+def _build(prices: tuple, coefs: tuple, schema: str = "v9"):
     return PF.build(DA, dict(price=prices[0][1], prices=dict(prices), price_mm=C.MM_PRICE, price_nhp=C.NHP_PRICE),
                     dict(zip(("claim", "cut", "paid"), coefs)))
 

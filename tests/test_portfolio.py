@@ -402,7 +402,7 @@ def test_jump_button_opens_selected_project_detail():
 
 def test_cache_keys_bumped_for_new_schema():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert src.count('schema: str = "v8"') == 2 and '"v7"' not in src
+    assert src.count('schema: str = "v9"') == 2 and '"v8"' not in src
 
 
 # ---------------------------------------------------------------- четыре вопроса гендиректора (v6)
@@ -506,11 +506,11 @@ def test_decisions_have_effect_roles_and_no_names_or_deadlines(B):
 
 def test_main_decision_is_specific_per_project(B):
     mains = [p["decisions"][0]["key"] for p in B["projects"]]
-    assert len(set(mains)) >= len(mains) - 1                      # повтор допускается не более чем у одного малого ЖК
-    small = [p for p in B["projects"] if p["decisions"][0]["key"] in {m for m in mains if mains.count(m) > 1}]
-    assert all(p["risk_day"] < 0.05 * B["totals"]["risk_day"] for p in small)
+    assert len(mains) == 10 and len(set(mains)) == len(mains)     # главные решения всех ЖК различны, без исключений
     shorts = [p["decisions"][0]["short"] for p in B["projects"]]
-    assert len(set(shorts)) >= 9
+    assert len(set(shorts)) == len(shorts)
+    titles = [p["decisions"][0]["title"] for p in B["projects"]]
+    assert len(set(titles)) == len(titles)
     # главное решение вытекает из структуры причин ЖК: пул решения непустой
     for p in B["projects"]:
         d = p["decisions"][0]

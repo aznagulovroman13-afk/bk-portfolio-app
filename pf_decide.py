@@ -311,8 +311,8 @@ def pick(cands: list[dict], used: set | None = None, n: int = 3) -> list[dict]:
     used = used or set()
     if not cands:
         return []
-    # главное решение не повторяется между ЖК; если свободные меры дают менее 25% эффекта лучшей, повтор допускается (малые ЖК)
-    main = next((c for c in cands if c["key"] not in used and c["effect"] >= 0.25 * cands[0]["effect"]), cands[0])
+    # главное решение не повторяется между ЖК без исключений: берём наиболее эффективное из ещё не использованных
+    main = next((c for c in cands if c["key"] not in used), cands[0])
     out, pools, fams = [main], {main["pool"]}, {main["family"]}
     for cap, fam_strict, need in ((True, True, n), (True, False, n), (False, False, 2)):
         for c in cands:
