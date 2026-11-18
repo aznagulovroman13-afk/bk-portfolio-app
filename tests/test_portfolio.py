@@ -148,7 +148,8 @@ def test_no_names_deadlines_brand_in_texts(D):
     for p in B["projects"]:
         for pr in p["problems"]:
             texts += [pr["title"], pr["action"], pr["metric"], pr["cause"], pr["korpusa"], *pr["roles"]]
-    texts += list(PF.main_conclusion(B["totals"]))
+    h, ms = PF.portfolio_messages(B["totals"], B["projects"])
+    texts += [h, *ms]
     blob = " ".join(texts)
     assert not BAD.search(blob)
     assert not re.search(r"\b\d{1,2}\.\d{2}\.\d{4}\b", " ".join(pr["action"] + pr["metric"] for p in B["projects"] for pr in p["problems"]))
@@ -170,6 +171,15 @@ def _txt(at):
 
 
 PWD = "test-password-123"
+
+
+def _no_dates_sources(at, t):
+    """Даты среза, источники и сверка с действующим отчётом на экранах не показываются."""
+    assert not re.search(r"\b\d{1,2}\.\d{2}\.\d{4}\b", t), re.findall(r"\b\d{1,2}\.\d{2}\.\d{4}\b", t)
+    for w in ("срез", "Источник", "источник", "Сверка", "сверк", "kpis", "json", "parquet", "1С", "Совпало"):
+        assert w not in t, w
+    cols = " ".join(" ".join(map(str, d.value.columns)) for d in at.dataframe)
+    assert "срез" not in cols.lower() and "Дат" not in cols
 
 
 def _app(secret_yes=True, pwd=PWD):
@@ -210,17 +220,21 @@ def test_app_locked_without_flag_and_full_report_after_login(D):
     at.button[0].click().run()
     assert not at.exception, [e.message for e in at.exception]
     t = _txt(at)
-    for s in ("Портфель ЖК", "Прокшино", "Дзен-кварталы", "ДЕМО", "ФАКТ", "Совпало 13 из 13", "Нет данных", "Примечания и допущения"):
+    for s in ("Портфель ЖК", "Прокшино", "Дзен-кварталы", "ДЕМО", "ФАКТ", "Нет данных", "Допущения модели"):
         assert s in t, s
     assert not BAD.search(t)
+    assert "Портфель:" in t and "Главная проблема портфеля" not in t and "Матрица рисков" in t and "Ориентир" in t
+    _no_dates_sources(at, t)
     at.session_state["pf_mode"] = "Только факт"
     at.run()
     assert not at.exception
     t = _txt(at)
-    assert "Прокшино" not in t and "Дзен-кварталы" not in t and "10 000" in t
+    assert "Прокшино" not in t and "Дзен-кварталы" not in t
+    _no_dates_sources(at, t)
     at.session_state["pf_mode"] = "Все ЖК"
     at.run()
     at.session_state["pf_sel"] = "Прокшино"
     at.run()
     assert not at.exception
     assert "Условные цифры для показа структуры отчёта" in _txt(at)
+    _no_dates_sources(at, _txt(at))

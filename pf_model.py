@@ -58,14 +58,6 @@ PROBLEMS = {
 }
 
 
-def _week_text(s: str) -> str:
-    try:
-        a, b = s.split("/")
-        return f"неделя {pd.Timestamp(a):%d.%m}–{pd.Timestamp(b):%d.%m}"
-    except Exception:
-        return s
-
-
 def _rub_day(rate_pct, price: float) -> pd.Series | float:
     """Расчётный риск за сутки по квартире: 1/300 ключевой ставки × 2 (гражданин) = ставка/100/150 × цена."""
     return rate_pct / 100 / 150 * price
@@ -98,23 +90,23 @@ def _real_groups(kv: pd.DataFrame, cd: pd.Timestamp, price: float) -> list[dict]
         risk = float(_rub_day(g["Ставка ЦБ на срок ДДУ, %"].fillna(0), price).sum())
         if key == "ready":
             rec = g["Статус записи собственника"].fillna("")
-            cause = (f"Статус в 1С «Открыта к передаче», открытых замечаний 0; запись собственника: "
+            cause = (f"Статус «Открыта к передаче», открытых замечаний 0; запись собственника: "
                      f"запланирована у {C.fmt_int((rec == 'Запланировано').sum())}, "
                      f"нет записи у {C.fmt_int((rec == '').sum())}")
         elif key == "keys":
             pl = g["Плановая дата ключей в ОЗ"]
-            cause = (f"Статус в 1С «Ключи в ОЗ не переданы»; плановая дата ключей в ОЗ позже даты среза у "
+            cause = (f"Статус «Ключи в ОЗ не переданы»; плановая дата ключей в ОЗ ещё впереди у "
                      f"{C.fmt_int((pl > cd).sum())}, уже прошла у {C.fmt_int((pl <= cd).sum())}, "
                      f"не указана у {C.fmt_int(pl.isna().sum())}")
         elif key == "refusal":
-            cause = (f"Статус в 1С «Не принята»; отметка «мот. отказ / снятие готовности» у "
+            cause = (f"Статус «Не принята»; отметка «мот. отказ / снятие готовности» у "
                      f"{C.fmt_int(g['Мот. отказ / снятие готовности'].fillna(False).sum())}")
         elif key == "not_open":
-            cause = "Статус в 1С «В ОЗ, готовность не открыта»"
+            cause = "Статус «В ОЗ, готовность не открыта»"
         else:
             cause = (f"Открытых замечаний у этих квартир {C.fmt_int(g['Замечаний открыто'].sum())}, "
                      f"критических {C.fmt_int(g['Критических'].sum())}")
-        out.append(dict(key=key, n=int(len(g)), risk=risk, korpusa=_korpusa_text(g), cause=cause,
+        out.append(dict(key=key, title=PROBLEMS[key]["title"], n=int(len(g)), risk=risk, korpusa=_korpusa_text(g), cause=cause,
                         baseline=int(len(g)) if key != "remarks" else int(g["Замечаний открыто"].sum())))
     return out
 
@@ -148,13 +140,12 @@ def real_project(D: dict, P: dict) -> dict:
     wk_kv = C.units_state_at(A, cd - np.timedelta64(7, "D"))["nt_overdue_kv"]
     groups = _real_groups(kv, cd, price)
     return dict(
-        name=REAL_NAME, demo=False, snapshot=cd.strftime("%d.%m.%Y"),
-        snapshot_parts=f"ПА {k['pa_date']} · реестр замечаний {k['remarks_date']} · график {k['schedule_date']}",
+        name=REAL_NAME, demo=False, groups=groups,
         overdue_kv=u["nt_overdue_kv"], overdue_all=u["nt_overdue"], ready=ready_n,
         risk_day=pen["daily"], risk_day_total=pen["daily_total"], ready_risk=ready_daily,
         accrued_lo=pen["accrued_lo"], accrued_up=pen["accrued_up"],
         median_days=u["nt_overdue_median"], units=u["units_total"], transferred=u["transferred"],
-        week_label=_week_text(str(last["Неделя"])), week_fact=int(last["ПА, квартиры"]),
+        week_fact=int(last["ПА, квартиры"]),
         week_prev=int(prev["ПА, квартиры"]) if prev is not None else None,
         week_all=int(last["ПА, все помещения"]),
         week_plan=None, week_dev=None,
@@ -175,15 +166,15 @@ def demo_project(d: dict, rate_pct: float, price: float, cd: pd.Timestamp) -> di
     n = d["overdue_kv"]
     g = d["groups"]
     ready = g["ready"]
-    groups = [dict(key=key, n=v, risk=v * per_apt,
+    groups = [dict(key=key, title=PROBLEMS[key]["title"], n=v, risk=v * per_apt,
                    korpusa="условно: " + ", ".join(d["korpusa"]),
                    cause="Условное значение (ДЕМО), причина не из данных", baseline=v)
               for key, v in g.items() if v]
     return dict(
-        name=d["name"], demo=True, snapshot=cd.strftime("%d.%m.%Y"), snapshot_parts="условный срез (ДЕМО)",
+        name=d["name"], demo=True, groups=groups,
         overdue_kv=n, overdue_all=n, ready=ready, risk_day=n * per_apt, risk_day_total=n * per_apt,
         ready_risk=ready * per_apt, accrued_lo=n * per_apt * DEMO_DAYS, accrued_up=n * per_apt * DEMO_DAYS,
-        median_days=DEMO_DAYS, units=None, transferred=None, week_label="условная неделя",
+        median_days=DEMO_DAYS, units=None, transferred=None,
         week_fact=d["week_fact"], week_prev=d["week_prev"], week_all=None,
         week_plan=d["week_plan"], week_dev=d["week_fact"] - d["week_plan"],
         overdue_delta=n - d["overdue_prev"], prev_snapshot="условный",
@@ -222,7 +213,8 @@ def totals(projects: list[dict]) -> dict:
     return dict(
         overdue_kv=s("overdue_kv", projects), ready=s("ready", projects), risk_day=s("risk_day", projects),
         ready_risk=s("ready_risk", projects), accrued_up=s("accrued_up", projects),
-        week_fact=s("week_fact", projects),
+        week_fact=s("week_fact", projects), accrued_lo=s("accrued_lo", projects), overdue_delta=s("overdue_delta", projects),
+        week_prev=(s("week_prev", projects) if projects and all(p["week_prev"] is not None for p in projects) else None),
         week_plan=(s("week_plan", projects) if projects and all(x is not None for x in plans) else None),
         has_demo=has_demo,
         fact=dict(overdue_kv=s("overdue_kv", real), ready=s("ready", real), risk_day=s("risk_day", real),
@@ -235,18 +227,20 @@ def totals(projects: list[dict]) -> dict:
 
 
 def table(projects: list[dict], sort: str = "risk") -> pd.DataFrame:
+    tr = sum(p["risk_day"] for p in projects) or 1.0
     rows = []
     for p in projects:
         pr = p["problems"][0] if p["problems"] else None
         rows.append({
             "ЖК": p["name"] + (" · ДЕМО" if p["demo"] else ""),
             "Данные": DEMO_TAG if p["demo"] else "ФАКТ",
-            "Дата среза": p["snapshot"] + (" · ДЕМО" if p["demo"] else ""),
             "Передано за неделю, кв.": p["week_fact"],
             "Отклонение от плана, кв.": (f"{p['week_dev']:+d}".replace("-", "−") + " · ДЕМО") if p["week_dev"] is not None else NO_DATA,
             "Просрочено по ДДУ, кв.": p["overdue_kv"],
             "Из них готовы": p["ready"],
+            "Доля готовых, %": round(100 * p["ready"] / p["overdue_kv"], 1) if p["overdue_kv"] else 0.0,
             "Расчётный риск, ₽/сутки": round(p["risk_day"]),
+            "Доля риска портфеля, %": round(100 * p["risk_day"] / tr, 1),
             "Главная проблема": (pr["title"] + f" — {C.fmt_int(pr['n'])} кв.") if pr else NO_DATA,
             "Предлагаемое действие": pr["action"] if pr else NO_DATA,
             "_name": p["name"],
@@ -258,22 +252,25 @@ def table(projects: list[dict], sort: str = "risk") -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def main_conclusion(tot: dict) -> tuple[str, str]:
-    t = tot["top"]
-    if t is None:
-        return "Нет данных для сводки по ЖК", ""
-    demo = " (ДЕМО)" if t["demo"] else ""
-    pr = t["problems"][0] if t["problems"] else None
-    head = (f"Главная проблема портфеля — {t['name']}{demo}: {C.fmt_int(t['overdue_kv'])} "
-            f"{C.plural(t['overdue_kv'], 'квартира', 'квартиры', 'квартир')} просрочено по ДДУ, "
-            f"≈{C.fmt_money(t['risk_day'])} расчётного риска в сутки")
-    if pr:
-        sub = (f"Решение для совещания: {pr['action'][0].lower() + pr['action'][1:]} "
-               f"({C.fmt_int(pr['n'])} {C.plural(pr['n'], 'квартира', 'квартиры', 'квартир')}, "
-               f"{C.fmt_pct(pr['share_risk'])} риска ЖК).")
-    else:
-        sub = ""
-    return head, sub
+def portfolio_messages(tot: dict, projects: list[dict]) -> tuple[str, list[str]]:
+    """Главный вывод и ключевые сообщения по ПОРТФЕЛЮ в целом (ЖК — равные сегменты, без выделения одного)."""
+    n, rd = tot["overdue_kv"], tot["risk_day"]
+    if not projects or not n:
+        return "Нет данных для сводки по портфелю", []
+    kw = lambda x: f"{C.fmt_int(x)} {C.plural(x, 'квартира', 'квартиры', 'квартир')}"
+    share_ready = tot["ready"] / n
+    head = (f"Портфель: {kw(n)} просрочено по ДДУ, ≈{C.fmt_money(rd)} расчётного риска в сутки; "
+            f"{C.fmt_pct(share_ready)} просрочки закрывается передачей готовых квартир")
+    msgs = [f"Готовы к передаче без замечаний {kw(tot['ready'])} — это {C.fmt_money(tot['ready_risk'])} риска в сутки "
+            f"({C.fmt_pct(tot['ready_risk'] / rd if rd else 0)}): самый быстрый эффект от решения на совещании."]
+    d = tot["overdue_delta"]
+    wk = tot["week_fact"]
+    msgs.append(f"За 7 дней просрочка {'снизилась на' if d < 0 else 'выросла на' if d > 0 else 'не изменилась:'} "
+                f"{C.fmt_int(abs(d)) if d else '0'}; за неделю передано {kw(wk)}.")
+    big = max(projects, key=lambda p: p["risk_day"])
+    if len(projects) > 1:
+        msgs.append(f"Риск распределён по {len(projects)} ЖК; крупнейший сегмент даёт {C.fmt_pct(big['risk_day'] / rd)} суточного риска.")
+    return head, msgs
 
 
 # ---------------------------------------------------------------- сверка с действующим отчётом

@@ -47,6 +47,8 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
 .rh .ttl { font-size: clamp(24px, 2.4vw, 34px); font-weight: 700; margin: 6px 0 12px; letter-spacing: -.01em; color: #fff; }
 .rh .meta { display: flex; flex-wrap: wrap; gap: 6px 30px; font-size: 12.5px; color: #C5CEDA; }
 .rh .meta b { color: #fff; font-weight: 600; }
+.km { margin: 10px 0 0; padding: 0; list-style: none; } .km li { font-size: 14.5px; color: var(--ink2); line-height: 1.45; padding: 3px 0 3px 14px; border-left: 3px solid var(--navy); margin: 6px 0; }
+.fin td.hm { text-align: right; font-variant-numeric: tabular-nums; }
 .concl { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--risk); border-radius: 4px; padding: 20px 26px; margin: 0 0 16px; }
 .concl .t { font-size: clamp(20px, 2vw, 28px); font-weight: 700; color: var(--ink); line-height: 1.2; letter-spacing: -.01em; }
 .concl .s { font-size: 15px; color: var(--ink2); margin-top: 8px; line-height: 1.45; }
@@ -154,8 +156,15 @@ def fin_table(head, rows, right=(), total_last=False, cls=""):
     body = []
     for n, r in enumerate(rows):
         tr = ' class="tot"' if total_last and n == len(rows) - 1 else ""
-        tds = "".join(f'<td class="{"r" if i in right else ""}{" nd" if c == "Нет данных" else ""}">{c if str(c).startswith("<") else html.escape(str(c))}</td>'
-                      for i, c in enumerate(r))
+        cells = []
+        for i, c in enumerate(r):
+            style = ""
+            if isinstance(c, tuple):
+                c, style = c
+            style = f' style="{style}"' if style else ""
+            txt = c if str(c).startswith("<") else html.escape(str(c))
+            cells.append(f'<td class="{"r" if i in right else ""}{" nd" if c == "Нет данных" else ""}"{style}>{txt}</td>')
+        tds = "".join(cells)
         body.append(f"<tr{tr}>{tds}</tr>")
     st.markdown(f'<table class="fin {cls}"><thead><tr>{th}</tr></thead><tbody>{"".join(body)}</tbody></table>', unsafe_allow_html=True)
 
