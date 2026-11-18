@@ -73,7 +73,12 @@ def _build(price_rub: float):
     return PF.build(DA, dict(price=price_rub, price_mm=C.MM_PRICE, price_nhp=C.NHP_PRICE))
 
 
-B = _build(P["price"])
+try:
+    B = _build(P["price"])
+except Exception as _e:  # временная диагностика
+    import inspect, traceback, sys as _s
+    st.code(traceback.format_exc()[-1800:] + "\n" + str(inspect.signature(PF.build)) + " " + _s.version)
+    st.stop()
 projects, tot = B["projects"], B["totals"]
 names = [p["name"] for p in projects]
 sg = lambda v: ("+" if v > 0 else "−" if v < 0 else "") + f(abs(v))
