@@ -309,3 +309,17 @@ def test_each_project_gets_identical_set_of_blocks(name):
     assert len([m for m in at.markdown if 'class="cb"' in m.value]) == 1      # шахматка выбранного ЖК
     heads = [" ".join(map(str, d.value.columns)) for d in at.dataframe]
     assert any("Помещений" in h and "Критических" in h for h in heads) and any("Балл риска" in h for h in heads)
+
+
+def test_other_projects_use_the_same_contractors_as_bunino(D):
+    bk = set(D["bunino"]["contractors"]["Подрядчик"])
+    for k in ("proksh", "zen"):
+        names = set(D[k]["contractors"]["Подрядчик"])
+        assert names and names <= bk and len(names) < len(bk)
+        assert set(D[k]["remarks"]["Подрядчик"]) <= bk
+        assert not BAD.search(" ".join(names))
+    # состав и объёмы у ЖК разные
+    assert set(D["proksh"]["contractors"]["Подрядчик"]) != set(D["zen"]["contractors"]["Подрядчик"])
+    a, b = (D[k]["contractors"].set_index("Подрядчик")["Замечаний"] for k in ("proksh", "zen"))
+    common = a.index.intersection(b.index)
+    assert len(common) >= 15 and not (a[common] == b[common]).any()
