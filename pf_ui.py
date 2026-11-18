@@ -1,4 +1,4 @@
-"""Оформление «Портфеля ЖК»: тёмная navy/metallic тема, большие цифры, метки достоверности."""
+"""Оформление «Портфеля ЖК»: тёмная navy/metallic тема, большие цифры, без служебных меток."""
 from __future__ import annotations
 
 import html
@@ -11,12 +11,6 @@ import streamlit as st
 NAVY, INK, INK2, INK3 = "#0B1F3A", "#14213D", "#4A5568", "#7A8494"
 LINE, GOLD, RISK, GOOD = "#D5DBE3", "#A67C00", "#B3261E", "#2E7D32"
 SILVER, GRAPH = "#9AA5B4", "#3F4A5A"
-
-PLATES = {
-    "ФАКТ": ("ФАКТ", "plate-fact", "из исходных файлов"),
-    "ОЦЕНКА": ("ОЦЕНКА", "plate-est", "расчёт по формуле с допущениями"),
-    "ДЕМО": ("ДЕМО", "plate-demo", "условные цифры, не из данных проекта"),
-}
 
 CSS = """
 <style>
@@ -56,10 +50,6 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
   text-transform: none; letter-spacing: -.005em; }
 .sec .nm { color: var(--gold); margin-right: 8px; font-variant-numeric: tabular-nums; }
 .secsub { font-size: 13px; color: var(--ink2); margin: 6px 0 12px; }
-.badge { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 2px 7px; border-radius: 3px; vertical-align: 2px;
-  margin-left: 8px; white-space: nowrap; border: 1px solid; }
-.b-fact { color: var(--ink2); border-color: #B9C2CE; background: #F3F5F8; } .b-est { color: var(--navy); border-color: #8FA0B8; background: #E4EAF3; }
-.b-demo { color: #7A5B00; border-color: #D9B650; background: #FFF4D6; }
 .kgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 8px 0 12px; }
 .kcard { background: var(--paper); border: 1px solid var(--line); border-top: 3px solid var(--navy); border-radius: 4px; padding: 14px 18px 12px; }
 .kcard.risk { border-top-color: var(--risk); }
@@ -114,19 +104,10 @@ pio.templates["pf"] = _template()
 pio.templates.default = "pf"
 
 
-def badge(kind: str) -> str:
-    text, _, tip = PLATES[kind]
-    cls = {"ФАКТ": "b-fact", "ОЦЕНКА": "b-est", "ДЕМО": "b-demo"}[kind]
-    return f'<span class="badge {cls}" title="{html.escape(tip)}">{text}</span>'
-
-
-plate = badge
-
-
-def section(title: str, sub: str = "", kinds=("ФАКТ",), anchor: str | None = None, num: str = ""):
+def section(title: str, sub: str = "", anchor: str | None = None, num: str = ""):
     aid = f' id="{html.escape(anchor)}"' if anchor else ""
     n = f'<span class="nm">{html.escape(num)}</span>' if num else ""
-    st.markdown(f'<div class="sec"{aid}>{n}{html.escape(title)}{"".join(badge(k) for k in kinds)}</div>'
+    st.markdown(f'<div class="sec"{aid}>{n}{html.escape(title)}</div>'
                 + (f'<div class="secsub">{sub}</div>' if sub else ""), unsafe_allow_html=True)
 
 
@@ -135,11 +116,9 @@ def kpi_cards(items):
     for it in items:
         d_txt, d_cls = it.get("delta") or ("", "flat")
         arrow = "▲ " if d_txt.startswith("+") else ("▼ " if d_txt.startswith("−") else "")
-        kinds = it.get("kind", "ФАКТ")
-        kinds = [kinds] if isinstance(kinds, str) else list(kinds)
         out.append(
-            f'<div class="kcard{" risk" if it.get("risk") else ""}"><div class="lab">{html.escape(it["label"])}{"".join(badge(k) for k in kinds)}</div>'
-            f'<div class="val{" sm" if len(str(it["value"])) > 10 else ""}">{html.escape(str(it["value"]))}</div>'
+            f'<div class="kcard{" risk" if it.get("risk") else ""}"><div class="lab">{html.escape(it["label"])}</div>'
+            f'<div class="val{" sm" if len(str(it["value"])) >= 10 else ""}">{html.escape(str(it["value"]))}</div>'
             f'<div class="dl {d_cls}">{arrow}{html.escape(d_txt)}</div>'
             f'<div class="foot">{html.escape(it.get("foot", ""))}</div></div>')
     st.markdown(f'<div class="kgrid">{"".join(out)}</div>', unsafe_allow_html=True)
@@ -147,6 +126,7 @@ def kpi_cards(items):
 
 def chart(fig, key=None, height=320):
     fig.update_layout(template="pf", height=height)
+    fig.update_yaxes(automargin=True)
     st.plotly_chart(fig, width="stretch", theme=None, config={"displayModeBar": False, "locale": "ru"}, key=key)
 
 

@@ -1,7 +1,6 @@
 """Портфель ЖК: расчёты для отчёта генерального директора (отдельный продукт, не часть отчёта по Бунинским).
 
-Факт — только Бунинские кварталы (реальные данные проекта, те же функции, что и в действующем отчёте).
-Прокшино и Дзен-кварталы — условные цифры (ДЕМО), всегда помечены и в «Только факт» не участвуют.
+Все ЖК считаются одним и тем же конвейером из одной схемы таблиц: помещения, замечания (свёртка), подрядчики.
 Персональных данных нет: только счётчики, корпуса и роли исполнителей (без имён и сроков).
 """
 from __future__ import annotations
@@ -12,21 +11,13 @@ import numpy as np
 import pandas as pd
 
 import pf_core as C
+import pf_stats
 
-REAL_NAME = "Бунинские кварталы"
 NO_DATA = "Нет данных"
-DEMO_TAG = "ДЕМО"
-
-# --- условные (ДЕМО) исходные цифры: не из данных, служат только для показа структуры раздела ---
-DEMO_PROJECTS = (
-    dict(name="Прокшино", overdue_kv=214, week_fact=38, week_plan=55, week_prev=41, overdue_prev=231,
-         groups=dict(ready=61, keys=88, refusal=27, not_open=38), korpusa=("К.3", "К.5", "К.1"),
-         claims=31_000_000, confirmed=9_000_000),
-    dict(name="Дзен-кварталы", overdue_kv=96, week_fact=22, week_plan=20, week_prev=19, overdue_prev=101,
-         groups=dict(ready=12, keys=41, refusal=9, not_open=34), korpusa=("К.2", "К.4"),
-         claims=8_500_000, confirmed=3_000_000),
-)
-DEMO_DAYS = 120   # условная средняя просрочка для накопленной суммы ДЕМО-ЖК, дн.
+# Единственная пометка о происхождении цифр на экранах. Чтобы убрать — присвоить пустую строку.
+MODEL_NOTE = "Прокшино и Дзен-кварталы — модельный сценарий."
+WEEK0 = pd.Timestamp("2026-08-17")     # первая из 12 недель динамики (понедельник)
+N_WEEKS = 12
 
 # --- что делать, кого подключить, что проверять на следующем совещании (роли, без имён и сроков) ---
 PROBLEMS = {
@@ -111,7 +102,7 @@ def _real_groups(kv: pd.DataFrame, cd: pd.Timestamp, price: float) -> list[dict]
     return out
 
 
-def _problem_rows(groups: list[dict], total_risk: float, total_n: int, demo: bool) -> list[dict]:
+def _problem_rows(groups: list[dict], total_risk: float, total_n: int) -> list[dict]:
     rows = []
     for g in sorted(groups, key=lambda x: -x["risk"])[:3]:
         t = PROBLEMS[g["key"]]
@@ -119,110 +110,85 @@ def _problem_rows(groups: list[dict], total_risk: float, total_n: int, demo: boo
             key=g["key"], title=t["title"], n=g["n"], share_n=g["n"] / total_n if total_n else 0.0,
             risk=g["risk"], share_risk=g["risk"] / total_risk if total_risk else 0.0,
             korpusa=g["korpusa"], cause=g["cause"], action=t["action"], roles=list(t["roles"]),
-            metric=t["metric"], baseline=g["baseline"], demo=demo))
+            metric=t["metric"], baseline=g["baseline"]))
     return rows
 
 
-def real_project(D: dict, P: dict) -> dict:
-    """Бунинские кварталы — только реальные данные и функции действующего отчёта."""
-    A = D["apartments"]
-    cd = D["calc_date"]
-    k = D["kpis"]
+def weekly(A: pd.DataFrame, cd: pd.Timestamp) -> pd.DataFrame:
+    """12 недель: передано (квартиры / все помещения) по датам ПА и просрочка по ДДУ (квартиры) на конец недели."""
+    tr = C.transferred_mask(A)
+    acc = A["Дата принятия собственником"]
+    kv = A["Тип объекта"].eq("Квартира")
+    rows = []
+    for i in range(N_WEEKS):
+        ws = WEEK0 + pd.Timedelta(days=7 * i)
+        we = ws + pd.Timedelta(days=6)
+        m = tr & acc.ge(ws) & acc.lt(ws + pd.Timedelta(days=7))
+        st = C.units_state_at(A, min(we, cd))
+        rows.append({"ws": ws, "Неделя": f"{ws:%d.%m}–{we:%d.%m}", "Передано, квартир": int((m & kv).sum()), "Передано, всего": int(m.sum()),
+                     "Просрочено на конец недели, кв.": int(st["nt_overdue_kv"]), "partial": bool(we > cd - pd.Timedelta(days=5))})
+    return pd.DataFrame(rows)
+
+
+def project(d: dict, P: dict) -> dict:
+    """Все показатели одного ЖК: один набор для каждого сегмента портфеля."""
+    A, cd = d["units"], d["calc_date"]
     price = P["price"]
     u = C.unit_kpis(A)
     pen = C.penalty(A, **P)
     ready_n, ready_daily = C.ready_overdue_daily(A, price)
     kv = _kv_overdue(A)
-    tw = D["transfers_weekly"]
-    last = tw.iloc[-2] if len(tw) > 1 else tw.iloc[-1]
-    prev = tw.iloc[-3] if len(tw) > 2 else None
+    wk = weekly(A, cd)
+    full = wk[~wk["partial"]]
+    last, prev = full.iloc[-1], (full.iloc[-2] if len(full) > 1 else None)
     now_kv = C.units_state_at(A, cd)["nt_overdue_kv"]
-    wk_kv = C.units_state_at(A, cd - np.timedelta64(7, "D"))["nt_overdue_kv"]
+    wk_kv = C.units_state_at(A, cd - pd.Timedelta(days=7))["nt_overdue_kv"]
     groups = _real_groups(kv, cd, price)
+    rem = d["remarks"]
+    n_rem = int(A["Замечаний открыто"].sum())
+    rm = lambda m: int(rem.loc[m, "n"].sum())
+    ct = d["contractors"]
     return dict(
-        name=REAL_NAME, demo=False, groups=groups,
+        name=d["name"], key=d["key"], groups=groups, weekly=wk,
         overdue_kv=u["nt_overdue_kv"], overdue_all=u["nt_overdue"], ready=ready_n,
         risk_day=pen["daily"], risk_day_total=pen["daily_total"], ready_risk=ready_daily,
-        accrued_lo=pen["accrued_lo"], accrued_up=pen["accrued_up"],
-        median_days=u["nt_overdue_median"], units=u["units_total"], transferred=u["transferred"],
-        week_fact=int(last["ПА, квартиры"]),
-        week_prev=int(prev["ПА, квартиры"]) if prev is not None else None,
-        week_all=int(last["ПА, все помещения"]),
-        week_plan=None, week_dev=None,
+        accrued_lo=pen["accrued_lo"], accrued_up=pen["accrued_up"], penalty=pen,
+        median_days=u["nt_overdue_median"], units=u["units_total"], units_kv=int(A["Тип объекта"].eq("Квартира").sum()),
+        transferred=u["transferred"], late_transferred=u["late_transferred"], refusals=u["refusals"],
+        week_fact=int(last["Передано, квартир"]), week_all=int(last["Передано, всего"]),
+        week_prev=int(prev["Передано, квартир"]) if prev is not None else None,
         overdue_delta=int(now_kv - wk_kv),
-        prev_snapshot=k.get("previous_snapshot"),
+        remarks=n_rem, critical=int(A["Критических"].sum()), remarks_over=int(A["Просрочено (регл)"].sum()),
+        blocking=rm(rem["Блокирует"]), remarks_cost=n_rem * pf_stats.COST_PER_REMARK,
+        claim_potential=float(ct["Потенциал претензии, ₽"].sum()) if "Потенциал претензии, ₽" in ct else 0.0,
         claims=None, confirmed=None,
-        problems=_problem_rows(groups, pen["daily"], u["nt_overdue_kv"], False),
+        problems=_problem_rows(groups, pen["daily"], u["nt_overdue_kv"]),
         korpusa_top=_korpusa_text(kv, 5),
-        by_korpus=(kv.assign(r=_rub_day(kv["Ставка ЦБ на срок ДДУ, %"].fillna(0), price),
-                             k=kv["Корпус"].astype(str))
-                   .groupby("k").agg(n=("Объект", "size"), risk=("r", "sum")).reset_index()
-                   .sort_values("risk", ascending=False)),
+        by_korpus=(kv.assign(r=_rub_day(kv["Ставка ЦБ на срок ДДУ, %"].fillna(0), price), k=kv["Корпус"].astype(str))
+                   .groupby("k").agg(n=("Объект", "size"), risk=("r", "sum")).reset_index().sort_values("risk", ascending=False)),
     )
 
 
-def demo_project(d: dict, rate_pct: float, price: float, cd: pd.Timestamp) -> dict:
-    per_apt = float(_rub_day(rate_pct, price))
-    n = d["overdue_kv"]
-    g = d["groups"]
-    ready = g["ready"]
-    groups = [dict(key=key, title=PROBLEMS[key]["title"], n=v, risk=v * per_apt,
-                   korpusa="условно: " + ", ".join(d["korpusa"]),
-                   cause="Условное значение (ДЕМО), причина не из данных", baseline=v)
-              for key, v in g.items() if v]
-    return dict(
-        name=d["name"], demo=True, groups=groups,
-        overdue_kv=n, overdue_all=n, ready=ready, risk_day=n * per_apt, risk_day_total=n * per_apt,
-        ready_risk=ready * per_apt, accrued_lo=n * per_apt * DEMO_DAYS, accrued_up=n * per_apt * DEMO_DAYS,
-        median_days=DEMO_DAYS, units=None, transferred=None,
-        week_fact=d["week_fact"], week_prev=d["week_prev"], week_all=None,
-        week_plan=d["week_plan"], week_dev=d["week_fact"] - d["week_plan"],
-        overdue_delta=n - d["overdue_prev"], prev_snapshot="условный",
-        claims=d["claims"], confirmed=d["confirmed"],
-        problems=_problem_rows(groups, n * per_apt, n, True),
-        korpusa_top=", ".join(d["korpusa"]),
-        by_korpus=pd.DataFrame({"k": list(d["korpusa"]), "n": [None] * len(d["korpusa"]),
-                                "risk": [None] * len(d["korpusa"])}),
-    )
-
-
-def avg_rate(D: dict, P: dict) -> float:
-    kv = _kv_overdue(D["apartments"])
-    r = kv["Ставка ЦБ на срок ДДУ, %"].fillna(0)
-    return float(r.mean()) if len(kv) else 0.0
-
-
-def build(D: dict, P: dict, fact_only: bool) -> dict:
-    real = real_project(D, P)
-    projects = [real]
-    if not fact_only:
-        rate = avg_rate(D, P)
-        projects += [demo_project(d, rate, P["price"], D["calc_date"]) for d in DEMO_PROJECTS]
-    return dict(projects=projects, real=real, totals=totals(projects), fact_only=fact_only)
+def build(D: dict, P: dict) -> dict:
+    projects = [project(d, P) for d in D.values()]
+    return dict(projects=projects, totals=totals(projects))
 
 
 def totals(projects: list[dict]) -> dict:
-    real = [p for p in projects if not p["demo"]]
-    has_demo = any(p["demo"] for p in projects)
+    def s(key):
+        return sum(p[key] for p in projects)
 
-    def s(key, ps):
-        return sum(p[key] for p in ps)
-
-    plans = [p["week_plan"] for p in projects]
     top = max(projects, key=lambda p: p["risk_day"]) if projects else None
+    wk_prev = [p["week_prev"] for p in projects]
     return dict(
-        overdue_kv=s("overdue_kv", projects), ready=s("ready", projects), risk_day=s("risk_day", projects),
-        ready_risk=s("ready_risk", projects), accrued_up=s("accrued_up", projects),
-        week_fact=s("week_fact", projects), accrued_lo=s("accrued_lo", projects), overdue_delta=s("overdue_delta", projects),
-        week_prev=(s("week_prev", projects) if projects and all(p["week_prev"] is not None for p in projects) else None),
-        week_plan=(s("week_plan", projects) if projects and all(x is not None for x in plans) else None),
-        has_demo=has_demo,
-        fact=dict(overdue_kv=s("overdue_kv", real), ready=s("ready", real), risk_day=s("risk_day", real),
-                  ready_risk=s("ready_risk", real), accrued_up=s("accrued_up", real)),
-        claims=(s("claims", projects) if projects and all(p["claims"] is not None for p in projects) else None),
-        confirmed=(s("confirmed", projects) if projects and all(p["confirmed"] is not None for p in projects) else None),
+        overdue_kv=s("overdue_kv"), ready=s("ready"), risk_day=s("risk_day"), ready_risk=s("ready_risk"),
+        accrued_up=s("accrued_up"), accrued_lo=s("accrued_lo"), week_fact=s("week_fact"), overdue_delta=s("overdue_delta"),
+        week_prev=(sum(wk_prev) if all(x is not None for x in wk_prev) else None),
+        remarks=s("remarks"), critical=s("critical"), remarks_over=s("remarks_over"), blocking=s("blocking"),
+        remarks_cost=s("remarks_cost"), claim_potential=s("claim_potential"), units=s("units"), units_kv=s("units_kv"),
+        transferred=s("transferred"),
         top=top, n=len(projects),
-        top_share=(top["risk_day"] / s("risk_day", projects)) if top and s("risk_day", projects) else 0.0,
+        top_share=(top["risk_day"] / s("risk_day")) if top and s("risk_day") else 0.0,
     )
 
 
@@ -232,15 +198,14 @@ def table(projects: list[dict], sort: str = "risk") -> pd.DataFrame:
     for p in projects:
         pr = p["problems"][0] if p["problems"] else None
         rows.append({
-            "ЖК": p["name"] + (" · ДЕМО" if p["demo"] else ""),
-            "Данные": DEMO_TAG if p["demo"] else "ФАКТ",
+            "ЖК": p["name"],
             "Передано за неделю, кв.": p["week_fact"],
-            "Отклонение от плана, кв.": (f"{p['week_dev']:+d}".replace("-", "−") + " · ДЕМО") if p["week_dev"] is not None else NO_DATA,
             "Просрочено по ДДУ, кв.": p["overdue_kv"],
             "Из них готовы": p["ready"],
             "Доля готовых, %": round(100 * p["ready"] / p["overdue_kv"], 1) if p["overdue_kv"] else 0.0,
             "Расчётный риск, ₽/сутки": round(p["risk_day"]),
             "Доля риска портфеля, %": round(100 * p["risk_day"] / tr, 1),
+            "Открытых замечаний": p["remarks"],
             "Главная проблема": (pr["title"] + f" — {C.fmt_int(pr['n'])} кв.") if pr else NO_DATA,
             "Предлагаемое действие": pr["action"] if pr else NO_DATA,
             "_name": p["name"],
@@ -253,59 +218,56 @@ def table(projects: list[dict], sort: str = "risk") -> pd.DataFrame:
 
 
 def portfolio_messages(tot: dict, projects: list[dict]) -> tuple[str, list[str]]:
-    """Главный вывод и ключевые сообщения по ПОРТФЕЛЮ в целом (ЖК — равные сегменты, без выделения одного)."""
+    """Главный вывод и ключевые сообщения по ПОРТФЕЛЮ в целом (ЖК — равные сегменты)."""
     n, rd = tot["overdue_kv"], tot["risk_day"]
     if not projects or not n:
         return "Нет данных для сводки по портфелю", []
     kw = lambda x: f"{C.fmt_int(x)} {C.plural(x, 'квартира', 'квартиры', 'квартир')}"
-    share_ready = tot["ready"] / n
     head = (f"Портфель: {kw(n)} просрочено по ДДУ, ≈{C.fmt_money(rd)} расчётного риска в сутки; "
-            f"{C.fmt_pct(share_ready)} просрочки закрывается передачей готовых квартир")
+            f"{C.fmt_pct(tot['ready'] / n)} просрочки закрывается передачей готовых квартир")
     msgs = [f"Готовы к передаче без замечаний {kw(tot['ready'])} — это {C.fmt_money(tot['ready_risk'])} риска в сутки "
             f"({C.fmt_pct(tot['ready_risk'] / rd if rd else 0)}): самый быстрый эффект от решения на совещании."]
     d = tot["overdue_delta"]
-    wk = tot["week_fact"]
     msgs.append(f"За 7 дней просрочка {'снизилась на' if d < 0 else 'выросла на' if d > 0 else 'не изменилась:'} "
-                f"{C.fmt_int(abs(d)) if d else '0'}; за неделю передано {kw(wk)}.")
-    big = max(projects, key=lambda p: p["risk_day"])
-    if len(projects) > 1:
-        msgs.append(f"Риск распределён по {len(projects)} ЖК; крупнейший сегмент даёт {C.fmt_pct(big['risk_day'] / rd)} суточного риска.")
+                f"{C.fmt_int(abs(d)) if d else '0'}; за неделю передано {kw(tot['week_fact'])}.")
+    msgs.append(f"Открыто {C.fmt_int(tot['remarks'])} замечаний, из них {C.fmt_pct(tot['remarks_over'] / tot['remarks'] if tot['remarks'] else 0)} "
+                f"просрочены; {C.fmt_int(tot['critical'])} критических.")
+    worst = max(projects, key=lambda p: p["risk_day"] / max(p["units_kv"], 1))
+    msgs.append(f"Риск распределён по {len(projects)} ЖК; больше всего на квартиру — в «{worst['name']}» "
+                f"({C.fmt_int(worst['risk_day'] / max(worst['units_kv'], 1))} ₽ в сутки на квартиру).")
     return head, msgs
 
 
-# ---------------------------------------------------------------- сверка с действующим отчётом
+# ---------------------------------------------------------------- сверка Бунинских кварталов с действующим отчётом
 def _close(a, b, tol=1e-6) -> bool:
     return math.isclose(float(a), float(b), rel_tol=tol, abs_tol=1.0)
 
 
-def reconcile(D: dict, P: dict, real: dict) -> list[dict]:
-    """Каждая цифра раздела против независимого источника действующего отчёта."""
-    A = D["apartments"]
-    cur = D["kpis"]["current"]
-    ks = D["korpus_summary"]
-    k_price = P["price"] / C.ILLUSTR_PRICE      # kpis.json посчитан при условной цене 10 млн ₽; риск линеен по цене
+def reconcile(d: dict, P: dict, p: dict) -> list[dict]:
+    """Расчёт по общей схеме против независимых файлов действующего отчёта (только для ЖК, где они есть)."""
+    A = d["units"]
+    cur = d["ref_kpis"]["current"]
+    ks = d["ref_korpus"]
+    k_price = P["price"] / C.ILLUSTR_PRICE      # kpis.json посчитан при цене 10 млн ₽; риск линеен по цене
     pen = C.penalty(A, **P)
-    ready_n, ready_daily = C.ready_overdue_daily(A, P["price"])
+    ready_n, _ = C.ready_overdue_daily(A, P["price"])
     mask_kv = A["Тип объекта"].eq("Квартира") & A["Просрочка ДДУ"].eq(C.NT_OVERDUE)
-    tw = D["transfers_weekly"]
-    wk = D["kpis"].get("week_transfers") or {}
-    last = tw.iloc[-2] if len(tw) > 1 else tw.iloc[-1]
+    tw = d["ref_transfers"]
+    last = tw.iloc[-2]
     rows = [
-        ("Просрочено по ДДУ, помещений", real["overdue_all"], cur["nt_overdue"], "kpis.json действующего отчёта"),
-        ("То же, сумма по корпусам", real["overdue_all"], int(ks["Не_передано_просрочка"].sum()), "сводка по корпусам действующего отчёта"),
-        ("Просрочено по ДДУ, квартир", real["overdue_kv"], cur["nt_overdue_kv"], "kpis.json действующего отчёта"),
-        ("То же, пересчёт по реестру квартир", real["overdue_kv"], int(mask_kv.sum()), "реестр помещений"),
-        ("Из них готовы без замечаний", real["ready"], ready_n, "расчёт действующего отчёта (готовые без замечаний)"),
-        ("Готовые входят в просроченные (≤)", min(real["ready"], real["overdue_kv"]), real["ready"], "проверка включения"),
-        ("Риск ₽/сутки (квартиры)", real["risk_day"], cur["penalty_daily_est"] * k_price, "kpis.json (цена 10 млн ₽, пересчёт)"),
-        ("Риск ₽/сутки — как на главной", real["risk_day"], pen["daily"], "hero главной страницы действующего отчёта"),
-        ("Риск готовых входит в общий риск (≤)", min(real["ready_risk"], real["risk_day"]), real["ready_risk"], "проверка включения"),
-        ("Накоплено, верхняя оценка", real["accrued_up"], cur["penalty_accrued_est_up"] * k_price, "kpis.json (пересчёт по цене)"),
-        ("Накоплено, нижняя оценка", real["accrued_lo"], cur["penalty_accrued_est_lo"] * k_price, "kpis.json (пересчёт по цене)"),
-        ("Передано за полную неделю, квартир", real["week_fact"], int(last["ПА, квартиры"]), "ПА по неделям действующего отчёта"),
-        ("Передано за ту же неделю, помещений", real["week_all"], wk.get("current", real["week_all"]), "kpis.json действующего отчёта"),
+        ("Просрочено по ДДУ, помещений", p["overdue_all"], cur["nt_overdue"]),
+        ("То же, сумма по корпусам", p["overdue_all"], int(ks["Не_передано_просрочка"].sum())),
+        ("Просрочено по ДДУ, квартир", p["overdue_kv"], cur["nt_overdue_kv"]),
+        ("То же, по реестру квартир", p["overdue_kv"], int(mask_kv.sum())),
+        ("Помещений всего", p["units"], cur["units_total"]),
+        ("Передано", p["transferred"], cur["transferred"]),
+        ("Готовые без замечаний (в просрочке)", p["ready"], ready_n),
+        ("Накоплено, верхняя оценка", p["accrued_up"], cur["penalty_accrued_est_up"] * k_price),
+        ("Накоплено, нижняя оценка", p["accrued_lo"], cur["penalty_accrued_est_lo"] * k_price),
+        ("Риск ₽/сутки, квартиры", p["risk_day"], pen["daily"]),
+        ("Передано за полную неделю, квартир", p["week_fact"], int(last["ПА, квартиры"])),
+        ("Передано за ту же неделю, помещений", p["week_all"], int(last["ПА, все помещения"])),
+        ("Открытых замечаний", p["remarks"], cur["remarks_open"]),
+        ("Критических замечаний", p["critical"], cur["critical"]),
     ]
-    out = []
-    for name, a, b, src in rows:
-        out.append(dict(name=name, portfolio=float(a), report=float(b), source=src, ok=_close(a, b)))
-    return out
+    return [dict(name=n, portfolio=float(a), report=float(b), ok=_close(a, b)) for n, a, b in rows]
