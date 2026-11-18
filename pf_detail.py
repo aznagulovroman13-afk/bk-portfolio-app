@@ -9,16 +9,16 @@ import pf_core as C
 
 # статусы и пастельные цвета шахматки: заливка, рамка, текст
 STATUS = {
-    "Принята (ПА)": ("pa", "Принята по ПА", ("#E9F6EE", "#BFE2CB", "#23704A")),
-    "Принята (односторонний ПА)": ("one", "Односторонний ПА", ("#F2F9F4", "#D3EBDB", "#4C8463")),
+    "Принята (ПА)": ("pa", "Принята по передаточному акту", ("#E9F6EE", "#BFE2CB", "#23704A")),
+    "Принята (односторонний ПА)": ("one", "Односторонний передаточный акт", ("#F2F9F4", "#D3EBDB", "#4C8463")),
     "Открыта к передаче": ("wait", "Открыта к передаче", ("#FFF5D9", "#EBD596", "#865900")),
     "В ОЗ, готовность не открыта": ("oz", "В ОЗ, готовность не открыта", ("#EAF3FC", "#C3DAF1", "#2C5F92")),
     "Ключи в ОЗ не переданы": ("keys", "Ключи в ОЗ не переданы", ("#FFFFFF", "#CBD3DD", "#4F5D6E")),
     "Не принята": ("na", "Не принята", ("#FFF0EE", "#EEC5C0", "#A43D3E")),
 }
 TYPE_SHORT = {"Квартира": "", "НХП": "НХП", "Машиноместо": "М/м", "Нежилое": "Неж."}
-AGE_LABELS = [("до 4 нед.", range(0, 4)), ("4–8 нед.", range(4, 8)), ("8–12 нед.", range(8, 12)),
-              ("12–25 нед.", [12]), ("26–51 нед.", [13]), ("52 нед. и более", [14])]
+AGE_LABELS = [("до 4 недель", range(0, 4)), ("4–8 недель", range(4, 8)), ("8–12 недель", range(8, 12)),
+              ("12–25 недель", [12]), ("26–51 недель", [13]), ("52 недели и более", [14])]
 
 
 def chess_css() -> str:
@@ -106,8 +106,8 @@ def korpus_table(A: pd.DataFrame, price: float) -> pd.DataFrame:
     g = g.reindex([k for k in korpus_list(A) if k in g.index])
     out = pd.DataFrame({
         "Корпус": g.index, "Помещений": g["n"].values, "Передано, %": (100 * g["tr"] / g["n"]).round(1).values,
-        "Просрочено по ДДУ": g["nt"].values, "из них квартир": g["ntkv"].values, "Готовы": g["ready"].values,
-        "Риск, ₽/сутки": g["risk"].round().astype(int).values, "Замечаний": g["rem"].astype(int).values,
+        "Просрочка по ДДУ": g["nt"].values, "из них квартир": g["ntkv"].values, "Готовы к передаче": g["ready"].values,
+        "Дневная экспозиция, ₽": g["risk"].round().astype(int).values, "Замечаний": g["rem"].astype(int).values,
         "Критических": g["crit"].astype(int).values})
     return out
 
@@ -117,7 +117,7 @@ def remark_groups(rem: pd.DataFrame) -> pd.DataFrame:
                    b=rem["n"].where(rem["Блокирует"], 0)).groupby("Группа", observed=True).agg(n=("n", "sum"), c=("c", "sum"), o=("o", "sum"), b=("b", "sum"))
     g = g.sort_values("n", ascending=False)
     return pd.DataFrame({"Группа": g.index, "Замечаний": g["n"].values, "Доля, %": (100 * g["n"] / g["n"].sum()).round(1).values,
-                         "Критических": g["c"].values, "Просрочено более 45 дн.": g["o"].values,
+                         "Критических": g["c"].values, "Просрочено более 45 дней": g["o"].values,
                          "% просрочено": (100 * g["o"] / g["n"]).round(1).values, "Блокируют передачу": g["b"].values})
 
 

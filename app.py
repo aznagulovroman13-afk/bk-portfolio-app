@@ -34,14 +34,14 @@ import pf_model as PF  # noqa: E402
 
 st.markdown(U.CSS, unsafe_allow_html=True)
 st.markdown(
-    '<div class="pfnav"><b>ПОРТФЕЛЬ ЖК</b><a href="#summary">Сводка</a><a href="#priority">Приоритет</a><a href="#segments">ЖК</a>'
-    '<a href="#reasons">Причины</a><a href="#forecast">Прогноз</a><a href="#decisions">Решения</a><a href="#contribution">Вклад в риск</a>'
-    '<a href="#dynamics">Динамика</a><a href="#matrix">Матрица</a><a href="#remarks">Замечания</a><a href="#drill">Разбор ЖК</a><a href="#money">Деньги</a>'
-    '<a href="#notes">Допущения</a></div>', unsafe_allow_html=True)
+    '<div class="pfnav"><b>ПОРТФЕЛЬ ЖК</b><a href="#summary">Показатели</a><a href="#priority">Приоритет</a><a href="#segments">Структура</a>'
+    '<a href="#reasons">Причины</a><a href="#forecast">Прогноз</a><a href="#decisions">Решения</a><a href="#contribution">Концентрация</a>'
+    '<a href="#dynamics">Динамика</a><a href="#matrix">Матрица</a><a href="#remarks">Замечания</a><a href="#drill">Детализация</a><a href="#money">Финансы</a>'
+    '<a href="#notes">Методология</a></div>', unsafe_allow_html=True)
 
 
-@st.cache_data(show_spinner="Загрузка…")
-def _load_projects(schema: str = "v7"):   # schema — часть ключа кэша: при смене формата данных старый кэш не подхватывается
+@st.cache_data(show_spinner="Загрузка данных…")
+def _load_projects(schema: str = "v8"):   # schema — часть ключа кэша: при смене формата данных старый кэш не подхватывается
     return pf_data.load(True)
 
 
@@ -58,10 +58,10 @@ with st.sidebar:
     pr_in = {}
     for k_, nm_ in pf_data.PROJECTS:
         pr_in[k_] = st.number_input(f"Цена квартиры по ДДУ, млн ₽: {nm_}", min_value=1.0, max_value=60.0, value=PF.DEFAULT_PRICES[k_], step=0.1, key=f"pf_price_{k_}")
-    st.caption("Цен и площадей по ДДУ в данных нет — цена по каждому ЖК принята допущением, риск пересчитывается пропорционально. "
-               "Машиноместа и кладовые — по расчётным ценам, коммерция не считается.")
-    with st.expander("Лесенка риска: коэффициенты"):
-        k_claim = st.slider("Доля неустойки, по которой предъявляют претензии и иски, %", 5, 100, int(DC.DEFAULT_K["claim"] * 100), 5, key="pf_k_claim")
+    st.caption("Цен и площадей по ДДУ в данных нет: цена по каждому ЖК принята допущением, экспозиция пересчитывается пропорционально. "
+               "Машиноместа и кладовые учитываются по расчётным ценам, коммерческие помещения не включены.")
+    with st.expander("Каскад оценок: коэффициенты"):
+        k_claim = st.slider("Доля неустойки, по которой предъявляются претензии и иски, %", 5, 100, int(DC.DEFAULT_K["claim"] * 100), 5, key="pf_k_claim")
         k_cut = st.slider("Снижение неустойки судом по ст. 333 ГК, %", 0, 90, int(DC.DEFAULT_K["cut"] * 100), 5, key="pf_k_cut")
         k_paid = st.slider("Доля ожидаемых выплат, уже выплаченная, %", 0, 100, int(DC.DEFAULT_K["paid"] * 100), 5, key="pf_k_paid")
 P = dict(price=PF.DEFAULT_PRICES["bunino"] * 1e6, prices={k_: v_ * 1e6 for k_, v_ in pr_in.items()}, price_mm=C.MM_PRICE, price_nhp=C.NHP_PRICE)
@@ -76,8 +76,8 @@ st.markdown('<div class="rh"><div class="kick">Отчёт для генерал�
             unsafe_allow_html=True)
 
 
-@st.cache_data(show_spinner="Расчёт…")
-def _build(prices: tuple, coefs: tuple, schema: str = "v7"):
+@st.cache_data(show_spinner="Расчёт показателей…")
+def _build(prices: tuple, coefs: tuple, schema: str = "v8"):
     return PF.build(DA, dict(price=prices[0][1], prices=dict(prices), price_mm=C.MM_PRICE, price_nhp=C.NHP_PRICE),
                     dict(zip(("claim", "cut", "paid"), coefs)))
 
@@ -102,39 +102,39 @@ sgm = lambda x: ("+" if x > 0 else "−" if x < 0 else "") + C.fmt_k(x)
 RS = f"color:{U.RISK};font-weight:600"
 LD = tot["ladder"]
 st.markdown(f'<div class="concl one"><div class="t">{html.escape(PF.headline(projects, tot))}</div></div>', unsafe_allow_html=True)
-U.section("Сводка по портфелю", "", anchor="summary", num="1.")
+U.section("Ключевые показатели портфеля", "", anchor="summary", num="1.")
 U.kpi_cards([
-    dict(label="Просрочено по ДДУ", value=f(tot["overdue_kv"]), risk=True, delta=(f"{sg(d_over)} кв. за неделю", "bad" if d_over > 0 else "good" if d_over < 0 else "flat"),
-         foot=f"квартир · {fr(tot['overdue_kv'] / max(tot['units_kv'], 1))} от всех квартир ДДУ портфеля"),
+    dict(label="Просрочка по ДДУ", value=f(tot["overdue_kv"]), risk=True, delta=(f"{sg(d_over)} {pl(abs(d_over))} за неделю", "bad" if d_over > 0 else "good" if d_over < 0 else "flat"),
+         foot=f"{fr(tot['overdue_kv'] / max(tot['units_kv'], 1))} от всех квартир по ДДУ в портфеле"),
     dict(label="Из них готовы к передаче", value=f(tot["ready"]), delta=("", "flat"),
          foot=f"{fr(tot['ready'] / to_)} просрочки · не переданы, готовность подтверждена, открытых замечаний нет"),
-    dict(label="Расчётный финансовый риск", value=fm(tot["risk_day"]), risk=True,
-         delta=(f"{sgm(rk_d)} за неделю (ориентир {sgm(rk_t)})", "bad" if rk_d > rk_t else "good"),
-         foot=f"₽ в сутки · накопленная неустойка до {fm(LD['upper'])} (верхняя граница)"),
+    dict(label="Расчётная дневная экспозиция", value=fm(tot["risk_day"]), risk=True,
+         delta=(f"{sgm(rk_d)} за неделю (целевой темп {sgm(rk_t)})", "bad" if rk_d > rk_t else "good"),
+         foot=f"₽ в день; накопленная неустойка — до {fm(LD['upper'])} (верхняя граница)"),
 ], big=True)
 st.markdown(f'<div class="slice">Дата среза: <b>{dd(slice_d)}</b> · динамика — за неделю по {dd(act_d)} (последние загруженные акты приёма), сопоставимо по всем ЖК</div>', unsafe_allow_html=True)
-st.markdown('<div class="note">Риск считается по действующей методике: ключевая ставка / 300 × 2 × цена квартиры за каждый день просрочки по ДДУ '
-            f'(ч. 2 ст. 6 214-ФЗ; цены по ЖК — допущение, см. «Допущения»). Оценка есть по {n_cov} из {len(projects)} ЖК. '
-            '«Готовы» — частный случай просрочки: квартира не передана, готовность подтверждена и открытых замечаний нет.</div>', unsafe_allow_html=True)
+st.markdown('<div class="note">Расчёт по действующей методике: 1/300 ключевой ставки Банка России × 2 × цена квартиры за каждый день просрочки передачи по ДДУ '
+            f'(ч. 2 ст. 6 214-ФЗ; цены по ЖК приняты допущением, см. «Методология»). Расчётная экспозиция определена по {n_cov} из {len(projects)} ЖК. '
+            '«Готовы к передаче» — часть просроченных квартир: объект не передан, готовность подтверждена, открытых замечаний нет.</div>', unsafe_allow_html=True)
 _mat, _txt = PF.risk_change(tot, projects)
 st.markdown(f'<div class="dev"><span class="k">{"Существенное отклонение" if _mat else "Изменение за неделю"}</span> {html.escape(_txt)}</div>', unsafe_allow_html=True)
 
 # расчётный и реальный риск: лесенка
-st.markdown('<div class="cmph">Расчётный и реальный риск: от верхней границы к ожидаемым выплатам</div>', unsafe_allow_html=True)
+st.markdown('<div class="cmph">Расчётная неустойка и ожидаемые выплаты: каскад оценок</div>', unsafe_allow_html=True)
 sh = lambda v: fr(v / LD["upper"]) if LD["upper"] else "—"
 st.markdown(
     '<div class="ladder">'
-    f'<div class="st top"><div class="l">Расчётная неустойка, верхняя граница</div><div class="v">{fm(LD["upper"])}</div><div class="s">накоплено за весь период просрочки; нижняя оценка {fm(LD["lower"])}</div></div>'
+    f'<div class="st top"><div class="l">Расчётная неустойка, верхняя граница</div><div class="v">{fm(LD["upper"])}</div><div class="s">накоплена за весь период просрочки; нижняя оценка {fm(LD["lower"])}</div></div>'
     '<div class="ar">›</div>'
-    f'<div class="st"><div class="l">Предъявлено претензий и исков</div><div class="v">{fm(LD["claimed"])}</div><div class="s">{sh(LD["claimed"])} верхней границы · допущение: предъявляют {C.fmt_pct(K["claim"])}</div></div>'
+    f'<div class="st"><div class="l">Предъявлено претензий и исков</div><div class="v">{fm(LD["claimed"])}</div><div class="s">{sh(LD["claimed"])} верхней границы · допущение: предъявляется {C.fmt_pct(K["claim"])}</div></div>'
     '<div class="ar">›</div>'
     f'<div class="st"><div class="l">Ожидаемые выплаты</div><div class="v">{fm(LD["expected"])}</div><div class="s">{sh(LD["expected"])} верхней границы · суд снижает по ст. 333 ГК на {C.fmt_pct(K["cut"])}</div></div>'
     '<div class="ar">›</div>'
     f'<div class="st"><div class="l">Уже выплачено</div><div class="v">{fm(LD["paid"])}</div><div class="s">{sh(LD["paid"])} верхней границы · {C.fmt_pct(K["paid"])} ожидаемых выплат</div></div></div>',
     unsafe_allow_html=True)
-st.markdown('<div class="note">9 с лишним миллиардов — верхняя граница, а не прогноз платежей: мораторий уже исключён из дней просрочки, в данных нет предъявленных требований и выплат, '
-            'поэтому три нижние ступени — оценка по коэффициентам (боковая панель).</div>'.replace("9 с лишним миллиардов", fm(LD["upper"])), unsafe_allow_html=True)
-with st.expander("Лесенка по ЖК и проблемная часть портфеля"):
+st.markdown('<div class="note">9 с лишним миллиардов — верхняя граница расчётной неустойки, а не прогноз платежей: период моратория исключён, предъявленных требований и выплат в данных нет, '
+            'поэтому три нижние ступени каскада — оценка по коэффициентам (боковая панель).</div>'.replace("9 с лишним миллиардов", fm(LD["upper"])), unsafe_allow_html=True)
+with st.expander("Каскад оценок по ЖК и доля просроченных квартир"):
     U.fin_table(["ЖК", "Верхняя граница", "Нижняя оценка", "Предъявлено", "Ожидаемые выплаты", "Уже выплачено", "Ожидаемые выплаты, % верхней границы"],
                 [[p_["name"], fm(p_["ladder"]["upper"]), fm(p_["ladder"]["lower"]), fm(p_["ladder"]["claimed"]), fm(p_["ladder"]["expected"]), fm(p_["ladder"]["paid"]),
                   fr(p_["ladder"]["expected"] / p_["ladder"]["upper"] if p_["ladder"]["upper"] else 0)] for p_ in projects]
@@ -148,27 +148,28 @@ with st.expander("Лесенка по ЖК и проблемная часть п
         cb.append(f'<div class="cmp{" tot" if c["total"] else ""}"><div class="nm">{html.escape(c["name"])}</div>'
                   f'<div class="trk"><div class="rdy" style="width:{w_(c["ready"])}"></div><div class="now" style="width:{w_(c["now"])}"></div>'
                   f'<div class="prv" style="left:{w_(c["prev"])}"></div></div>'
-                  f'<div class="vl">{fr(c["now"])} <span>(неделю назад {fr(c["prev"])}; из них готовы {fr(c["ready"])})</span></div></div>')
-    st.markdown('<div class="cmph">Проблемная часть портфеля: доля квартир по ДДУ, просроченных сейчас, и её положение неделю назад (метка)</div>' + "".join(cb),
+                  f'<div class="vl">{fr(c["now"])} <span>(неделей ранее {fr(c["prev"])}; из них готовы к передаче {fr(c["ready"])})</span></div></div>')
+    st.markdown('<div class="cmph">Доля квартир по ДДУ, просроченных на дату среза; метка — положение неделей ранее</div>' + "".join(cb),
                 unsafe_allow_html=True)
 
-# ---------------------------------------------------------------- 2. Приоритет руководителя
+# ---------------------------------------------------------------- 2. Приоритетный объект портфеля
 pri = PF.priority(projects)
-U.section("Приоритет руководителя", "ЖК с наибольшим расчётным риском", anchor="priority", num="2.")
+U.section("Приоритетный объект портфеля", "ЖК с наибольшей расчётной экспозицией", anchor="priority", num="2.")
 if pri:
     drv = "".join(f"<li>{html.escape(x)}</li>" for x in pri["drivers"])
     decs = "".join(
         f'<div class="dc"><div class="dt">{html.escape(d_["title"])}</div>'
-        f'<div class="de">−{fm(d_["effect"])} расчётного риска за 4 недели</div>'
+        f'<div class="de">−{fm(d_["effect_day"])} в день к концу 4-й недели · −{fm(d_["effect"])} за 4 недели</div>'
+        f'<div class="dr">{html.escape(d_["mechanism"])}. Контрольный показатель: {html.escape(d_["metric"].lower())}.</div>'
         f'<div class="dr">{html.escape(d_["kind"])} · {html.escape(", ".join(d_["roles"]))}</div></div>' for d_ in pri["decisions"])
     st.markdown(
         f'<div class="prio"><div class="ph"><div class="pn">{html.escape(pri["name"])}</div>'
-        f'<div class="pm"><b>{fm(pri["risk_day"])}</b> в сутки <span>· {fr(pri["share"])} общего расчётного риска портфеля</span></div></div>'
-        f'<div class="pc"><div class="pl">Подтверждённая причина</div><div class="pt">{html.escape(pri["cause"])}</div><ul>{drv}</ul></div>'
-        f'<div class="pc"><div class="pl">Требуемые решения и их эффект</div>{decs}</div></div>', unsafe_allow_html=True)
+        f'<div class="pm"><b>{fm(pri["risk_day"])}</b> в день <span>· {fr(pri["share"])} общей расчётной экспозиции портфеля</span></div></div>'
+        f'<div class="pc"><div class="pl">Основная причина (по данным)</div><div class="pt">{html.escape(pri["cause"])}</div><ul>{drv}</ul></div>'
+        f'<div class="pc"><div class="pl">Предлагаемые решения и ожидаемый эффект</div>{decs}</div></div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- 3. Таблица по ЖК
-U.section("Портфель по ЖК", "По убыванию расчётного риска; красным выделены только ЖК, ухудшившиеся за неделю относительно ориентира", anchor="segments", num="3.")
+U.section("Структура портфеля по ЖК", "По убыванию расчётной экспозиции; красным выделены только ЖК с отставанием от целевой динамики", anchor="segments", num="3.")
 srows = PF.screen_rows(projects)
 arrow = lambda d_: "▲" if d_ > 0 else "▼" if d_ < 0 else "•"
 tb = []
@@ -179,17 +180,17 @@ for r_ in srows:
         f'<b>{html.escape(r_["name"])}</b>',
         f'{f(r_["over"])}<span class="sub{" wr" if r_["d_over"] > 0 else ""}">{arrow(r_["d_over"])} {sg(r_["d_over"])} за неделю</span>',
         f(r_["ready"]), f(round(r_["risk"])), fr(r_["share"]),
-        f'<span class="nw">{U.spark(r_["trend"], bad_)}</span><span class="sub"><span{wk_cls}>{"хуже ориентира" if bad_ else "не хуже ориентира"}</span></span>',
+        f'<span class="nw">{U.spark(r_["trend"], bad_)}</span><span class="sub"><span{wk_cls}>{"ниже целевого темпа" if bad_ else "в рамках целевого темпа"}</span></span>',
         f'{f(r_["left"])}<span class="sub">устранено {C.fmt_pct(r_["fixed_pct"])}</span>',
-        html.escape(r_["decision"])])
+        f'{html.escape(r_["decision"])}<span class="sub">−{fm(r_["dec_day"])} в день · −{fm(r_["dec_4w"])} за 4 недели</span>' if r_["dec_day"] else html.escape(r_["decision"])])
 tot_dec_txt = ""
 tb.append(["Итого по портфелю", f'{f(tot["overdue_kv"])}<span class="sub">{arrow(d_over)} {sg(d_over)} за неделю</span>', f(tot["ready"]), f(round(tot["risk_day"])), "100%",
            f'<span class="nw">{U.spark([sum(p_["trend"][i] for p_ in projects) for i in range(len(projects[0]["trend"]))], rk_d > rk_t)}</span>',
            f'{f(tot["rem"]["left_cum"])}<span class="sub">устранено {C.fmt_pct(tot["rem"]["fixed"] / max(tot["rem"]["total"], 1))}</span>', ""])
-U.fin_table(["ЖК", "Просрочено по ДДУ", "Готовы", "Риск, ₽ в сутки", "Доля риска", "Динамика просрочки, 12 нед.", "Осталось замечаний", "Главное решение и эффект"],
+U.fin_table(["ЖК", "Просрочка по ДДУ", "Готовы к передаче", "Дневная экспозиция, ₽", "Доля в экспозиции", "Динамика просрочки за 12 недель", "Остаток замечаний", "Главное решение и ожидаемый эффект"],
             tb, right=(1, 2, 3, 4, 6), total_last=True, cls="pt3", hide=(2, 4, 6, 7))
-st.markdown('<div class="note">Спарклайн — число просроченных квартир на конец каждой из 12 недель. «Хуже ориентира» — риск за неделю снижается медленнее, чем ориентир '
-            '(средняя динамика четырёх предыдущих недель × 1,10). Эффект решения — снижение расчётного риска за 4 недели. Замечания: остаток накопительно и доля устранённых от поступивших за период.</div>', unsafe_allow_html=True)
+st.markdown('<div class="note">Мини-график — число просроченных квартир на конец каждой из 12 недель. «Ниже целевого темпа» — отставание от целевой динамики: дневная экспозиция за неделю снижается медленнее, чем целевой темп снижения '
+            '(средняя динамика четырёх предыдущих недель × 1,10). Ожидаемый эффект — снижение расчётной дневной экспозиции к концу 4-й недели. Замечания: остаток накопительно и доля устранённых от поступивших за период.</div>', unsafe_allow_html=True)
 
 
 def _go():
@@ -197,22 +198,22 @@ def _go():
     st.session_state["_pf_scroll"] = True
 
 
-st.selectbox("Открыть разбор ЖК (шахматка, замечания, подрядчики, деньги, динамика)", names, index=None, placeholder="Выберите ЖК", key="pf_goto", on_change=_go)
-with st.expander("Все показатели по ЖК: деньги, темп и сроки"):
+st.selectbox("Перейти к детализации ЖК (шахматка, замечания, подрядчики, финансы, динамика)", names, index=None, placeholder="Выберите ЖК", key="pf_goto", on_change=_go)
+with st.expander("Расширенные показатели по ЖК: экспозиция, темп и сроки"):
     fall = []
     for p_ in PF.by_risk(projects):
         fc_ = p_["forecast"]
         fall.append([p_["name"], f(p_["overdue_kv"]), f(p_["ready"]), f(round(p_["risk_day"])), f(round(p_["risk_day"] / max(p_["overdue_kv"], 1))), fr(p_["risk_day"] / tr_),
-                     f"{sgm(p_['risk_delta'])} при ориентире {sgm(p_['risk_target'])}", f"{f(p_['week_fact'])} / {f(p_['week_plan'])} ({sg(p_['week_dev'])})",
+                     f"{sgm(p_['risk_delta'])} при целевом темпе {sgm(p_['risk_target'])}", f"{f(p_['week_fact'])} / {f(p_['week_plan'])} ({sg(p_['week_dev'])})",
                      f"{fc_['base']['weeks']:.0f}" if fc_["base"]["weeks"] is not None else f"более {DC.HORIZON_W}", fm(fc_["base"]["accrued"]), fm(p_["ladder"]["expected"])])
     fall.append(["Итого по портфелю", f(tot["overdue_kv"]), f(tot["ready"]), f(round(tot["risk_day"])), f(round(tot["risk_day"] / max(tot["overdue_kv"], 1))), "100,0%",
-                 f"{sgm(rk_d)} при ориентире {sgm(rk_t)}", f"{f(tot['week_fact'])} / {f(tot['week_plan'])} ({sg(tot['week_fact'] - tot['week_plan'])})", "", "", fm(LD["expected"])])
-    U.fin_table(["ЖК", "Просрочено по ДДУ", "Готовы", "Риск, ₽ в сутки", "Риск на просроченную квартиру", "Доля в общем риске", "Изменение за неделю к ориентиру",
-                 "Передано за неделю: факт / план", "Закроется через, нед.", "Риск до закрытия", "Ожидаемые выплаты"], fall, right=range(1, 11), total_last=True)
+                 f"{sgm(rk_d)} при целевом темпе {sgm(rk_t)}", f"{f(tot['week_fact'])} / {f(tot['week_plan'])} ({sg(tot['week_fact'] - tot['week_plan'])})", "", "", fm(LD["expected"])])
+    U.fin_table(["ЖК", "Просрочка по ДДУ", "Готовы к передаче", "Дневная экспозиция, ₽", "Дневная экспозиция на одну просроченную квартиру, ₽", "Доля в общей экспозиции", "Изменение за неделю к целевому темпу",
+                 "Передано за неделю: факт / план", "Срок закрытия, недель", "Накопленная неустойка до закрытия", "Ожидаемые выплаты"], fall, right=range(1, 11), total_last=True)
 
-# ---------------------------------------------------------------- 4. Почему готовые не переданы
+# ---------------------------------------------------------------- 4. Причины непередачи готовых квартир
 RSN = tot["reasons"]
-U.section("Почему готовые не переданы", f"{f(tot['ready'])} готовых квартир по взаимоисключающим причинам; каждая квартира — в одной причине", anchor="reasons", num="4.")
+U.section("Причины непередачи готовых квартир", f"{f(tot['ready'])} готовых к передаче квартир распределены по взаимоисключающим причинам: каждая квартира учтена в одной причине", anchor="reasons", num="4.")
 RCOL = {"booked": "#8FA6C4", "queue": "#5B7BA6", "refused": "#1F3A5F", "called": "#C9B27A", "expired": "#8A7440", "silent": "#14213D"}
 fr_ = go.Figure()
 cats = [p_["name"] for p_ in projects] + ["Портфель"]
@@ -227,25 +228,26 @@ fr_.update_xaxes(showticklabels=False)
 U.chart(fr_, key="pf_reasons", height=470)
 big_r = max(DC.REASONS, key=lambda kv: RSN[kv[0]]["n"])
 need = tot["ready"] / DC.MONTH_W
-st.markdown(f'<div class="dev"><span class="k">Вывод</span> Главная причина — «{html.escape(big_r[1].lower())}»: {f(RSN[big_r[0]]["n"])} из {f(tot["ready"])} квартир '
-            f'(≈{fm(RSN[big_r[0]]["risk"])} риска в сутки). Слоты приёмки: за последнюю полную неделю передано {f(tot["week_fact"])} квартир, максимум за 8 недель — {f(tot["capacity"])} в неделю; '
-            f'чтобы передать всех готовых за 4 недели, нужно {f(round(need))} в неделю.</div>', unsafe_allow_html=True)
-with st.expander("Причины по ЖК, риск и пропускная способность"):
+st.markdown(f'<div class="dev"><span class="k">Вывод</span> Доминирующая причина — «{html.escape(big_r[1].lower())}»: {f(RSN[big_r[0]]["n"])} из {f(tot["ready"])} квартир '
+            f'(≈{fm(RSN[big_r[0]]["risk"])} дневной экспозиции). Пропускная способность приёмки: за последнюю полную неделю передано {f(tot["week_fact"])} квартир, максимум за 8 недель — {f(tot["capacity"])} в неделю; '
+            f'для передачи всех готовых квартир за 4 недели требуется {f(round(need))} в неделю.</div>', unsafe_allow_html=True)
+with st.expander("Причины по ЖК, экспозиция и пропускная способность приёмки"):
     rows_r = []
     for k_, lab_ in DC.REASONS:
         rows_r.append([lab_] + [f"{f(p_['reasons'][k_]['n'])} · {fm(p_['reasons'][k_]['risk'])}" for p_ in projects] + [f"{f(RSN[k_]['n'])} · {fm(RSN[k_]['risk'])}"])
-    U.fin_table(["Причина (квартир · риск в сутки)"] + [p_["name"] for p_ in projects] + ["Портфель"], rows_r, right=range(1, len(projects) + 2))
-    U.fin_table(["Пропускная способность", "Факт за последнюю неделю", "Максимум за 8 недель", "Нужно для передачи за 4 недели", "Не хватает в неделю"],
+    U.fin_table(["Причина (квартир · дневная экспозиция)"] + [p_["name"] for p_ in projects] + ["Портфель"], rows_r, right=range(1, len(projects) + 2))
+    U.fin_table(["ЖК", "Факт за последнюю неделю", "Максимум за 8 недель", "Требуется для передачи за 4 недели", "Дефицит пропускной способности, передач в неделю"],
                 [[p_["name"], f(p_["week_fact"]), f(p_["capacity"]), f(round(p_["ready"] / DC.MONTH_W)), f(max(0, round(p_["ready"] / DC.MONTH_W) - p_["capacity"]))] for p_ in projects]
                 + [["Портфель", f(tot["week_fact"]), f(tot["capacity"]), f(round(need)), f(max(0, round(need) - tot["capacity"]))]],
                 right=range(1, 5), total_last=True)
-    st.markdown('<div class="note">Причины определены по статусу и дате записи собственника и по реестру официальных вызовов (почтой). Порядок отнесения: приёмка была, акт не подписан → '
-                'запись на ближайшие 7 дней → запись позже 7 дней (очередь на слоты приёмщиков) → официальный вызов не старше 30 дней → срок вызова истёк → нет ни записи, ни вызова. '
-                'Границы 7 и 30 дней — допущение. Слоты приёмщиков оценены по фактической передаче.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="note">Причины определены по статусу и дате записи собственника и по реестру официальных вызовов. Порядок отнесения: приёмка проведена, акт не подписан → '
+                'запись на ближайшие 7 дней → запись позже 7 дней (очередь на слоты приёмки) → официальный вызов не старше 30 дней → срок вызова истёк → запись и вызов отсутствуют. '
+                'Границы в 7 и 30 дней приняты допущением; пропускная способность оценена по фактическому темпу передачи.</div>', unsafe_allow_html=True)
 
-# ---------------------------------------------------------------- 5. Прогноз и ориентир
-U.section("Прогноз и ориентир", "При текущем чистом темпе (передано минус приток новых просрочек) и по ориентиру; сценарий передачи всех готовых", anchor="forecast", num="5.")
-rw = st.radio("Передать все готовые за, недель", [2, 4, 8], index=1, horizontal=True, key="pf_ready_w")
+# ---------------------------------------------------------------- 5. Прогноз и целевой темп
+U.section("Прогноз и целевой темп", "При текущем чистом темпе (передано минус приток новых просрочек) и при целевом темпе; сценарий передачи всех готовых", anchor="forecast", num="5.")
+rw = st.radio("Срок передачи всех готовых квартир, недель", [2, 4, 8], index=1, horizontal=True, key="pf_ready_w")
+rw_w = C.plural(rw, "неделю", "недели", "недель")
 PFC = DC.portfolio_forecast(projects, rw)
 wk_ = lambda w: (f"{w:.0f}" if w is not None else f"более {DC.HORIZON_W}")
 frows = []
@@ -255,43 +257,52 @@ for p_ in projects:
                   (fm(fc_["base"]["accrued"]), RS), wk_(fc_["scn"]["weeks"]), fm(fc_["saving"])])
 frows.append(["Портфель", f(tot["overdue_kv"]), f"{f(tot['gross_left'])} − {f(tot['inflow'])} = {f(tot['burn_pace'])}", wk_(PFC["base"]["weeks"]), wk_(PFC["target"]["weeks"]),
               (fm(PFC["base"]["accrued"]), RS), wk_(PFC["scn"]["weeks"]), fm(PFC["saving"])])
-U.fin_table(["ЖК", "Просрочено сейчас", "Темп в неделю: передано − приток = чистый", "Закроется через, нед. (текущий темп)", "по ориентиру, нед.",
-             "Риск накопится до закрытия", f"Закроется, если все готовые за {rw} нед.", "Экономия риска"], frows, right=range(1, 8), total_last=True)
+U.fin_table(["ЖК", "Просрочка на дату среза", "Темп в неделю: передано − приток = чистый", "Срок закрытия, недель (текущий темп)", "при целевом темпе, недель",
+             "Накопленная неустойка до закрытия", f"Срок закрытия при передаче всех готовых за {rw} {rw_w}", "Сокращение экспозиции"], frows, right=range(1, 8), total_last=True)
 cut_ = min(max(len(PFC["base"]["path"]), len(PFC["scn"]["path"]), len(PFC["target"]["path"])), 60)
 fg = go.Figure()
-for key_, lab_, col_, dash_ in (("base", "Текущий темп", U.RISK, "solid"), ("target", "Ориентир", U.GOLD, "dash"), ("scn", f"Все готовые за {rw} нед.", U.NAVY, "solid")):
+for key_, lab_, col_, dash_ in (("base", "Текущий темп", U.RISK, "solid"), ("target", "Целевой темп", U.GOLD, "dash"), ("scn", f"Все готовые за {rw} {rw_w}", U.NAVY, "solid")):
     pth = PFC[key_]["path"][:cut_]
     fg.add_scatter(x=[x_[0] for x_ in pth], y=[x_[2] / 1e9 for x_ in pth], mode="lines", name=lab_, line=dict(color=col_, width=2.5, dash=dash_))
-fg.update_layout(title="Накопленный расчётный риск портфеля по неделям, млрд ₽", margin=dict(l=8, r=8, t=34, b=8), legend=dict(orientation="h", y=-0.18), hovermode="x unified")
+fg.update_layout(title="Накопленная расчётная неустойка портфеля по неделям, млрд ₽", margin=dict(l=8, r=8, t=34, b=8), legend=dict(orientation="h", y=-0.18), hovermode="x unified")
 fg.update_yaxes(rangemode="tozero", gridcolor=U.LINE, showgrid=True)
 fg.update_xaxes(title_text="недель от даты среза")
-with st.expander("График накопленного риска"):
+with st.expander("График накопленной неустойки"):
     U.chart(fg, key="pf_fc_chart", height=320)
-st.markdown(f'<div class="note">Если передать всех готовых за {rw} нед., портфель закроется на {wk_(PFC["base"]["weeks"] - PFC["scn"]["weeks"]) if PFC["base"]["weeks"] and PFC["scn"]["weeks"] else "—"} нед. раньше '
-            f'и сэкономит ≈{fm(PFC["saving"])} расчётного риска (за первые 4 недели — {fm(PFC["saving_4w"])}). Чистый темп — среднее за 4 последние недели по датам актов приёма; '
-            'ориентир — тот же темп × 1,10. Приток новых просрочек уже вычтен из темпа.</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="note">При передаче всех готовых квартир за {rw} {rw_w} срок закрытия просрочки по портфелю сокращается на {wk_(PFC["base"]["weeks"] - PFC["scn"]["weeks"]) if PFC["base"]["weeks"] and PFC["scn"]["weeks"] else "—"} недель, '
+            f'накопленная неустойка снижается на ≈{fm(PFC["saving"])} (за первые 4 недели — на {fm(PFC["saving_4w"])}). Чистый темп — среднее за 4 последние недели по датам актов приёма-передачи; '
+            'целевой темп — тот же показатель за предыдущие четыре недели с запасом 10%. Приток новых просрочек уже вычтен из чистого темпа.</div>', unsafe_allow_html=True)
 
-# ---------------------------------------------------------------- 6. Решения для генерального директора
-U.section("Решения для генерального директора", "Деньги, люди, полномочия, давление на подрядчика — с эффектом в ₽ расчётного риска за 4 недели", anchor="decisions", num="6.")
-alld = sorted([dict(d_, zhk=p_["name"]) for p_ in projects for d_ in p_["decisions"]], key=lambda d_: -d_["effect"])
-drow = lambda d_: [d_["zhk"], d_["kind"], d_["title"], ", ".join(d_["roles"]), (f"−{fm(d_['effect'])}", RS), d_["basis"]]
-U.fin_table(["ЖК", "Тип", "Решение", "Кого подключить", "Эффект за 4 недели", "Основание"], [drow(d_) for d_ in alld[:6]], right=(4,), cls="pt3")
-if len(alld) > 6:
-    with st.expander(f"Остальные решения ({len(alld) - 6})"):
-        U.fin_table(["ЖК", "Тип", "Решение", "Кого подключить", "Эффект за 4 недели", "Основание"], [drow(d_) for d_ in alld[6:]], right=(4,), cls="pt3")
+# ---------------------------------------------------------------- 6. Управленческие решения и ожидаемый эффект
+U.section("Управленческие решения и ожидаемый эффект", "Для каждого ЖК — главное решение, вытекающее из доминирующей причины экспозиции, и дополнительные меры; эффект — снижение расчётной экспозиции", anchor="decisions", num="6.")
+ranked_d = PF.by_risk(projects)
+mrows = [[p_["name"], d_["kind"], d_["title"], d_["mechanism"], d_["metric"], ", ".join(d_["roles"]), f"−{fm(d_['effect_day'])}", f"−{fm(d_['effect'])}"]
+         for p_ in ranked_d for d_ in p_["decisions"][:1]]
+msum_d = sum(p_["decisions"][0]["effect_day"] for p_ in ranked_d if p_["decisions"])
+msum_4 = sum(p_["decisions"][0]["effect"] for p_ in ranked_d if p_["decisions"])
+mrows.append(["Итого по главным решениям", "", "", "", "", "", f"−{fm(msum_d)}", f"−{fm(msum_4)}"])
+DH = ["ЖК", "Группа мер", "Главное решение", "Что меняется", "Контрольный показатель", "Ответственные роли", "Эффект: дневная экспозиция, ₽/день", "Эффект за 4 недели, ₽"]
+U.fin_table(DH, mrows, right=(6, 7), total_last=True, cls="pt3", hide=(1, 3, 4, 5))
+xrows = [[p_["name"], d_["kind"], d_["title"], d_["mechanism"], d_["metric"], ", ".join(d_["roles"]), f"−{fm(d_['effect_day'])}", f"−{fm(d_['effect'])}"]
+         for p_ in ranked_d for d_ in p_["decisions"][1:]]
+if xrows:
+    with st.expander(f"Дополнительные решения по ЖК ({len(xrows)})"):
+        U.fin_table(DH, xrows, right=(6, 7), cls="pt3", hide=(1, 3, 4, 5))
 cl_ = [(p_["name"], p_["contractor_risk"][0]) for p_ in projects if p_["contractor_risk"]]
 if cl_:
-    with st.expander("Подрядчики: доля расчётного риска и потенциал удержаний"):
-        U.fin_table(["ЖК", "Подрядчик", "Квартир с замечаниями", "Доля риска ЖК", "Риск в сутки", "Потенциал удержаний"],
+    with st.expander("Подрядчики: доля расчётной экспозиции и потенциал удержаний"):
+        U.fin_table(["ЖК", "Подрядчик", "Квартир с замечаниями", "Доля экспозиции ЖК", "Дневная экспозиция", "Потенциал удержаний"],
                     [[p_["name"], c_["name"], f(c_["units"]), fr(c_["share"]), fm(c_["risk"]), fm(c_["claim"])] for p_ in projects for c_ in p_["contractor_risk"]],
                     right=range(2, 6))
-st.markdown('<div class="note">Эффект — на сколько снизится расчётный риск за ближайшие 4 недели по сравнению с текущим темпом. Допущения: допбригады дают +25% к фактической передаче; '
-            f'после официального вызова приходит {C.fmt_pct(DC.CALL_RESPONSE)} собственников; односторонние акты оформляются по {C.fmt_pct(DC.UNILATERAL_SHARE)} истёкших вызовов; '
-            f'выездная группа закрывает {C.fmt_pct(DC.REFUSAL_RESOLVED)} приёмок без подписи; удержания снимают {C.fmt_pct(DC.PRESSURE_SHARE)} риска, приходящегося на подрядчика. Исполнители — роли, сроки не задаются.</div>',
-            unsafe_allow_html=True)
+st.markdown('<div class="note">Эффект по каждому решению — доля соответствующей причины в дневной экспозиции ЖК, которую снимает мера: число квартир причины × средняя дневная ставка этой причины × доля, '
+            'переходящая к передаче за 4 недели. Показан эффект к концу 4-й недели (₽/день) и накопленный за 4 недели (₽). '
+            f'Допущения по долям: явка на приёмку +{C.fmt_pct(DC.NO_SHOW_SHARE)}; дополнительные бригады +{C.fmt_pct(DC.EXTRA_CAPACITY)} к фактическому темпу; сквозная приёмка закрывает {C.fmt_pct(DC.REFUSAL_RESOLVED)} приёмок без подписи; '
+            f'после обзвона приходит {C.fmt_pct(DC.CALL_RESPONSE)} собственников; односторонние акты — по {C.fmt_pct(DC.UNILATERAL_SHARE)} вызовов с истёкшим сроком (при соблюдении условий ч. 6 ст. 8 214-ФЗ); '
+            f'удержания и претензионная работа снимают {C.fmt_pct(DC.PRESSURE_SHARE)} экспозиции, приходящейся на подрядчика. Ответственные указаны ролями; сроки исполнения не задаются. '
+            'Главное решение не повторяется между ЖК; у малых ЖК допускается повтор.</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- 3. Вклад сегментов в риск
-U.section("Вклад сегментов в риск", "Из чего складывается суточный риск портфеля", anchor="contribution", num="7.")
+U.section("Концентрация экспозиции по ЖК", "Вклад каждого ЖК в дневную экспозицию портфеля", anchor="contribution", num="7.")
 srt = sorted(projects, key=lambda p: -p["risk_day"])
 cum, rows_h = 0.0, []
 for p in srt:
@@ -306,19 +317,19 @@ with c1:
         text=[f"{mln(p['risk_day']):.1f}".replace(".", ",") for p in srt] + [f"{mln(tot['risk_day']):.1f}".replace(".", ",")],
         textposition="outside", connector=dict(line=dict(color=U.LINE, width=1)),
         increasing=dict(marker=dict(color=U.NAVY)), totals=dict(marker=dict(color=U.RISK))))
-    fig.update_layout(title="Риск в сутки, млн ₽: вклад ЖК в итог", margin=dict(l=8, r=8, t=34, b=8))
+    fig.update_layout(title="Дневная экспозиция, млн ₽: вклад ЖК в итог", margin=dict(l=8, r=8, t=34, b=8))
     fig.update_yaxes(showticklabels=False, range=[0, mln(tot["risk_day"]) * 1.18])
     fig.update_xaxes(tickfont=dict(size=11))
     U.chart(fig, key="pf_contrib", height=300)
 with c2:
-    U.fin_table(["Сегмент", "Просрочено, кв.", "Доля", "Риск, ₽/сутки", "Доля риска", "Накопл. доля", "Накоплено"], rows_h, right=range(1, 7), total_last=True)
+    U.fin_table(["ЖК", "Просрочка, квартир", "Доля", "Дневная экспозиция, ₽", "Доля в экспозиции", "Накопленная доля", "Накопленная неустойка"], rows_h, right=range(1, 7), total_last=True)
 hhi = sum((p["risk_day"] / tr_) ** 2 for p in projects) * 10000
 big = srt[0]
-st.markdown(f'<div class="note">Крупнейший сегмент — {fr(big["risk_day"] / tr_)} суточного риска. Индекс концентрации (HHI, 0–10 000): <b>{f(hhi)}</b> — '
+st.markdown(f'<div class="note">Наибольшая доля — у ЖК «{big["name"]}»: {fr(big["risk_day"] / tr_)} дневной экспозиции. Индекс концентрации (HHI, 0–10 000): <b>{f(hhi)}</b> — '
             f'{"высокая концентрация" if hhi > 2500 else "умеренная концентрация"}.</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- 4. Динамика
-U.section("Динамика за неделю", "Изменение просрочки и темп передачи к прошлой неделе", anchor="dynamics", num="8.")
+U.section("Динамика: неделя к неделе", "Изменение просрочки и темпа передачи к предыдущей неделе", anchor="dynamics", num="8.")
 v1, v2 = st.columns([1, 1.4], gap="large")
 with v1:
     wf = go.Figure(go.Waterfall(
@@ -327,7 +338,7 @@ with v1:
         textposition="outside", connector=dict(line=dict(color=U.LINE, width=1)),
         increasing=dict(marker=dict(color=U.RISK)), decreasing=dict(marker=dict(color=U.NAVY)), totals=dict(marker=dict(color=U.SILVER))))
     lo_, hi_ = min(0, d_over, *[p["overdue_delta"] for p in projects]), max(0, *[p["overdue_delta"] for p in projects])
-    wf.update_layout(title="Δ просрочки по ДДУ за 7 дней, кв.", margin=dict(l=8, r=8, t=34, b=8))
+    wf.update_layout(title="Изменение просрочки по ДДУ за 7 дней, квартир", margin=dict(l=8, r=8, t=34, b=8))
     wf.update_yaxes(showticklabels=False, range=[lo_ * 1.35 - 4, hi_ * 1.35 + 6], zeroline=True, zerolinecolor=U.LINE)
     wf.update_xaxes(tickfont=dict(size=10), tickangle=-35)
     U.chart(wf, key="pf_wf", height=360)
@@ -339,19 +350,19 @@ with v2:
         dwk = (p["week_fact"] - p["week_prev"]) if p["week_prev"] is not None else None
         rv.append([p["name"], f(p["overdue_kv"]), f(prev_o), sg(p["overdue_delta"]),
                    fr(p["overdue_delta"] / prev_o) if prev_o else PF.DASH, f(p["week_fact"]), sg(dwk) if dwk is not None else PF.DASH])
-    U.fin_table(["Сегмент", "Просрочено сейчас", "7 дн. назад", "Δ", "Δ, %", "Передано за неделю", "Δ к прошлой неделе"], rv, right=range(1, 7), total_last=True)
+    U.fin_table(["ЖК", "Просрочка на дату среза", "Семь дней назад", "Изменение", "Изменение, %", "Передано за неделю", "Изменение к предыдущей неделе"], rv, right=range(1, 7), total_last=True)
 lf = go.Figure()
 for p in projects:
     w = p["weekly"]
-    lf.add_scatter(x=w["Неделя"], y=w["Просрочено на конец недели, кв."], mode="lines+markers", name=p["name"], line=dict(color=COLORS.get(p["name"], "#C3CAD4"), width=2.5 if p["name"] in COLORS else 1.2))
-lf.update_layout(title="Просрочено по ДДУ на конец недели, квартир (цветом — четыре ЖК с наибольшим риском)", margin=dict(l=8, r=8, t=34, b=8), legend=dict(orientation="h", y=-0.18),
+    lf.add_scatter(x=w["Неделя"], y=w["Просрочка на конец недели, квартир"], mode="lines+markers", name=p["name"], line=dict(color=COLORS.get(p["name"], "#C3CAD4"), width=2.5 if p["name"] in COLORS else 1.2))
+lf.update_layout(title="Просрочка по ДДУ на конец недели, квартир (цветом выделены четыре ЖК с наибольшей экспозицией)", margin=dict(l=8, r=8, t=34, b=8), legend=dict(orientation="h", y=-0.18),
                  hovermode="x unified")
 lf.update_yaxes(rangemode="tozero", gridcolor=U.LINE, showgrid=True)
 U.chart(lf, key="pf_line", height=300)
-st.markdown('<div class="note">Прошлая неделя восстановлена по датам приёма-передачи.</div>', unsafe_allow_html=True)
+st.markdown('<div class="note">Показатели предыдущей недели восстановлены по датам актов приёма-передачи.</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- 6. Матрица рисков
-U.section("Матрица рисков", "Квартиры по причинам просрочки в каждом ЖК; интенсивность — доля суточного риска портфеля", anchor="matrix", num="9.")
+U.section("Матрица экспозиции по причинам просрочки", "Квартиры по причинам просрочки в каждом ЖК; интенсивность заливки — доля дневной экспозиции портфеля", anchor="matrix", num="9.")
 kinds = [k for k in PF.PROBLEMS if any(g["key"] == k for p in projects for g in p["groups"])]
 mx = []
 for k in kinds:
@@ -372,19 +383,19 @@ st.markdown('<div class="note">Каждая квартира учтена в о�
 
 # ---------------------------------------------------------------- 10. Замечания портфеля
 RM = tot["rem"]
-U.section("Замечания портфеля", "Структура показателей корпоративной отчётности: поступило, устранено, отменено, приостановлено, осталось — и связь с деньгами", anchor="remarks", num="10.")
+U.section("Реестр замечаний по портфелю", "Поступившие, устранённые, отменённые и приостановленные замечания; остаток и связь с финансовыми показателями", anchor="remarks", num="10.")
 pc = lambda a_, b_: C.fmt_pct(a_ / b_) if b_ else PF.DASH
 blocked = sum(p_["risk_blocked"] for p_ in projects)
 U.kpi_cards([
-    dict(label="Всего замечаний за период", value=f(RM["total"]), delta=("", "flat"), foot=f"осталось накопительно {f(RM['left_cum'])}"),
+    dict(label="Всего замечаний за период", value=f(RM["total"]), delta=("", "flat"), foot=f"остаток нарастающим итогом {f(RM['left_cum'])}"),
     dict(label="Устранено", value=pc(RM["fixed"], RM["total"]), delta=("", "flat"), foot=f"{f(RM['fixed'])} замечаний"),
     dict(label="Отменено", value=pc(RM["cancelled"], RM["total"]), delta=("", "flat"), foot=f"{f(RM['cancelled'])}; приостановлено {f(RM['suspended'])}"),
-    dict(label="Осталось устранить", value=f(RM["left_cum"]), delta=("", "flat"), foot=f"из них просрочено {C.fmt_pct(RM['overdue_share'])}"),
-    dict(label="Средний срок устранения", value=f"{RM['avg_days']:.0f} дн.", delta=("", "flat"), foot="по устранённым замечаниям"),
-    dict(label="Квартир с неустранёнными", value=f(RM["flats_unfixed"]), delta=("", "flat"), foot=f"{pc(RM['flats_unfixed'], RM['flats_total'])} из {f(RM['flats_total'])} квартир"),
+    dict(label="Остаток к устранению", value=f(RM["left_cum"]), delta=("", "flat"), foot=f"из них просрочено {C.fmt_pct(RM['overdue_share'])}"),
+    dict(label="Средний срок устранения", value=f"{RM['avg_days']:.0f} {C.plural(round(RM['avg_days']), 'день', 'дня', 'дней')}", delta=("", "flat"), foot="по устранённым замечаниям"),
+    dict(label="Квартир с неустранёнными замечаниями", value=f(RM["flats_unfixed"]), delta=("", "flat"), foot=f"{pc(RM['flats_unfixed'], RM['flats_total'])} из {f(RM['flats_total'])} квартир"),
 ], big=True)
-st.markdown(f'<div class="dev"><b>Связь с деньгами.</b> Неустранённые замечания есть в {f(RM["flats_unfixed"])} квартирах ({pc(RM["flats_unfixed"], RM["flats_total"])} всех). '
-            f'Именно они не дают передать просроченные квартиры и удерживают <b>{fm(blocked)}</b> суточного риска — {fr(blocked / tr_)} от {fm(tot["risk_day"])}. '
+st.markdown(f'<div class="dev"><b>Связь с финансовыми показателями.</b> Неустранённые замечания есть в {f(RM["flats_unfixed"])} квартирах ({pc(RM["flats_unfixed"], RM["flats_total"])} всех). '
+            f'Именно они не дают передать просроченные квартиры и удерживают <b>{fm(blocked)}</b> дневной экспозиции — {fr(blocked / tr_)} от {fm(tot["risk_day"])}. '
             f'Каждое устранённое замечание в такой квартире приближает передачу и останавливает начисление неустойки.</div>', unsafe_allow_html=True)
 sel_q = st.selectbox("Динамика замечаний по кварталам", ["Весь портфель"] + names, key="pf_qsel")
 Q = RM["quarters"] if sel_q == "Весь портфель" else next(p_ for p_ in projects if p_["name"] == sel_q)["rem"]["quarters"]
@@ -394,67 +405,78 @@ qf.add_bar(x=Q["Квартал"], y=Q["Устранено"], name="Устран�
 qf.add_scatter(x=Q["Квартал"], y=Q["Остаток на конец"], name="Остаток на конец квартала (правая шкала)", mode="lines+markers+text", line=dict(color=U.RISK, width=2.2),
                marker=dict(size=6), text=[f(v_) for v_ in Q["Остаток на конец"]], textposition="top center", textfont=dict(size=10), secondary_y=True)
 qf.update_layout(barmode="group", margin=dict(l=8, r=8, t=30, b=8), legend=dict(orientation="h", y=-0.15), title=f"Замечания по кварталам: {sel_q}", hovermode="x unified")
-qf.update_yaxes(title_text="Поступило / устранено, шт.", gridcolor=U.LINE, secondary_y=False, rangemode="tozero")
-qf.update_yaxes(title_text="Остаток, шт.", showgrid=False, secondary_y=True, rangemode="tozero")
+qf.update_yaxes(title_text="Поступило / устранено, замечаний", gridcolor=U.LINE, secondary_y=False, rangemode="tozero")
+qf.update_yaxes(title_text="Остаток, замечаний", showgrid=False, secondary_y=True, rangemode="tozero")
 U.chart(qf, key="pf_qchart", height=380)
 st.markdown('<div class="note">Остаток на дату среза и квартиры с неустранёнными замечаниями — по данным ЖК. Поквартальный ход, разбивка закрытых замечаний (устранено, отменено, приостановлено) и доля квартир, где всё устранено, — оценка по профилю ЖК: '
             'в выгрузке закрытых замечаний нет.</div>', unsafe_allow_html=True)
-with st.expander("Все показатели по замечаниям и квартирам по ЖК"):
+with st.expander("Расширенные показатели по замечаниям и квартирам"):
     rr = lambda r_: [f(r_["total"]), f(r_["fixed"]), f(r_["cancelled"]), f(r_["suspended"]), f(r_["left"]), f(r_["left_cum"]), pc(r_["fixed"], r_["total"]), pc(r_["cancelled"], r_["total"]),
                      f"{r_['avg_days']:.0f}", C.fmt_pct(r_["overdue_share"])]
     ranked_ = PF.by_risk(projects)
     t1 = [[p_["name"]] + rr(p_["rem"]) for p_ in ranked_] + [["Итого по портфелю"] + rr(RM)]
-    U.fin_table(["ЖК", "Всего замечаний", "Устранено", "Отменено", "Приостановлено", "Осталось устранить", "Осталось накопительно", "% устранения", "% отмены",
-                 "Средний срок, дн.", "Доля просроченных"], t1, right=range(1, 11), total_last=True, hide=(2, 3, 4, 7, 8))
+    U.fin_table(["ЖК", "Всего замечаний", "Устранено", "Отменено", "Приостановлено", "Остаток к устранению", "Остаток нарастающим итогом", "Доля устранённых", "Доля отменённых",
+                 "Средний срок устранения, дней", "Доля просроченных"], t1, right=range(1, 11), total_last=True, hide=(2, 3, 4, 7, 8))
     kr = lambda r_: [f(r_["flats_with"]), f(r_["flats_fixed_any"]), f(r_["flats_all_fixed"]), f(r_["flats_unfixed"]), f(r_["flats_one_unfixed"]), f(r_["flats_total"])]
     t2 = [[p_["name"]] + kr(p_["rem"]) + [fm(p_["risk_blocked"]), fr(p_["risk_blocked"] / p_["risk_day"]) if p_["risk_day"] else PF.DASH] for p_ in ranked_] + \
          [["Итого по портфелю"] + kr(RM) + [fm(blocked), fr(blocked / tr_)]]
-    U.fin_table(["ЖК", "Квартир с замечаниями", "С ≥1 устранённым", "Все устранены", "С неустранёнными", "С одним неустранённым", "Всего квартир", "Риск под замечаниями, ₽/сутки", "Доля риска ЖК"],
+    U.fin_table(["ЖК", "Квартир с замечаниями", "С хотя бы одним устранённым", "Все замечания устранены", "С неустранёнными", "С одним неустранённым замечанием", "Всего квартир", "Экспозиция под неустранёнными замечаниями, ₽/день", "Доля экспозиции ЖК"],
                 t2, right=range(1, 9), total_last=True, hide=(2, 3, 5, 6))
 
 # ---------------------------------------------------------------- 7. Разбор ЖК
-U.section("Разбор ЖК", "Одинаковый набор для каждого ЖК: обзор и главные проблемы, шахматка, замечания, подрядчики, деньги, динамика", anchor="drill", num="11.")
+U.section("Детализация по ЖК", "Единый набор показателей для каждого ЖК: обзор и ключевые проблемы, шахматка, замечания, подрядчики, финансы, динамика", anchor="drill", num="11.")
 if st.session_state.get("pf_sel") not in names:
     st.session_state["pf_sel"] = names[0]
-sel = st.selectbox("ЖК для разбора", names, key="pf_sel")
+sel = st.selectbox("ЖК для детализации", names, key="pf_sel")
 if st.session_state.pop("_pf_scroll", False):
     st.html("<script>document.getElementById('drill')?.scrollIntoView({block:'start'});</script>", unsafe_allow_javascript=True)
 p = next(x for x in projects if x["name"] == sel)
 d = DA[p["key"]]
 A_, REM, CT = d["units"], d["remarks"], d["contractors"]
 st.markdown(f'<div class="dec-h" style="font-size:20px">{html.escape(p["name"])}</div>', unsafe_allow_html=True)
-tabs = st.tabs(["Обзор", "Шахматка", "Замечания", "Подрядчики", "Деньги", "Динамика"])
+tabs = st.tabs(["Обзор", "Шахматка", "Замечания", "Подрядчики", "Финансы", "Динамика"])
 
 with tabs[0]:
     U.kpi_cards([
-        dict(label="Просрочено по ДДУ, квартир", value=f(p["overdue_kv"]), risk=True, delta=C.fmt_delta(p["overdue_delta"]),
+        dict(label="Просрочка по ДДУ, квартир", value=f(p["overdue_kv"]), risk=True, delta=C.fmt_delta(p["overdue_delta"]),
              foot=f"{fr(p['overdue_kv'] / to_)} просрочки портфеля"),
-        dict(label="Из них готовы без замечаний", value=f(p["ready"]), delta=("", "flat"),
-             foot=f"{fr(p['ready'] / p['overdue_kv']) if p['overdue_kv'] else '—'} просрочки ЖК · риск {fm(p['ready_risk'])}/сутки"),
-        dict(label="Расчётный риск, ₽ в сутки", value=fm(p["risk_day"]), risk=True, delta=("", "flat"), foot=f"{fr(p['risk_day'] / tr_)} риска портфеля"),
+        dict(label="Из них готовы к передаче без замечаний", value=f(p["ready"]), delta=("", "flat"),
+             foot=f"{fr(p['ready'] / p['overdue_kv']) if p['overdue_kv'] else '—'} просрочки ЖК · экспозиция {fm(p['ready_risk'])}/день"),
+        dict(label="Расчётная дневная экспозиция, ₽", value=fm(p["risk_day"]), risk=True, delta=("", "flat"), foot=f"{fr(p['risk_day'] / tr_)} экспозиции портфеля"),
         dict(label="Передано за неделю, квартир", value=f(p["week_fact"]),
              delta=C.fmt_delta(p["week_fact"] - p["week_prev"], good_when_down=False) if p["week_prev"] is not None else ("", "flat"),
-             foot="Δ к прошлой неделе"),
+             foot="Изменение к предыдущей неделе"),
         dict(label="Открытых замечаний", value=f(p["remarks"]), delta=("", "flat"), foot=f"критических {f(p['critical'])}"),
     ])
-    st.markdown('<div class="dec-h" style="font-size:17px">Три главные проблемы</div>', unsafe_allow_html=True)
+    st.markdown('<div class="dec-h" style="font-size:17px">Решения по ЖК</div>', unsafe_allow_html=True)
+    for i, d_ in enumerate(p["decisions"], 1):
+        roles_ = "".join(f'<span class="pf-role">{html.escape(r)}</span>' for r in d_["roles"])
+        st.markdown(
+            f'<div class="dec-h"><span class="no">{i}</span>{html.escape(d_["title"])}{" — главное решение" if i == 1 else ""}</div>'
+            f'<div class="dec"><div><div class="k">Что меняется</div><div class="v">{html.escape(d_["mechanism"])}.<br><br><span class="k">Группа мер</span><br>{html.escape(d_["kind"])}</div></div>'
+            f'<div><div class="k">Обоснование (по данным)</div><div class="v">{html.escape(d_["basis"])}</div></div>'
+            f'<div><div class="k">Ожидаемый эффект</div><div class="v"><span class="big">−{fm(d_["effect_day"])} в день</span>'
+            f'к концу 4-й недели; −{fm(d_["effect"])} за 4 недели · {fr(d_["effect_day"] / p["risk_day"] if p["risk_day"] else 0)} дневной экспозиции ЖК</div></div>'
+            f'<div><div class="k">Контрольный показатель</div><div class="v">{html.escape(d_["metric"])}<br><br><span class="k">Ответственные роли</span><br>{roles_}</div></div></div>',
+            unsafe_allow_html=True)
+    st.markdown('<div class="dec-h" style="font-size:17px">Ключевые проблемы ЖК</div>', unsafe_allow_html=True)
     for i, pr in enumerate(p["problems"], 1):
         roles = "".join(f'<span class="pf-role">{html.escape(r)}</span>' for r in pr["roles"])
         st.markdown(
             f'<div class="dec-h"><span class="no">{i}</span>{html.escape(pr["title"])}</div>'
             f'<div class="dec"><div><div class="k">Масштаб</div><div class="v"><span class="big">{f(pr["n"])} {pl(pr["n"])}</span>'
-            f'≈{fm(pr["risk"])} в сутки · {fr(pr["share_risk"])} риска ЖК<br>Корпуса: {html.escape(pr["korpusa"])}</div></div>'
-            f'<div><div class="k">Причина по данным</div><div class="v">{html.escape(pr["cause"])}</div></div>'
-            f'<div><div class="k">Предлагаемое действие</div><div class="v">{html.escape(pr["action"])}<br><br>'
-            f'<span class="k">Подключить</span><br>{roles}</div></div>'
-            f'<div><div class="k">Проверим на следующем совещании</div><div class="v">{html.escape(pr["metric"])}<br>'
-            f'<b>Сейчас: {f(pr["baseline"])}</b></div></div></div>', unsafe_allow_html=True)
+            f'≈{fm(pr["risk"])} в день · {fr(pr["share_risk"])} экспозиции ЖК<br>Корпуса: {html.escape(pr["korpusa"])}</div></div>'
+            f'<div><div class="k">Причина (по данным)</div><div class="v">{html.escape(pr["cause"])}</div></div>'
+            f'<div><div class="k">Предлагаемая мера</div><div class="v">{html.escape(pr["action"])}<br><br>'
+            f'<span class="k">Ответственные роли</span><br>{roles}</div></div>'
+            f'<div><div class="k">Контрольный показатель</div><div class="v">{html.escape(pr["metric"])}<br>'
+            f'<b>Текущее значение: {f(pr["baseline"])}</b></div></div></div>', unsafe_allow_html=True)
     if len(p["by_korpus"]):
         bk = p["by_korpus"].head(8).iloc[::-1]
         fig = go.Figure(go.Bar(y=bk["k"], x=bk["n"], orientation="h", marker_color=U.NAVY,
-                               text=[f"{f(n)} кв. · {fm(r)}/сутки" for n, r in zip(bk["n"], bk["risk"])], textposition="outside", cliponaxis=False,
-                               hovertemplate="корпус %{y}: %{x} кв.<extra></extra>"))
-        fig.update_layout(title="Корпуса: просрочено квартир и риск в сутки", margin=dict(l=8, r=150, t=34, b=8), bargap=.4)
+                               text=[f"{f(n)} {pl(n)} · {fm(r)}/день" for n, r in zip(bk["n"], bk["risk"])], textposition="outside", cliponaxis=False,
+                               hovertemplate="корпус %{y}: %{x} квартир<extra></extra>"))
+        fig.update_layout(title="Корпуса: просрочено квартир и дневная экспозиция", margin=dict(l=8, r=150, t=34, b=8), bargap=.4)
         fig.update_xaxes(showticklabels=False)
         U.chart(fig, key=f"pf_korp_{p['key']}", height=max(200, 36 * len(bk) + 64))
     st.markdown('<div class="dec-h" style="font-size:17px">Корпуса</div>', unsafe_allow_html=True)
@@ -466,10 +488,10 @@ with tabs[0]:
 with tabs[1]:
     ks = DT.korpus_list(A_)
     kt2 = DT.korpus_table(A_, P["price"]).set_index("Корпус")
-    dflt = int(kt2["Риск, ₽/сутки"].reset_index(drop=True).idxmax())
+    dflt = int(kt2["Дневная экспозиция, ₽"].reset_index(drop=True).idxmax())
     kk = st.selectbox("Корпус", ks, index=dflt, key=f"pf_chess_{p['key']}", format_func=lambda k: f"Корпус {k}")
     row = kt2.loc[kk]
-    st.markdown(f'<div class="note">Корпус {html.escape(kk)}: помещений {f(row["Помещений"])}, передано {fr(row["Передано, %"] / 100)}, просрочено по ДДУ {f(row["Просрочено по ДДУ"])}, '
+    st.markdown(f'<div class="note">Корпус {html.escape(kk)}: помещений {f(row["Помещений"])}, передано {fr(row["Передано, %"] / 100)}, просрочено по ДДУ {f(row["Просрочка по ДДУ"])}, '
                 f'замечаний {f(row["Замечаний"])}. Строки — этажи, колонки — секции.</div>', unsafe_allow_html=True)
     ch, _ = DT.chess_html(A_, kk)
     st.markdown(ch, unsafe_allow_html=True)
@@ -487,8 +509,8 @@ with tabs[2]:
     r1, r2 = st.columns(2, gap="large")
     with r1:
         fg = go.Figure()
-        fg.add_bar(y=g["Группа"][::-1], x=g["Замечаний"][::-1] - g["Просрочено более 45 дн."][::-1], orientation="h", name="В срок", marker_color=U.SILVER)
-        fg.add_bar(y=g["Группа"][::-1], x=g["Просрочено более 45 дн."][::-1], orientation="h", name="Просрочено более 45 дн.", marker_color=U.RISK)
+        fg.add_bar(y=g["Группа"][::-1], x=g["Замечаний"][::-1] - g["Просрочено более 45 дней"][::-1], orientation="h", name="В срок", marker_color=U.SILVER)
+        fg.add_bar(y=g["Группа"][::-1], x=g["Просрочено более 45 дней"][::-1], orientation="h", name="Просрочено более 45 дней", marker_color=U.RISK)
         fg.update_layout(barmode="stack", title="Замечания по категориям", margin=dict(l=8, r=8, t=34, b=8), legend=dict(orientation="h", y=-0.2))
         U.chart(fg, key=f"pf_rg_{p['key']}", height=300)
     with r2:
@@ -497,11 +519,11 @@ with tabs[2]:
         fa.update_layout(title="Возраст открытых замечаний", margin=dict(l=8, r=8, t=34, b=8))
         fa.update_yaxes(showticklabels=False)
         U.chart(fa, key=f"pf_ra_{p['key']}", height=300)
-    U.fin_table(["Категория", "Замечаний", "Доля", "Критических", "Просрочено более 45 дн.", "% просрочено", "Блокируют передачу"],
-                [[r["Группа"], f(r["Замечаний"]), f"{r['Доля, %']:.1f}%".replace(".", ","), f(r["Критических"]), f(r["Просрочено более 45 дн."]),
+    U.fin_table(["Категория", "Замечаний", "Доля", "Критических", "Просрочено более 45 дней", "% просрочено", "Блокируют передачу"],
+                [[r["Группа"], f(r["Замечаний"]), f"{r['Доля, %']:.1f}%".replace(".", ","), f(r["Критических"]), f(r["Просрочено более 45 дней"]),
                   f"{r['% просрочено']:.1f}%".replace(".", ","), f(r["Блокируют передачу"])] for _, r in g.iterrows()]
-                + [["Итого", f(g["Замечаний"].sum()), "100,0%", f(g["Критических"].sum()), f(g["Просрочено более 45 дн."].sum()),
-                    C.fmt_pct(g["Просрочено более 45 дн."].sum() / max(g["Замечаний"].sum(), 1), 1), f(g["Блокируют передачу"].sum())]],
+                + [["Итого", f(g["Замечаний"].sum()), "100,0%", f(g["Критических"].sum()), f(g["Просрочено более 45 дней"].sum()),
+                    C.fmt_pct(g["Просрочено более 45 дней"].sum() / max(g["Замечаний"].sum(), 1), 1), f(g["Блокируют передачу"].sum())]],
                 right=range(1, 7), total_last=True)
     st.markdown(f'<div class="note">По важности: критических {f(imp["Критическое"])}, значительных {f(imp["Значительное"])}, стандартных {f(imp["Стандартное"])}.</div>',
                 unsafe_allow_html=True)
@@ -525,7 +547,7 @@ with tabs[3]:
     fc = go.Figure(go.Bar(y=top["Подрядчик"], x=top["Балл риска"], orientation="h",
                           marker_color=[U.RISK if c == "высокий" else U.NAVY if c == "средний" else U.SILVER for c in top["Класс риска"]],
                           text=[f"{v:.1f}".replace(".", ",") for v in top["Балл риска"]], textposition="outside", cliponaxis=False))
-    fc.update_layout(title="Балл риска подрядчиков (10 крупнейших по баллу)", margin=dict(l=8, r=40, t=34, b=8), bargap=.4)
+    fc.update_layout(title="Балл риска подрядчиков (10 наибольших значений)", margin=dict(l=8, r=40, t=34, b=8), bargap=.4)
     fc.update_xaxes(showticklabels=False, range=[0, 110])
     U.chart(fc, key=f"pf_ctr_{p['key']}", height=340)
     view = pd.DataFrame({
@@ -541,15 +563,15 @@ with tabs[3]:
 with tabs[4]:
     pen = p["penalty"]
     U.kpi_cards([
-        dict(label="Расчётный риск, ₽ в сутки", value=fm(p["risk_day"]), risk=True, delta=("", "flat"), foot=f"из них готовые квартиры: {fm(p['ready_risk'])}"),
-        dict(label="Накоплено, верхняя оценка", value=fm(p["accrued_up"]), risk=True, delta=("", "flat"), foot=f"нижняя оценка {fm(p['accrued_lo'])}"),
+        dict(label="Расчётная дневная экспозиция, ₽", value=fm(p["risk_day"]), risk=True, delta=("", "flat"), foot=f"из них готовые квартиры: {fm(p['ready_risk'])}"),
+        dict(label="Накопленная неустойка, верхняя оценка", value=fm(p["accrued_up"]), risk=True, delta=("", "flat"), foot=f"нижняя оценка {fm(p['accrued_lo'])}"),
         dict(label="Стоимость устранения замечаний", value=fm(p["remarks_cost"]), delta=("", "flat"), foot=f"{f(p['remarks'])} замечаний"),
         dict(label="Потенциал претензий к подрядчикам", value=fm(p["claim_potential"]), delta=("", "flat"), foot="по просроченным замечаниям, оценка"),
     ])
     bk_ = pen["by_korpus"].head(10)
-    U.fin_table(["Корпус", "Квартир с неустойкой", "из них не переданы", "Накоплено, верхняя оценка", "Накоплено, нижняя оценка"],
+    U.fin_table(["Корпус", "Квартир с неустойкой", "из них не переданы", "Накопленная неустойка, верхняя оценка", "Накопленная неустойка, нижняя оценка"],
                 [[r["Корпус"], f(r["kv"]), f(r["nt"]), fm(r["up"]), fm(r["lo"])] for _, r in bk_.iterrows()], right=range(1, 5))
-    st.markdown('<div class="note">Риск и стоимость устранения замечаний — разные показатели, суммировать их нельзя. Показаны 10 корпусов с наибольшей накопленной суммой.</div>',
+    st.markdown('<div class="note">Экспозиция и стоимость устранения замечаний — разные показатели, они не суммируются. Показаны 10 корпусов с наибольшей накопленной неустойкой.</div>',
                 unsafe_allow_html=True)
 
 with tabs[5]:
@@ -562,48 +584,52 @@ with tabs[5]:
         fw.update_xaxes(tickangle=-45, tickfont=dict(size=10))
         U.chart(fw, key=f"pf_wt_{p['key']}", height=300)
     with z2:
-        fo = go.Figure(go.Scatter(x=w["Неделя"], y=w["Просрочено на конец недели, кв."], mode="lines+markers", line=dict(color=U.RISK, width=2.5)))
-        fo.update_layout(title="Просрочено по ДДУ на конец недели, квартир", margin=dict(l=8, r=8, t=34, b=8))
+        fo = go.Figure(go.Scatter(x=w["Неделя"], y=w["Просрочка на конец недели, квартир"], mode="lines+markers", line=dict(color=U.RISK, width=2.5)))
+        fo.update_layout(title="Просрочка по ДДУ на конец недели, квартир", margin=dict(l=8, r=8, t=34, b=8))
         fo.update_yaxes(rangemode="tozero", gridcolor=U.LINE, showgrid=True)
         fo.update_xaxes(tickangle=-45, tickfont=dict(size=10))
         U.chart(fo, key=f"pf_wo_{p['key']}", height=300)
-    U.fin_table(["Неделя", "Передано, квартир", "Передано, всего", "Просрочено на конец недели, кв."],
-                [[r["Неделя"] + (" (неполная)" if r["partial"] else ""), f(r["Передано, квартир"]), f(r["Передано, всего"]), f(r["Просрочено на конец недели, кв."])]
+    U.fin_table(["Неделя", "Передано, квартир", "Передано, всего", "Просрочка на конец недели, квартир"],
+                [[r["Неделя"] + (" (неполная)" if r["partial"] else ""), f(r["Передано, квартир"]), f(r["Передано, всего"]), f(r["Просрочка на конец недели, квартир"])]
                  for _, r in w.iterrows()], right=range(1, 4))
 
 # ---------------------------------------------------------------- 8. Деньги по портфелю
-U.section("Деньги: риск и стоимость устранения", "Разные показатели — суммировать их нельзя", anchor="money", num="12.")
+U.section("Финансы: экспозиция и стоимость устранения", "Показатели различны по природе и суммированию не подлежат", anchor="money", num="12.")
 U.kpi_cards([
-    dict(label="Расчётный риск: накоплено (верхняя оценка)", value=fm(tot["accrued_up"]), risk=True, delta=("", "flat"),
-         foot=f"нижняя оценка {fm(tot['accrued_lo'])} · в сутки ≈{fm(tot['risk_day'])}"),
+    dict(label="Накопленная неустойка (верхняя оценка)", value=fm(tot["accrued_up"]), risk=True, delta=("", "flat"),
+         foot=f"нижняя оценка {fm(tot['accrued_lo'])} · в день ≈{fm(tot['risk_day'])}"),
     dict(label="Стоимость устранения замечаний", value=fm(tot["remarks_cost"]), delta=("", "flat"), foot=f"{f(tot['remarks'])} замечаний"),
 ])
-U.fin_table(["ЖК", "Риск, ₽/сутки", "Накоплено, верхняя", "Накоплено, нижняя", "Стоимость устранения замечаний", "Потенциал претензий"],
+U.fin_table(["ЖК", "Дневная экспозиция, ₽", "Накопленная неустойка, верхняя оценка", "Накопленная неустойка, нижняя оценка", "Стоимость устранения замечаний", "Потенциал претензий"],
             [[x["name"], f(round(x["risk_day"])), fm(x["accrued_up"]), fm(x["accrued_lo"]), fm(x["remarks_cost"]), fm(x["claim_potential"])]
              for x in projects] + [["Итого", f(round(tot["risk_day"])), fm(tot["accrued_up"]), fm(tot["accrued_lo"]), fm(tot["remarks_cost"]), fm(tot["claim_potential"])]], right=range(1, 6), total_last=True)
 
 # ---------------------------------------------------------------- 9. Поручения
-U.section("Контроль поручений", "Что поручено, кого подключить и какой показатель проверим на следующем совещании", anchor="orders", num="13.")
+U.section("Контроль исполнения поручений", "Поручения, ответственные роли и контрольные показатели для оценки исполнения", anchor="orders", num="13.")
 ro = [[str(i), p_["name"], pr["action"], ", ".join(pr["roles"]), pr["metric"], f(pr["baseline"])]
       for i, (p_, pr) in enumerate(((p_, pr) for p_ in projects for pr in p_["problems"]), 1)]
-U.fin_table(["№", "ЖК", "Поручение", "Кого подключить", "Показатель на следующем совещании", "Сейчас"], ro, right=(5,))
-st.markdown('<div class="note">Исполнители указаны ролями, сроки не задаются: на следующем совещании сравниваем «Сейчас» с новым значением.</div>', unsafe_allow_html=True)
+U.fin_table(["№", "ЖК", "Поручение", "Ответственные роли", "Контрольный показатель", "Текущее значение"], ro, right=(5,))
+st.markdown('<div class="note">Исполнители указаны ролями, сроки не задаются. Исполнение оценивается сопоставлением текущего значения контрольного показателя с новым значением на очередном заседании.</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- 10. Допущения
-U.section("Допущения модели", "", anchor="notes", num="14.")
+U.section("Допущения и методология расчёта", "", anchor="notes", num="14.")
 U.sources(
-    "Расчётный риск в сутки = ключевая ставка / 300 × 2 (участник — гражданин, ч. 2 ст. 6 214-ФЗ) × цена квартиры. Цен и площадей по ДДУ в данных нет, цены по ЖК приняты допущением: "
+    "<b>Расчётная дневная экспозиция</b> = 1/300 ключевой ставки Банка России × 2 (участник — гражданин, ч. 2 ст. 6 214-ФЗ) × цена квартиры × 1 день просрочки передачи. "
+    "Цен и площадей по ДДУ в данных нет, цены по ЖК приняты допущением: "
     + ", ".join(f"{nm_} — {pr_in[k_]:.1f} млн ₽".replace(".", ",") for k_, nm_ in pf_data.PROJECTS)
-    + " (меняются в боковой панели, риск пересчитывается пропорционально). Коммерческие помещения не считаются; машиноместа и кладовые — отдельно по расчётным ценам. "
-    "«Накоплено» — верхняя граница неустойки за весь период просрочки (дни моратория исключены), а не прогноз платежей. "
-    f"Лесенка: предъявляется {C.fmt_pct(K['claim'])} верхней границы, суд снижает неустойку по ст. 333 ГК на {C.fmt_pct(K['cut'])}, {C.fmt_pct(K['paid'])} ожидаемых выплат уже выплачено — в данных претензий, исков и выплат нет, коэффициенты задаются в боковой панели. "
-    "«Готовы» — просрочены по ДДУ, не переданы, готовность подтверждена (есть дата готовности, нет отмены готовности и мотивированного отказа), открытых замечаний нет; их риск — часть общего. "
-    "Причины непередачи готовых — по статусу и дате записи собственника и по реестру официальных вызовов; границы 7 и 30 дней — допущение. "
-    "Чистый темп — среднее за 4 последние недели по датам актов приёма (передано из просрочки минус приток новых просрочек); ориентир — тот же показатель предыдущих четырёх недель × 1,10; "
-    "план передачи за неделю — средний факт четырёх предыдущих полных недель × 1,10. Прогноз линейный: темп и приток не меняются, ставка не меняется. "
-    "Эффект решений — снижение расчётного риска за 4 недели против текущего темпа, по допущениям в разделе «Решения». Доля подрядчика в риске — риск просроченных квартир с открытыми замечаниями, "
-    "распределённый пропорционально числу квартир с замечаниями подрядчика. Стоимость устранения и потенциал претензий — оценка по средней стоимости замечания; потенциал — трёхкратная стоимость просроченных замечаний. "
-    "Замечания портфеля: остаток накопительно, доля просроченных замечаний и число квартир с неустранёнными замечаниями — по данным ЖК; поступило за период, устранено, отменено, приостановлено, "
-    "поквартальный ход и доля квартир, где все замечания устранены, — оценка по профилю каждого ЖК (в выгрузке закрытых замечаний нет). Тождества соблюдаются: всего = устранено + отменено + приостановлено + осталось; "
-    "остаток на конец квартала = перенос + поступило нарастающим итогом − закрыто. «Риск под замечаниями» — суточный риск просроченных квартир, где есть неустранённые замечания и передача невозможна. "
-    "Персональные данные в отчёт не входят.")
+    + "; значения меняются в боковой панели, экспозиция пересчитывается пропорционально. Коммерческие помещения не включены; машиноместа и кладовые учитываются отдельно по расчётным ценам. "
+    "<br><b>Накопленная неустойка</b> — верхняя граница за весь период просрочки (дни моратория исключены); это оценка обязательств, а не прогноз платежей. "
+    f"<br><b>Каскад оценок:</b> претензии и иски предъявляются по {C.fmt_pct(K['claim'])} верхней границы; суд снижает неустойку по ст. 333 ГК РФ на {C.fmt_pct(K['cut'])}; "
+    f"{C.fmt_pct(K['paid'])} ожидаемых выплат уже выплачено. Данных о претензиях, исках и выплатах нет, поэтому коэффициенты заданы допущением и меняются в боковой панели. "
+    "<br><b>Готовы к передаче</b> — квартира просрочена по ДДУ, не передана, готовность подтверждена (есть дата готовности, нет отмены готовности и мотивированного отказа), открытых замечаний нет; "
+    "их экспозиция входит в общую. Причины непередачи определены по статусу и дате записи собственника и по реестру официальных вызовов; границы в 7 и 30 дней приняты допущением. "
+    "<br><b>Темп и целевой темп.</b> Чистый темп — среднее за 4 последние недели по датам актов приёма-передачи (передано из просрочки за вычетом притока новых просрочек). "
+    "Целевой темп снижения — тот же показатель за предыдущие четыре недели с запасом 10%; план передачи за неделю — средний факт четырёх предыдущих полных недель с запасом 10%. "
+    "Прогноз линейный: темп, приток и ключевая ставка не меняются. "
+    "<br><b>Ожидаемый эффект решений</b> — снижение расчётной дневной экспозиции к концу 4-й недели и накопленное за 4 недели относительно текущего темпа; рассчитывается от доли причины в экспозиции ЖК "
+    "по допущениям, приведённым в разделе «Управленческие решения». Доля подрядчика в экспозиции — экспозиция просроченных квартир с открытыми замечаниями, распределённая пропорционально числу квартир с замечаниями подрядчика. "
+    "Стоимость устранения — оценка по средней стоимости замечания; потенциал претензий — трёхкратная стоимость просроченных замечаний. "
+    "<br><b>Реестр замечаний.</b> Остаток, доля просроченных замечаний и число квартир с неустранёнными замечаниями — по данным ЖК. Поступившие за период, устранённые, отменённые и приостановленные замечания, "
+    "поквартальный ход и доля квартир, где устранены все замечания, — оценка по профилю ЖК (закрытых замечаний в выгрузке нет). Соблюдаются тождества: всего = устранено + отменено + приостановлено + остаток; "
+    "остаток на конец квартала = перенос + поступило нарастающим итогом − закрыто. «Экспозиция под неустранёнными замечаниями» — дневная экспозиция просроченных квартир, передача которых невозможна из-за открытых замечаний. "
+    "<br>Персональные данные в отчёт не входят.")

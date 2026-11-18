@@ -108,7 +108,7 @@ def test_internal_consistency_of_every_project(D, folder):
     x = A[A["Дней для неустойки (после моратория)"].notna()]
     assert ((x["Дней для неустойки (после моратория)"] * x["Ставка ЦБ на срок ДДУ, %"] / 100 / 150) - x["Коэф. неустойки на 1 ₽ цены (верх)"]).abs().max() < 1e-9
     assert set(CT["Класс риска"]) <= {"высокий", "средний", "низкий", "мало данных"} and CT["Балл риска"].between(0, 100).all()
-    assert set(R["Группа"]) == {"Окна", "Отделка", "Двери", "Инженерка", "Прочее"}
+    assert set(R["Группа"]) == {"Окна", "Отделка", "Двери", "Инженерные системы", "Прочее"}
     # шахматка: каждое помещение корпуса на экране ровно один раз
     for k in DT.korpus_list(A)[:3]:
         _, info = DT.chess_html(A, k)
@@ -167,8 +167,8 @@ def test_remark_aggregates_match_stats_helpers(D):
 
 
 def test_table_sorting_and_top3(B):
-    by_risk = PF.table(B["projects"], "risk")["Расчётный риск, ₽/сутки"].tolist()
-    by_over = PF.table(B["projects"], "overdue")["Просрочено по ДДУ, кв."].tolist()
+    by_risk = PF.table(B["projects"], "risk")["Расчётная дневная экспозиция, ₽"].tolist()
+    by_over = PF.table(B["projects"], "overdue")["Просрочка по ДДУ, квартир"].tolist()
     assert by_risk == sorted(by_risk, reverse=True) and by_over == sorted(by_over, reverse=True)
     assert "Данные" not in PF.table(B["projects"]).columns
 
@@ -278,7 +278,7 @@ def test_app_locked_without_flag():
 def test_full_report_after_login_has_no_labels_and_no_toggle():
     at = _login()
     t = _screen_text(at)
-    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения модели", "Приоритет руководителя", "Матрица рисков", "Ориентир"):
+    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения и методология расчёта", "Приоритетный объект портфеля", "Матрица экспозиции по причинам просрочки", "Целевой темп"):
         assert s in t, s
     for s in ("Нет данных", "Требует уточнения", "модельн", "Предъявленные требования", "Подтверждённые суммы"):
         assert s not in t, s
@@ -294,9 +294,9 @@ def test_each_project_gets_identical_set_of_blocks(name):
     at.session_state["pf_sel"] = name
     at.run()
     assert not at.exception, [e.message for e in at.exception]
-    assert [t.label for t in at.tabs] == ["Обзор", "Шахматка", "Замечания", "Подрядчики", "Деньги", "Динамика"]
+    assert [t.label for t in at.tabs] == ["Обзор", "Шахматка", "Замечания", "Подрядчики", "Финансы", "Динамика"]
     t = _screen_text(at)
-    for s in ("Три главные проблемы", "Подключить", "Проверим на следующем совещании", "Корпуса", "Открытых замечаний", "Балл риска",
+    for s in ("Ключевые проблемы ЖК", "Ответственные роли", "Контрольный показатель", "Корпуса", "Открытых замечаний", "Балл риска",
               "Мало данных", "Потенциал претензий", "Блокируют передачу",
               "срок ДДУ нарушен", "Открыта к передаче", "Не принята"):
         assert s in t, s
@@ -378,18 +378,18 @@ def test_plan_fact_and_dynamics_are_comparable(B):
 def test_first_screen_shows_three_cards_slice_date_and_methodology():
     at = _login()
     t = _screen_text(at)
-    for s in ("Просрочено по ДДУ", "Из них готовы к передаче", "Расчётный финансовый риск", "Дата среза: 11.11.2026", "Оценка есть по 10 из 10 ЖК",
-              "ключевая ставка / 300", "Приоритет руководителя", "Подтверждённая причина", "Требуемые решения и их эффект", "Доля в общем риске",
-              "Изменение за неделю к ориентиру", "Передано за неделю: факт / план", "Риск на просроченную квартиру",
-              "Расчётный и реальный риск", "Предъявлено претензий и исков", "Ожидаемые выплаты", "Уже выплачено", "Почему готовые не переданы", "Прогноз и ориентир",
-              "Решения для генерального директора"):
+    for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная дневная экспозиция", "Дата среза: 11.11.2026", "Расчётная экспозиция определена по 10 из 10 ЖК",
+              "1/300 ключевой ставки", "Приоритетный объект портфеля", "Основная причина (по данным)", "Предлагаемые решения и ожидаемый эффект", "Доля в общей экспозиции",
+              "Изменение за неделю к целевому темпу", "Передано за неделю: факт / план", "Дневная экспозиция на одну просроченную квартиру, ₽",
+              "Расчётная неустойка и ожидаемые выплаты", "Предъявлено претензий и исков", "Ожидаемые выплаты", "Уже выплачено", "Причины непередачи готовых квартир", "Прогноз и целевой темп",
+              "Управленческие решения и ожидаемый эффект"):
         assert s in t, s
     assert at.selectbox(key="pf_goto").options == [n for _, n in pf_data.PROJECTS]
-    assert t.index("Расчётный финансовый риск") < t.index("Приоритет руководителя") < t.index("Портфель по ЖК")
+    assert t.index("Расчётная дневная экспозиция") < t.index("Приоритетный объект портфеля") < t.index("Структура портфеля по ЖК")
     assert not [w for w in LABELS if w in t]
     # порядок строк таблицы: по убыванию риска
     order = [p["name"] for p in PF.by_risk(PF.build(pf_data.load(True, key=KEY), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])]
-    i = [t.index(n, t.index("Портфель по ЖК")) for n in order]
+    i = [t.index(n, t.index("Структура портфеля по ЖК")) for n in order]
     assert i == sorted(i)
 
 
@@ -402,7 +402,7 @@ def test_jump_button_opens_selected_project_detail():
 
 def test_cache_keys_bumped_for_new_schema():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert src.count('schema: str = "v7"') == 2 and '"v6"' not in src
+    assert src.count('schema: str = "v8"') == 2 and '"v7"' not in src
 
 
 # ---------------------------------------------------------------- четыре вопроса гендиректора (v6)
@@ -485,11 +485,18 @@ def test_forecast_and_scenario(B):
 def test_decisions_have_effect_roles_and_no_names_or_deadlines(B):
     for p in B["projects"]:
         ds = p["decisions"]
-        assert ds and [d["effect"] for d in ds] == sorted((d["effect"] for d in ds), reverse=True)
+        assert 1 <= len(ds) <= 3 and len({d["pool"] for d in ds}) == len(ds)          # разные причины, без пересечения пулов квартир
         for d in ds:
-            assert d["effect"] > 0 and d["roles"] and d["kind"] and d["title"] and d["basis"]
-            assert not re.search(r"\b\d{1,2}\.\d{2}\.\d{4}\b|не позднее|до конца", d["title"] + d["basis"])
-        assert {d["kind"] for d in ds} >= {"Деньги, люди", "Полномочия"}
+            assert d["effect"] > 0 and d["effect_day"] > 0 and d["roles"] and d["kind"] and d["title"] and d["basis"] and d["mechanism"] and d["metric"]
+            assert len(d["short"]) <= 70 and not re.search(r"\b\d{1,2}\.\d{2}\.\d{4}\b|не позднее|до конца", d["title"] + d["basis"])
+            assert not re.search(r"war room|one-stop|SLA|KPI|no-show|capacity", d["title"] + d["short"] + d["mechanism"], re.I)
+        # эффект согласован с экспозицией ЖК: сумма снижений за день не больше экспозиции, каждое — не больше экспозиции своей причины
+        assert sum(d["effect_day"] for d in ds) <= p["risk_day"]
+        for d in ds:
+            if d["pool"] in p["reasons"]:
+                assert d["effect_day"] <= p["reasons"][d["pool"]]["risk"] + 1e-6
+            else:
+                assert d["effect_day"] <= p["risk_blocked"] + 1e-6
         cr = p["contractor_risk"]
         assert cr and sum(c["share"] for c in cr) <= 1 and all(0 < c["share"] < 1 for c in cr)
     pri = PF.priority(B["projects"])
@@ -497,25 +504,48 @@ def test_decisions_have_effect_roles_and_no_names_or_deadlines(B):
     assert any("Доля подрядчиков" in x for x in pri["drivers"])
 
 
+def test_main_decision_is_specific_per_project(B):
+    mains = [p["decisions"][0]["key"] for p in B["projects"]]
+    assert len(set(mains)) >= len(mains) - 1                      # повтор допускается не более чем у одного малого ЖК
+    small = [p for p in B["projects"] if p["decisions"][0]["key"] in {m for m in mains if mains.count(m) > 1}]
+    assert all(p["risk_day"] < 0.05 * B["totals"]["risk_day"] for p in small)
+    shorts = [p["decisions"][0]["short"] for p in B["projects"]]
+    assert len(set(shorts)) >= 9
+    # главное решение вытекает из структуры причин ЖК: пул решения непустой
+    for p in B["projects"]:
+        d = p["decisions"][0]
+        assert (p["reasons"][d["pool"]]["n"] > 0) if d["pool"] in p["reasons"] else p["risk_blocked"] > 0
+    # правовые формулировки: односторонний акт — только со ссылкой на ст. 8 214-ФЗ
+    for p in B["projects"]:
+        for d in p["cands"]:
+            if "односторонн" in d["title"].lower():
+                assert "ст. 8 214-ФЗ" in d["title"]
+
+
+def test_table_cell_has_short_decision_and_effect(B):
+    for r in PF.screen_rows(B["projects"]):
+        assert 0 < len(r["decision"]) <= 70 and r["dec_day"] > 0 and r["dec_4w"] > r["dec_day"]
+
+
 def test_week_dynamics_is_compared_with_target(B):
     for p in B["projects"]:
         assert p["risk_target"] < 0 and p["risk_vs_target"] == pytest.approx(p["risk_delta"] - p["risk_target"])
         txt, bad = PF.vs_target(p)
-        assert "ориентир" in txt and bad == (p["risk_vs_target"] > 0)
-    assert "ориентир" in PF.risk_change(B["totals"], B["projects"])[1]
+        assert "целевом темпе" in txt and bad == (p["risk_vs_target"] > 0)
+    assert "целев" in PF.risk_change(B["totals"], B["projects"])[1]
 
 
 def test_new_sections_render_for_each_project_and_changed_coefficient():
     at = _login()
     t = _screen_text(at)
-    for s in ("Утвердить дополнительные бригады приёмки", "Записаны на приёмку", "Закроется через, нед.", "Ожидаемые выплаты"):
+    for s in ("Вторая смена приёмки", "Записаны на приёмку", "Срок закрытия, недель", "Ожидаемые выплаты"):
         assert s in t, s
-    assert "Подрядчики: доля расчётного риска и потенциал удержаний" in [e.label for e in at.expander]
+    assert "Подрядчики: доля расчётной экспозиции и потенциал удержаний" in [e.label for e in at.expander]
     assert not re.search(r"Требует уточнения|Нет данных", t)
     at.slider(key="pf_k_claim").set_value(70).run()
     assert not at.exception
     t2 = _screen_text(at)
-    assert "предъявляют 70%" in t2
+    assert "предъявляется 70%" in t2
 
 
 # ---------------------------------------------------------------- v7: структура показателей по замечаниям, 10 ЖК, первый экран
@@ -583,7 +613,7 @@ def test_headline_and_screen_rows(B):
     tot = B["totals"]
     h = PF.headline(B["projects"], tot)
     top = PF.priority(B["projects"])
-    assert top["name"] in h and h.count(".") >= 2 and "ухудшились" in h
+    assert top["name"] in h and h.count(".") >= 2 and "отставанием от целевой динамики" in h
     rows = PF.screen_rows(B["projects"])
     assert [r["name"] for r in rows] == [p["name"] for p in PF.by_risk(B["projects"])] and len(rows) == 10
     assert sum(r["share"] for r in rows) == pytest.approx(1) and all(len(r["trend"]) == PF.N_WEEKS for r in rows)
@@ -593,14 +623,14 @@ def test_headline_and_screen_rows(B):
 def test_first_screen_v7_has_table_and_remarks_section_without_brands():
     at = _login()
     t = _screen_text(at)
-    for s in ("Портфель по ЖК", "Замечания портфеля", "Всего замечаний за период", "Осталось устранить", "Средний срок устранения", "Связь с деньгами",
-              "Доля просроченных", "С одним неустранённым", "Главное решение и эффект", "Главный риск —"):
+    for s in ("Структура портфеля по ЖК", "Реестр замечаний по портфелю", "Всего замечаний за период", "Остаток к устранению", "Средний срок устранения", "Связь с финансовыми показателями",
+              "Доля просроченных", "С одним неустранённым", "Главное решение и ожидаемый эффект", "Наибольшая расчётная экспозиция —"):
         assert s in t, s
     labels = [e.label for e in at.expander]
-    assert "Все показатели по ЖК: деньги, темп и сроки" in labels and "Все показатели по замечаниям и квартирам по ЖК" in labels
+    assert "Расширенные показатели по ЖК: экспозиция, темп и сроки" in labels and "Расширенные показатели по замечаниям и квартирам" in labels
     for _, n in pf_data.PROJECTS:
         assert n in t
-    assert t.index("Главный риск —") < t.index("Приоритет руководителя")
+    assert t.index("Наибольшая расчётная экспозиция —") < t.index("Приоритетный объект портфеля")
     assert not BAD.search(t) and not [w for w in LABELS if w in t] and "Требует уточнения" not in t and "Нет данных" not in t
     at.selectbox(key="pf_qsel").select("Прокшино").run()
     assert not at.exception

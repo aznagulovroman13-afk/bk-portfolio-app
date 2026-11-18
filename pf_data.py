@@ -52,6 +52,9 @@ def load(allowed: bool | None = None, root: Path = DATA_ROOT, key: str | None = 
                     d[t] = pf_crypto.read_parquet_enc(f, key)
             f = root / folder / "ref_kpis.json.enc"
             d["ref_kpis"] = pf_crypto.read_json_enc(f, key) if f.exists() else None
+            for t in ("remarks", "contractors"):                       # единая терминология в названиях групп замечаний
+                if "Группа" in d[t]:
+                    d[t]["Группа"] = d[t]["Группа"].astype(str).replace({"Инженерка": "Инженерные системы"})
             d["calc_date"] = pd.Timestamp("2026-11-11")
             if d["ref_kpis"] and d["ref_kpis"].get("calc_date"):
                 d["calc_date"] = pd.Timestamp(pd.to_datetime(d["ref_kpis"]["calc_date"], dayfirst=True))

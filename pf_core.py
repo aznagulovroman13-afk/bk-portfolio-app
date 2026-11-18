@@ -48,7 +48,7 @@ def unit_kpis(a: pd.DataFrame) -> dict:
 
 
 def units_state_at(a: pd.DataFrame, when: pd.Timestamp) -> dict:
-    """Реконструкция на дату по датам ПА: сколько передано и сколько непереданных с нарушенным ДДУ."""
+    """Реконструкция на дату по датам передаточных актов: сколько передано и сколько непереданных с нарушенным ДДУ."""
     acc = a["Дата принятия собственником"]
     tr_now = transferred_mask(a)
     tr_at = tr_now & acc.notna() & (acc <= when)
@@ -104,7 +104,7 @@ def ready_mask(a: pd.DataFrame) -> pd.Series:
 
 
 def ready_overdue_daily(a: pd.DataFrame, price: float = ILLUSTR_PRICE) -> tuple[int, float]:
-    """Готовые к передаче квартиры без замечаний с нарушенным ДДУ: штук и ₽/сутки неустойки."""
+    """Готовые к передаче квартиры без замечаний с нарушенным ДДУ: штук и ₽/день неустойки."""
     m = ready_mask(a) & a["Просрочка ДДУ"].eq(NT_OVERDUE) & a["Тип объекта"].eq("Квартира")
     return int(m.sum()), float((a.loc[m, "Ставка ЦБ на срок ДДУ, %"].fillna(0) / 100 / 150).sum()) * price
 
