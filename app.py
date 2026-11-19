@@ -73,6 +73,7 @@ P = dict(price=sum(PF.DEFAULT_PRICES.values()) / len(PF.DEFAULT_PRICES) * 1e6, p
 K = dict(claim=k_claim / 100, cut=k_cut / 100)
 f, fm = C.fmt_int, C.fmt_money
 DAILY_PENALTY = "Расчётная неустойка, ₽/день"
+WEEK_PRIORITY_KEY = "bunino"
 pl = lambda n: C.plural(n, "квартира", "квартиры", "квартир")
 fr = lambda x: C.fmt_pct(x, 1)
 
@@ -170,7 +171,7 @@ plan_title = "Согласовать недельный план передач 
 plan_owner = "Директор по заселению"
 plan_output = "По каждому ЖК — плановое число передач на неделю по группам причин"
 weekly = weekly_decisions(projects)
-pri = PF.priority(projects)
+pri = PF.priority(projects, preferred_key=WEEK_PRIORITY_KEY)
 priority_measure = pri["decisions"][0] if pri and pri["decisions"] else None
 if priority_measure:
     priority_owner = next(role for role in priority_measure["roles"] if role != "Генеральный директор")
@@ -181,6 +182,10 @@ if priority_measure:
         priority_request = "Проверить свободные слоты и представить график ранних приёмок по секциям"
         priority_deliverable = "График приёмок"
         priority_metric = "Сколько визитов перенесено на более ранние даты и сколько квартир передано"
+    elif priority_measure["key"] == "unilateral":
+        priority_request = "Проверить основания для односторонней передачи и представить список квартир на согласование"
+        priority_deliverable = "Список квартир"
+        priority_metric = "Сколько случаев проверено и по скольким принято решение о передаче"
     priority_due = "до конца следующего рабочего дня после согласования"
     priority_review = "через неделю после согласования"
 U.section("Сводка по портфелю", f"{len(projects)} ЖК в портфеле", anchor="summary", num="1.")
@@ -248,7 +253,9 @@ with st.expander("Доля просроченных квартир по ЖК"):
                 unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- 2. Приоритетный объект портфеля
-U.section("Приоритетный объект портфеля", "ЖК с наибольшей расчётной неустойкой за день", anchor="priority", num="2.")
+priority_note = ("Управленческий приоритет компании" if pri and pri["project"]["key"] == WEEK_PRIORITY_KEY
+                 else "ЖК с наибольшей расчётной неустойкой за день")
+U.section("Приоритетный объект портфеля", priority_note, anchor="priority", num="2.")
 if pri:
     drv = "".join(f"<li>{html.escape(x)}</li>" for x in pri["drivers"])
     decs = "".join(

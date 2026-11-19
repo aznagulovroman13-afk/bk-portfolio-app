@@ -348,12 +348,13 @@ def vs_target(p: dict) -> tuple[str, bool]:
     return txt, diff > 0
 
 
-def priority(projects: list[dict]) -> dict | None:
-    """ЖК с наибольшей расчётной экспозицией: сумма, доля, причина и решения с эффектом в ₽ (роли, без имён и сроков)."""
+def priority(projects: list[dict], *, preferred_key: str | None = None) -> dict | None:
+    """Выбранный управленческий приоритет или ЖК с наибольшей расчётной неустойкой за день."""
     ranked = [p for p in by_risk(projects) if p.get("has_risk", True)]
     if not ranked:
         return None
-    p = ranked[0]
+    p = (ranked[0] if preferred_key is None
+         else next((project for project in ranked if project.get("key") == preferred_key), ranked[0]))
     tot_risk = sum(x["risk_day"] for x in ranked) or 1.0
     pr = p["problems"][0] if p["problems"] else None
     if pr:
