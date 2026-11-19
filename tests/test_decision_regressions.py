@@ -118,7 +118,15 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert "неделя сравнения для всех выбранных ЖК по 04.11.2026" in demo_report
     assert "Дзен-кварталы · иллюстративный сценарий" in demo_report
     assert len(app.selectbox(key="pf_goto").options) == 10
+    app.selectbox(key="pf_goto").select("Всеволожск").run()
+    assert not app.exception and app.selectbox(key="pf_sel").value == "Всеволожск"
+    assert any('href="#drill">Открыть карточку ЖК «Всеволожск»' in block.value for block in app.markdown)
+    assert "Navigation 1" in app.get("html")[-1].proto.body
     app.selectbox(key="pf_goto").select("Дзен-кварталы").run()
     assert not app.exception and app.selectbox(key="pf_sel").value == "Дзен-кварталы"
+    assert "Navigation 2" in app.get("html")[-1].proto.body
+    app.selectbox(key="pf_sel").select("Лаголово").run()
+    assert not app.exception and app.selectbox(key="pf_goto").value == "Лаголово"
+    assert not app.get("html")
     app.radio(key="pf_data_mode").set_value("Только подтверждённые данные").run()
     assert not app.exception and app.selectbox(key="pf_sel").value == "Бунинские кварталы"
