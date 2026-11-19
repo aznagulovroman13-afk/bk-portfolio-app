@@ -158,18 +158,33 @@ CALLED_SHARE = 0.50        # доля вызванных, переходящих
 NOTIFY_SHARE = 0.35        # доля собственников без записи, записавшихся через личный кабинет
 EDO_SHARE = 0.20           # доля собственников без записи, подписывающих пакет документов дистанционно
 SLA_SHARE = 0.12           # снижение расчётной экспозиции под замечаниями при регламентном сроке устранения
-STAFF_SHARE = 0.10         # то же при специализированных бригадах по видам работ
+REMARKS_HANDOVER_SHARE = 0.25
 SPRINT_SHARE = 0.20        # доля экспозиции корпуса, снимаемая графиком ускоренного закрытия
 CROSS_SHARE = 0.15         # доля экспозиции по виду работ, снимаемая вторым подрядчиком
 FAMILIES = {"capacity": "Мощность приёмки", "legal": "Правовой режим передачи", "comms": "Работа с собственниками",
             "contractor": "Подрядчики и устранение замечаний", "settle": "Досудебное урегулирование"}
 
+PACKAGE_SPECS = (
+    ("unilateral", "ready", "expired", "Односторонняя передача после правовой проверки", "Юридический департамент"),
+    ("realloc", "ready", "queue", "Предложить более ранние даты приёмки", "Директор по заселению"),
+    ("onestop", "ready", "refused", "Подписать акты после повторной приёмки", "Директор по заселению"),
+    ("brigades", "remarks", None, "Устранить замечания в открытых к передаче квартирах", "Операционный директор"),
+    ("calls", "ready", "silent", "Обзвонить собственников без записи и вызова", "Руководитель клиентского сервиса"),
+)
+PACKAGE_OWNERS = {key: owner for key, _, _, _, owner in PACKAGE_SPECS}
 
-def _cand(c: list, key, fam, pool, title, short, roles, eff_day, days, basis, mech, metric):
+
+def four_week_effect(daily_effect):
+    return daily_effect * (MONTH_W * 7) / 2
+
+
+def _cand(c: list, key, fam, pool, title, short, roles, eff_day, basis, mech, metric):
     if eff_day <= 0:
         return
+    if key in PACKAGE_OWNERS:
+        roles = [PACKAGE_OWNERS[key]]
     c.append(dict(key=key, family=fam, kind=FAMILIES[fam], pool=pool, title=title, short=short, roles=roles, effect_day=float(eff_day),
-                  effect=float(eff_day) * days, basis=basis, mechanism=mech, metric=metric))
+                  effect=four_week_effect(eff_day), basis=basis, mechanism=mech, metric=metric))
 
 
 def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -> list[dict]:
@@ -183,7 +198,7 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
     # --- мощность приёмки
     n = mv(NO_SHOW_SHARE, "booked")
     _cand(out, "noshow", "capacity", "booked", "Ввести управление явкой на приёмку: подтверждение записи за двое суток, резервные слоты и вечерние смены",
-          "Управление явкой: подтверждение записи, резервные слоты", ["Директор по заселению", "Клиентский сервис"], n * unit("booked"), 14,
+          "Управление явкой: подтверждение записи, резервные слоты", ["Директор по заселению", "Клиентский сервис"], n * unit("booked"),
           f"{fi(rs['booked']['n'])} готовых квартир записаны на ближайшую неделю; часть визитов не состоится или переносится",
           "Доля несостоявшихся приёмок снижается; записанные квартиры не выпадают из графика передачи",
           "Передано за неделю; доля несостоявшихся приёмок")
@@ -191,20 +206,20 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
     if extra > 0 and rs["queue"]["n"] >= 3:
         _cand(out, "crew", "capacity", "queue", f"Рассмотреть вторую смену приёмки после проверки спроса и стоимости: до +{fi(extra)} передач в неделю по сценарию",
               "Вторая смена приёмки: дополнительные бригады", ["Генеральный директор", "Финансовый директор", "Директор по заселению"],
-              min(4 * extra, rs["queue"]["n"]) * unit("queue"), 14,
+              min(4 * extra, rs["queue"]["n"]) * unit("queue"),
               f"По {fi(rs['queue']['n'])} готовым квартирам визит назначен позже недели. За последнюю полную неделю передано {fi(p['week_fact'])} квартир",
               "Сценарий предполагает рост темпа до 25%. Нужно подтвердить спрос на ранние визиты, число слотов и стоимость смены",
               "Подтверждённые переносы на ранние даты; дополнительные передачи за неделю; стоимость смены")
         out[-1].update(extra=extra, moved=min(MONTH_W * extra, rs["queue"]["n"]), cost=extra * MONTH_W * SHIFT_UNIT_COST)
     _cand(out, "realloc", "capacity", "queue", "Проверить загрузку приёмщиков и перераспределить смены в пользу ЖК с подтверждённой нехваткой слотов",
           "Перераспределение приёмщиков между ЖК", ["Директор по заселению", "Операционный директор"],
-          mv(SLOT_SHARE, "queue") * unit("queue"), 14,
+          mv(SLOT_SHARE, "queue") * unit("queue"),
           f"У {fi(rs['queue']['n'])} готовых квартир визит назначен позже недели",
           "Мощность приёмки в портфеле используется равномерно: простаивающие бригады переходят на ЖК с очередью",
           "Загрузка приёмщиков по ЖК; длина очереди на слоты")
     _cand(out, "batch", "capacity", "queue", "Перейти на пакетную приёмку по секциям: слоты закрепляются за секцией, приёмщики работают без переездов",
           "Пакетная приёмка по секциям", ["Директор по заселению", "Начальник приёмочной группы"],
-          mv(BATCH_SHARE, "queue") * unit("queue"), 21,
+          mv(BATCH_SHARE, "queue") * unit("queue"),
           f"У {fi(rs['queue']['n'])} готовых квартир визит назначен позже недели",
           "Растёт число приёмок на бригаду в смену; снижаются потери времени на переезды между корпусами",
           "Приёмок на бригаду в смену")
@@ -212,19 +227,19 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
     n_ref = rs["refused"]["n"]
     _cand(out, "onestop", "comms", "refused", "Перейти на сквозную приёмку с выездной группой: замечания фиксируются и устраняются в день осмотра, акт подписывается в тот же визит",
           "Сквозная приёмка с выездной группой", ["Директор по заселению", "Юридический департамент"],
-          mv(REFUSAL_RESOLVED, "refused") * unit("refused"), 14,
+          mv(REFUSAL_RESOLVED, "refused") * unit("refused"),
           f"Приёмка завершена по {fi(n_ref)} квартирам, акты не подписаны",
           "Устранение мелких замечаний переносится на день осмотра, число повторных визитов сокращается",
           "Доля актов, подписанных с первого визита")
     _cand(out, "compensation", "settle", "refused", "Заключать соглашения о компенсации за просрочку передачи с подписанием акта и отказом от дальнейших претензий в согласованной части",
           "Досудебное соглашение о компенсации", ["Юридический департамент", "Финансовый директор"],
-          mv(COMPENSATION_SHARE, "refused") * unit("refused"), 14,
+          mv(COMPENSATION_SHARE, "refused") * unit("refused"),
           f"По {fi(n_ref)} завершённым приёмкам акты не подписаны; причину нужно установить отдельно",
           "Экономический спор закрывается до суда; неустойка по ст. 333 ГК РФ фиксируется по соглашению",
           "Число подписанных актов; сумма фактической компенсации к расчётной неустойке")
     _cand(out, "reply", "legal", "refused", "Направлять мотивированные ответы на отказы и проводить повторную приёмку; при необоснованном отказе составлять односторонний акт по ч. 6 ст. 8 214-ФЗ после правовой оценки",
           "Мотивированный ответ и повторная приёмка", ["Юридический департамент", "Директор по заселению"],
-          mv(REPLY_SHARE, "refused") * unit("refused"), 18,
+          mv(REPLY_SHARE, "refused") * unit("refused"),
           f"{fi(n_ref)} завершённых приёмок без подписанного акта; применимость меры зависит от причины",
           "Обоснованные недостатки устраняются, необоснованные отказы оформляются правовым путём",
           "Доля повторных приёмок, завершённых актом")
@@ -232,33 +247,33 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
     n_c = rs["called"]["n"]
     _cand(out, "called", "legal", "called", "Контролировать вручение и сроки официальных вызовов и готовить пакет документов к одностороннему акту по ч. 6 ст. 8 214-ФЗ",
           "Контроль вручения и сроков вызовов", ["Юридический департамент", "Клиентский сервис"],
-          mv(CALLED_SHARE, "called", 1) * unit("called"), 14,
+          mv(CALLED_SHARE, "called", 1) * unit("called"),
           f"{fi(n_c)} готовых квартир ожидают окончания срока по официальному вызову",
           "Подтверждается юридически значимое вручение уведомления; подготовленные пакеты сокращают время до акта",
           "Доля вызовов с подтверждённым вручением")
     n_e = rs["expired"]["n"]
     _cand(out, "unilateral", "legal", "expired", "Оформлять односторонние акты по ч. 6 ст. 8 214-ФЗ там, где срок вызова истёк, уведомление вручено и мотивированного отказа нет; каждый случай проверяет юридический департамент",
           "Односторонний акт по ч. 6 ст. 8 214-ФЗ", ["Юридический департамент", "Генеральный директор"],
-          mv(UNILATERAL_SHARE, "expired", 1) * unit("expired"), 18,
+          mv(UNILATERAL_SHARE, "expired", 1) * unit("expired"),
           f"По {fi(n_e)} готовым квартирам срок официального вызова истёк, собственник не явился",
-          "Обязательства по передаче считаются исполненными; начисление неустойки прекращается с даты акта",
+          "В расчётном сценарии квартира исключается из просрочки после правовой проверки и оформления передачи",
           "Число квартир, переведённых из просрочки односторонним актом")
     n_s = rs["silent"]["n"]
     _cand(out, "calls", "comms", "silent", "Провести обзвон по сегментам: сначала квартиры с наибольшей дневной ставкой и давностью просрочки, затем остальные; без ответа — официальный вызов",
           "Обзвон по сегментам с приоритетом по ставке", ["Клиентский сервис", "Юридический департамент"],
-          mv(CALL_RESPONSE, "silent") * unit("silent"), 7,
+          mv(CALL_RESPONSE, "silent") * unit("silent"),
           f"{fi(n_s)} готовых квартир без записи и вызова; после контакта приходит около {C.fmt_pct(CALL_RESPONSE)} собственников",
           "Растёт доля собственников, записанных на приёмку; нерезультативные контакты переходят в официальный вызов",
           "Доля собственников, записанных после контакта")
     _cand(out, "notify", "legal", "silent", "Направить официальные уведомления о готовности по ч. 4 ст. 8 214-ФЗ с записью на приёмку в личном кабинете",
           "Уведомление по ч. 4 ст. 8 214-ФЗ с онлайн-записью", ["Юридический департамент", "Клиентский сервис"],
-          mv(NOTIFY_SHARE, "silent") * unit("silent"), 10,
+          mv(NOTIFY_SHARE, "silent") * unit("silent"),
           f"По {fi(n_s)} готовым квартирам нет ни записи, ни официального вызова",
           "Возникают юридически значимые сроки для собственника; запись становится самостоятельной операцией",
           "Доля уведомлённых; доля записавшихся в личном кабинете")
     _cand(out, "edo", "comms", "silent", "Перевести подписание пакета документов в электронный вид (электронный документооборот, усиленная квалифицированная подпись) для согласных собственников",
           "Дистанционное подписание пакета документов", ["Директор по заселению", "Юридический департамент"],
-          mv(EDO_SHARE, "silent") * unit("silent"), 14,
+          mv(EDO_SHARE, "silent") * unit("silent"),
           f"{fi(n_s)} готовых квартир без записи; часть собственников проживает вне региона",
           "Подписание не требует личного визита; сокращается время от согласия собственника до акта",
           "Доля пакетов, подписанных дистанционно")
@@ -270,14 +285,14 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
         _cand(out, "escalation", "contractor", "blocked",
               f"Эскалировать вопрос на уровень руководства подрядчика {c0['name']}: претензия по договору подряда и удержание из гарантийного резерва по блокирующим замечаниям",
               f"Претензионная работа и удержание из резерва: {c0['name']}", ["Генеральный директор", "Договорной отдел", "Служба качества"],
-              PRESSURE_SHARE * c0["risk"], 14,
+              PRESSURE_SHARE * c0["risk"],
               f"Замечания подрядчика в {fi(c0['units'])} квартирах, блокирует передачу {fi(c0['blocked'])}; потенциал удержаний до {C.fmt_money(c0['claim'])}",
               "Подрядчик несёт финансовую ответственность за срыв устранения; ресурсы направляются на блокирующие замечания",
               "Остаток блокирующих замечаний подрядчика")
     ov = p["rem"]["overdue_share"] if p.get("rem") else 0.0
     _cand(out, "sla", "contractor", "blocked", "Установить регламентный срок устранения замечаний со штрафом за каждый день просрочки и ввести ключевые показатели эффективности подрядчиков",
           "Регламентный срок устранения и штрафы подрядчикам", ["Служба качества", "Договорной отдел"],
-          SLA_SHARE * blk * ov, 21,
+          SLA_SHARE * blk * ov,
           f"Просрочено по регламенту {C.fmt_pct(ov)} остатка замечаний; средний срок устранения {p['rem']['avg_days']:.0f} дн." if p.get("rem") else "",
           "Срок устранения становится договорным обязательством, просрочка ведёт к штрафу и удержанию",
           "Средний срок устранения; доля замечаний, просроченных по регламенту")
@@ -288,7 +303,7 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
         _cand(out, "sprint", "contractor", "blocked",
               f"Создать штаб оперативного закрытия по корпусу {k0['k']} ({C.fmt_pct(share_k)} экспозиции ЖК): сводная бригада и ежедневный контроль остатка замечаний",
               f"Штаб закрытия по корпусу {k0['k']}: сводная бригада", ["Операционный директор", "Служба качества", "Директор по заселению"],
-              SPRINT_SHARE * float(k0["risk"]) * (blk / p["risk_day"] if p["risk_day"] else 0), 14,
+              SPRINT_SHARE * float(k0["risk"]) * (blk / p["risk_day"] if p["risk_day"] else 0),
               f"Корпус {k0['k']} — {fi(int(k0['n']))} просроченных квартир и {C.fmt_pct(share_k)} дневной экспозиции ЖК",
               "Ресурсы концентрируются на корпусе с наибольшей экспозицией; остаток замечаний сокращается быстрее среднего по ЖК",
               "Остаток замечаний по корпусу; число квартир, готовых к передаче")
@@ -301,14 +316,16 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
             _cand(out, "cross", "contractor", "blocked",
                   f"Привлечь второго подрядчика на вид работ «{g0['Группа']}» ({C.fmt_pct(sh)} остатка замечаний) за счёт гарантийного резерва первого",
                   f"Второй подрядчик по виду работ «{g0['Группа']}»", ["Операционный директор", "Договорной отдел", "Служба качества"],
-                  CROSS_SHARE * sh * blk, 28,
+                  CROSS_SHARE * sh * blk,
                   f"На вид работ «{g0['Группа']}» приходится {C.fmt_pct(sh)} остатка замечаний, просрочено более 45 дней — {C.fmt_pct(float(g0['% просрочено']) / 100)}",
                   "Мощность устранения по проблемному виду работ удваивается; сроки перестают зависеть от одного подрядчика",
                   "Остаток замечаний по виду работ")
+    remarks_group = next((g for g in p["groups"] if g["key"] == "remarks"), {"n": 0, "risk": 0.0})
+    remark_units = max(1, round(REMARKS_HANDOVER_SHARE * remarks_group["n"])) if remarks_group["n"] else 0
     _cand(out, "brigades", "contractor", "blocked", "Перейти на специализированные бригады по видам работ с двухсменным графиком устранения замечаний",
           "Специализированные бригады и двухсменный график", ["Операционный директор", "Служба качества"],
-          STAFF_SHARE * blk * min(1.0, (p["rem"]["avg_days"] / 60) if p.get("rem") else 0.0), 21,
-          f"Средний срок устранения замечаний {p['rem']['avg_days']:.0f} дн." if p.get("rem") else "",
+          remark_units * remarks_group["risk"] / max(1, remarks_group["n"]),
+          f'{fi(remarks_group["n"])} просроченных квартир открыты к передаче, но имеют замечания',
           "Сокращается время устранения одного замечания; бригады не простаивают между видами работ",
           "Средний срок устранения")
     out.sort(key=lambda d: -d["effect"])
@@ -335,3 +352,62 @@ def pick(cands: list[dict], used: set | None = None, n: int = 3) -> list[dict]:
 
 def decisions(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None, used: set | None = None) -> list[dict]:
     return pick(candidates(p, ct, remarks), used)
+
+
+PACKAGE_RATES = {"unilateral": 18_000, "realloc": 12_000, "onestop": 30_000, "brigades": 45_000, "calls": 5_000}
+
+
+def week_package(projects, focus):
+    """Пакет мер по непересекающимся группам квартир. Затраты — на плановый результат за четыре недели."""
+    package = []
+    for key, group_key, subreason, title, owner in PACKAGE_SPECS:
+        items = []
+        for project in projects:
+            if key == "unilateral" and project["key"] != focus["key"]:
+                continue
+            candidate = next((c for c in project["cands"] if c["key"] == key), None)
+            if not candidate:
+                continue
+            cohort = (project["reasons"][subreason] if subreason
+                      else next(g for g in project["groups"] if g["key"] == group_key))
+            average = cohort["risk"] / cohort["n"]
+            units = round(candidate["effect_day"] / average)
+            items.append(dict(project=project, eligible=cohort["n"], units=units, average=average,
+                              effect_day=candidate["effect_day"]))
+        if not items:
+            continue
+        result_units = sum(item["units"] for item in items)
+        week_units = (result_units + MONTH_W - 1) // MONTH_W
+        for item in items:
+            item["week_units"] = item["units"] // MONTH_W
+        order = sorted(items, key=lambda item: -(item["units"] % MONTH_W))
+        for item in order[:week_units - sum(item["week_units"] for item in items)]:
+            item["week_units"] += 1
+        daily = sum(item["effect_day"] for item in items)
+        package.append(dict(key=key, group=group_key, subreason=subreason, title=title, owner=owner, items=items,
+                            eligible=sum(item["eligible"] for item in items), units=result_units, week_units=week_units,
+                            effect_day=daily, effect=four_week_effect(daily), cost=result_units * PACKAGE_RATES[key]))
+    return package
+
+
+def handover_plan(projects, package, group_keys):
+    """План закрытия текущей просрочки: цели мер входят в общий план и занимают места первыми."""
+    plan = []
+    for project in projects:
+        reserved = dict.fromkeys(group_keys, 0)
+        for measure in package:
+            reserved[measure["group"]] += sum(item["week_units"] for item in measure["items"] if item["project"]["key"] == project["key"])
+        current = {group["key"]: group["n"] for group in project["groups"]}
+        backlog = project["overdue_kv"]
+        target = min(backlog, max(project["week_plan_next"], sum(reserved.values())))
+        rest = target - sum(reserved.values())
+        remaining = {key: current.get(key, 0) - reserved[key] for key in group_keys}
+        available = sum(remaining.values()) or 1
+        exact = {key: rest * remaining[key] / available for key in group_keys}
+        allocation = {key: int(exact[key]) for key in group_keys}
+        for key in sorted(group_keys, key=lambda k: -(exact[k] - allocation[k]))[:rest - sum(allocation.values())]:
+            allocation[key] += 1
+        by_group = {key: reserved[key] + allocation[key] for key in group_keys}
+        plan.append(dict(project=project, groups=by_group, baseline=backlog, total=target,
+                         new=project["next_week_new"], closing=backlog - target + project["next_week_new"]))
+    return plan

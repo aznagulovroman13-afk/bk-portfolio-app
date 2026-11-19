@@ -25,7 +25,7 @@ html, body { background: var(--bg) !important; }
 header[data-testid="stHeader"] { height: 0; }
 [data-testid="stDecoration"], [data-testid="stStatusWidget"], [data-testid="stMainMenu"], #MainMenu,
 [data-testid="stAppDeployButton"], [data-testid="stToolbarActions"], footer { display: none !important; }
-.stMainBlockContainer, .block-container { max-width: 1480px !important; margin: 0 auto; padding: 58px var(--bk-pad) 5rem var(--bk-pad) !important; }
+.stMainBlockContainer, .block-container { max-width: 1480px !important; margin: 0 auto; padding: 58px max(120px, var(--bk-pad)) 7rem var(--bk-pad) !important; }
 html, body, .stApp, [data-testid="stMain"] { max-width: 100%; overflow-x: clip; }
 h1, h2, h3, h4, p, li, label { color: var(--ink); }
 [data-testid="stCaptionContainer"] { color: var(--ink3) !important; }
@@ -132,6 +132,7 @@ a[data-project-link] { color: #234F7A !important; text-decoration: underline; te
   .kgrid.big { grid-template-columns: 1fr; } .ladder { grid-template-columns: 1fr; } .ladder .ar { display: none; } .ladder .st { margin-bottom: 8px; }
   .prio { grid-template-columns: 1fr; gap: 16px; } .cmp { grid-template-columns: 1fr; }
   .pfnav { padding: 0 6px; gap: 1px; justify-content: space-between; font-size: 12px; }
+  .stMainBlockContainer, .block-container { padding-right: 76px !important; }
   .pfnav b { display: none; }
   .pfnav a, .pfnav summary { padding: 6px 4px; }
 }
@@ -324,17 +325,22 @@ def fin_table(head, rows, right=(), total_last=False, cls="", hide=()):
     st.markdown(f'<div class="tw"><table class="fin {cls}"><thead><tr>{th}</tr></thead><tbody>{"".join(body)}</tbody></table></div>', unsafe_allow_html=True)
 
 
-def spark(values, bad=False, w=84, h=22) -> str:
+def spark(values, bad=False, w=108, h=30, *, scale=None, dates=None, target=None) -> str:
     """Мини-график ряда (SVG). Цвет — только при отставании от целевого темпа."""
     v = [float(x) for x in values]
     if len(v) < 2:
         return ""
-    lo, hi = min(v), max(v)
-    span = (hi - lo) or 1.0
-    pts = [(2 + i * (w - 4) / (len(v) - 1), h - 3 - (x - lo) / span * (h - 6)) for i, x in enumerate(v)]
+    hi = max(max(v), scale or 0, target or 0, 1)
+    pos = lambda x: h - 3 - x / hi * (h - 6)
+    pts = [(2 + i * (w - 4) / (len(v) - 1), pos(x)) for i, x in enumerate(v)]
     col = "#B3261E" if bad else "#5B7BA6"
     line = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
-    return (f'<svg class="sp" width="{w}" height="{h}" viewBox="0 0 {w} {h}" aria-hidden="true"><polyline fill="none" stroke="{col}" stroke-width="1.6" points="{line}"/>'
+    title = f'Квартиры, шкала 0–{hi:.0f}. ' + " · ".join(f"{day}: {value:.0f}" for day, value in zip(dates or (), v))
+    goal = (f'<line x1="{pts[-2][0]:.1f}" x2="{w - 2}" y1="{pos(target):.1f}" y2="{pos(target):.1f}" '
+            'stroke="#4A5568" stroke-width="1.1" stroke-dasharray="2 2"/>') if target is not None else ""
+    return (f'<svg class="sp" width="{w}" height="{h}" viewBox="0 0 {w} {h}" role="img"><title>{html.escape(title)}</title>'
+            f'<line x1="2" x2="{w - 2}" y1="{h - 3}" y2="{h - 3}" stroke="{LINE}"/>{goal}'
+            f'<polyline fill="none" stroke="{col}" stroke-width="1.6" points="{line}"/>'
             f'<circle cx="{pts[-1][0]:.1f}" cy="{pts[-1][1]:.1f}" r="2.4" fill="{col}"/></svg>')
 
 

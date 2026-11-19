@@ -30,6 +30,9 @@ def _contractor(index: int, category: int, number: int) -> str:
 STALLED = ("zen", "scands", "vsev")
 # порядок ЖК фиксирует параметры генератора и не связан с порядком показа в отчёте
 SAMPLE_ORDER = ("bunino", "zen", "proksh", "desn", "scandc", "yuzh", "vsev", "lag", "zorge", "scands")
+ACCRUAL_START = pd.Timestamp("2026-01-01")
+BK_EXPIRED_POOL = 12
+BK_NOTICE_AGE = 45
 
 
 def build(projects: tuple) -> dict:
@@ -87,18 +90,27 @@ def build(projects: tuple) -> dict:
                                 "Просрочено45": age > 45, "Блокирует": not transferred and severity == "Критическое",
                                 "Повтор": issue > 0})
             delay = max(0, (comparison_date - due).days)
+            accrual_days = max(0, (comparison_date - max(due, ACCRUAL_START - pd.Timedelta(days=1))).days)
             rate = (12.0, 13.5, 15.0)[(index + number) % 3]
             units.append({"Объект": unit_id, "Квартира": number, "Корпус": block, "Секция": section, "Этаж": floor,
                           "Тип объекта": "Квартира", "Исходный статус": status, "Готовность подтверждена": ready,
                           "Просрочка ДДУ": (C.LATE if overdue else C.ONTIME) if transferred else (C.NT_OVERDUE if overdue else C.NOT_DUE),
                           "Просрочка ДДУ факт, дн.": delay, "Дней для неустойки (после моратория)": delay, "Срок по ДДУ": due, "Дата принятия собственником": accepted,
-                          "Коэф. неустойки на 1 ₽ цены (верх)": delay * rate / 15000,
-                          "Коэф. неустойки на 1 ₽ цены (низ)": delay * rate / 20000,
+                          "Коэф. неустойки на 1 ₽ цены (верх)": accrual_days * rate / 15000,
+                          "Коэф. неустойки на 1 ₽ цены (низ)": accrual_days * rate / 20000,
                           "Ставка ЦБ на срок ДДУ, %": rate, "Мот. отказ / снятие готовности": status == "Не принята",
                           "Плановая дата ключей в ОЗ": snapshot + pd.Timedelta(days=7) if status == "Ключи в ОЗ не переданы" else pd.NaT,
                           "Статус записи собственника": visit, "Запись через, дн.": visit_day, "Официальный вызов, дн. назад": notice_day,
                           "Замечаний открыто": issue_count, "Критических": critical, "Просрочено (регл)": late_remarks})
         source = pd.DataFrame(remarks)
-        result[key] = dict(key=key, name=name, units=pd.DataFrame(units), calc_date=snapshot,
+        apartments = pd.DataFrame(units)
+        if key == "bunino":
+            overdue_ready = apartments[C.ready_mask(apartments) & apartments["Просрочка ДДУ"].eq(C.NT_OVERDUE)]
+            notice = "Официальный вызов, дн. назад"
+            expired = overdue_ready[notice].gt(30).sum()
+            unbooked = overdue_ready["Статус записи собственника"].eq("") & overdue_ready[notice].isna()
+            supplement = overdue_ready[unbooked].index[:max(0, BK_EXPIRED_POOL - expired)]
+            apartments.loc[supplement, notice] = BK_NOTICE_AGE
+        result[key] = dict(key=key, name=name, units=apartments, calc_date=snapshot, observed_through=snapshot,
                            remarks=pf_stats.remark_agg(source), contractors=pf_stats.contractor_table(source))
     return result

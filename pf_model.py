@@ -28,7 +28,7 @@ PROBLEMS = {
         roles=("Дирекция по заселению", "Клиентский сервис"),
         metric="Число переданных квартир из списка; остаток готовых квартир без замечаний"),
     "keys": dict(
-        title="Ключи не переданы в ОЗ (стройготовность)",
+        title="Ключи не переданы в офис заселения",
         action="Подтвердить график передачи ключей в ОЗ по корпусам и устранить препятствия",
         roles=("Генподрядчик по отделке", "Стройконтроль"),
         metric="Число квартир с переданными в ОЗ ключами; остаток квартир без ключей"),
@@ -103,7 +103,10 @@ def _real_groups(kv: pd.DataFrame, cd: pd.Timestamp, price: float) -> list[dict]
         else:
             cause = (f"Открытых замечаний у этих квартир {C.fmt_int(g['Замечаний открыто'].sum())}, "
                      f"критических {C.fmt_int(g['Критических'].sum())}")
+        with_remarks = g[g["Замечаний открыто"].gt(0)]
         out.append(dict(key=key, title=PROBLEMS[key]["title"], n=int(len(g)), risk=risk, korpusa=_korpusa_text(g), cause=cause,
+                        with_remarks_n=len(with_remarks),
+                        with_remarks_risk=float(_rub_day(with_remarks["Ставка ЦБ на срок ДДУ, %"].fillna(0), price).sum()),
                         baseline=int(len(g)) if key != "remarks" else int(g["Замечаний открыто"].sum())))
     return out
 
@@ -125,15 +128,16 @@ def _problem_rows(groups: list[dict], total_risk: float, total_n: int) -> list[d
     return rows
 
 
-def weekly(A: pd.DataFrame, cd: pd.Timestamp, observed_through: pd.Timestamp | None = None) -> pd.DataFrame:
+def weekly(A: pd.DataFrame, cd: pd.Timestamp, observed_through: pd.Timestamp | None = None, *, align_to_cutoff: bool = False) -> pd.DataFrame:
     """12 недель: передано (квартиры / все помещения) по датам передаточных актов и просрочка по ДДУ (квартиры) на конец недели."""
     tr = C.transferred_mask(A)
     acc = A["Дата принятия собственником"]
     kv = A["Тип объекта"].eq("Квартира")
     cutoff = observed_through if observed_through is not None else cd - pd.Timedelta(days=5)
+    start = cutoff - pd.Timedelta(days=7 * N_WEEKS - 1) if align_to_cutoff else WEEK0
     rows = []
     for i in range(N_WEEKS):
-        ws = WEEK0 + pd.Timedelta(days=7 * i)
+        ws = start + pd.Timedelta(days=7 * i)
         we = ws + pd.Timedelta(days=6)
         m = tr & acc.ge(ws) & acc.lt(ws + pd.Timedelta(days=7))
         if observed_through is not None:
@@ -145,6 +149,8 @@ def weekly(A: pd.DataFrame, cd: pd.Timestamp, observed_through: pd.Timestamp | N
 
 
 def comparison_cutoff(d: dict) -> pd.Timestamp:
+    if d.get("observed_through") is not None:
+        return min(d["calc_date"], d["observed_through"])
     last_act = d["units"]["Дата принятия собственником"].max()
     return min(d["calc_date"], last_act) if pd.notna(last_act) else d["calc_date"]
 
@@ -158,7 +164,7 @@ def project(d: dict, P: dict, K: dict | None = None, *, comparison_date: pd.Time
     ready_n, ready_daily = C.ready_overdue_daily(A, price)
     kv = _kv_overdue(A)
     ad = comparison_date if comparison_date is not None else comparison_cutoff(d)
-    wk = weekly(A, cd, ad)
+    wk = weekly(A, cd, ad, align_to_cutoff=d.get("observed_through") is not None)
     full = wk[~wk["partial"]]
     last = full.iloc[-1] if len(full) else {"Передано, квартир": 0, "Передано, всего": 0}
     prev = full.iloc[-2] if len(full) > 1 else None
@@ -181,6 +187,10 @@ def project(d: dict, P: dict, K: dict | None = None, *, comparison_date: pd.Time
     risk_target = -target_burn * r_start
     base4 = full["Передано, квартир"].iloc[-5:-1]
     week_plan = int(round(float(base4.mean()) * PLAN_UPLIFT)) if len(base4) else None
+    due = A["Срок по ДДУ"]
+    next_week_due = (~C.transferred_mask(A) & A["Тип объекта"].eq("Квартира")
+                     & ~A["Просрочка ДДУ"].isin([C.UNSOLD, C.NO_DDU])
+                     & due.ge(cd) & due.lt(cd + pd.Timedelta(days=7)))
     groups = _real_groups(kv, cd, price)
     rem = d["remarks"]
     n_rem = int(A["Замечаний открыто"].sum())
@@ -201,6 +211,8 @@ def project(d: dict, P: dict, K: dict | None = None, *, comparison_date: pd.Time
         inflow=float(np.mean(inflow[:4])), act_date=ad, price=price,
         left_n=int(left.sum()), left_risk=float(rate[left].sum()), entered_n=int(entered.sum()), entered_risk=float(rate[entered].sum()),
         week_plan=week_plan, week_dev=(int(last["Передано, квартир"]) - week_plan) if week_plan is not None else None,
+        week_plan_next=int(round(float(full["Передано, квартир"].tail(4).mean()) * PLAN_UPLIFT)) if len(full) else 0,
+        next_week_new=int(next_week_due.sum()),
         has_risk=True,
         remarks=n_rem, critical=int(A["Критических"].sum()), remarks_over=int(A["Просрочено (регл)"].sum()),
         blocking=rm(rem["Блокирует"]), remarks_cost=n_rem * pf_stats.COST_PER_REMARK,
@@ -211,7 +223,7 @@ def project(d: dict, P: dict, K: dict | None = None, *, comparison_date: pd.Time
         by_korpus=(kv.assign(r=_rub_day(kv["Ставка ЦБ на срок ДДУ, %"].fillna(0), price), k=kv["Корпус"].astype(str))
                    .groupby("k").agg(n=("Объект", "size"), risk=("r", "sum")).reset_index().sort_values("risk", ascending=False)),
     )
-    p["risk_blocked"] = float(_rub_day(kv.loc[kv["Замечаний открыто"].gt(0) & ~C.ready_mask(kv), "Ставка ЦБ на срок ДДУ, %"].fillna(0), price).sum())
+    p["risk_blocked"] = sum(group["with_remarks_risk"] for group in groups)
     p["reasons"] = DC.classify_ready(A, price)
     p["ladder"] = DC.ladder(pen["accrued_up"], pen["accrued_lo"], K)
     p["contractor_risk"] = DC.contractor_risk(p, ct)
@@ -240,11 +252,13 @@ def build(D: dict, P: dict, K: dict | None = None) -> dict:
 
 
 def assign_decisions(projects: list[dict], skip: tuple = ("crew",)) -> None:
-    """Главные решения всех ЖК различны: ЖК обрабатываются по убыванию расчётной неустойки, каждый получает наиболее результативную из ещё не использованных мер.
+    """Главные решения всех ЖК различны: ЖК обрабатываются по убыванию эффекта лучшей меры, при равенстве — по дневной неустойке. Каждый получает наиболее результативную из ещё не использованных мер.
     Вторая смена приёмки проверяется отдельно перед согласованием и главным решением не назначается."""
     used: set = set()
-    for p in by_risk(projects):
-        p["decisions"] = DC.pick([c for c in p["cands"] if c["key"] not in skip], used)
+    eligible = {p["key"]: [c for c in p["cands"] if c["key"] not in skip] for p in projects}
+    ordered = sorted(by_risk(projects), key=lambda p: -max((c["effect_day"] for c in eligible[p["key"]]), default=0))
+    for p in ordered:
+        p["decisions"] = DC.pick(eligible[p["key"]], used)
         if p["decisions"]:
             used.add(p["decisions"][0]["key"])
 
