@@ -1,5 +1,6 @@
 """Портфель ЖК — отчёт для генерального директора с доступом по паролю."""
 import html
+from importlib import reload
 from math import ceil
 from urllib.parse import urlencode
 
@@ -17,6 +18,12 @@ import pf_data  # noqa: E402
 import pf_decide as DC  # noqa: E402
 import pf_demo  # noqa: E402
 import pf_model as PF  # noqa: E402
+
+# Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
+REPORT_SCHEMA = "v13"
+if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA:
+    for module in (U, DC, pf_demo, PF):
+        reload(module)
 
 st.markdown(U.CSS, unsafe_allow_html=True)
 st.markdown(
@@ -60,11 +67,11 @@ st.markdown(
 
 
 @st.cache_data(show_spinner="Загрузка данных…")
-def _load_demo_projects(projects: tuple, schema: str = "v12"):
+def _load_demo_projects(projects: tuple, schema: str = REPORT_SCHEMA):
     return pf_demo.build(projects)
 
 
-DA = _load_demo_projects(pf_data.PROJECTS)
+DA = _load_demo_projects(pf_data.PROJECTS, REPORT_SCHEMA)
 with st.sidebar:
     st.markdown("**Допущения расчёта**")
     pr_in = {}
@@ -127,12 +134,12 @@ if not project_keys:
 
 
 @st.cache_data(show_spinner="Расчёт показателей…")
-def _build(prices: tuple, coefs: tuple, keys: tuple, schema: str = "v12"):
+def _build(prices: tuple, coefs: tuple, keys: tuple, schema: str = REPORT_SCHEMA):
     return PF.build({key: DA[key] for key in keys}, dict(price=sum(v for _, v in prices) / len(prices), prices=dict(prices), price_mm=C.MM_PRICE, price_nhp=C.NHP_PRICE),
                     dict(zip(("claim", "cut"), coefs)))
 
 
-B = _build(tuple(sorted(P["prices"].items())), (K["claim"], K["cut"]), project_keys)
+B = _build(tuple(sorted(P["prices"].items())), (K["claim"], K["cut"]), project_keys, REPORT_SCHEMA)
 projects, tot = PF.by_risk(B["projects"]), B["totals"]
 names = [p["name"] for p in projects]
 projects_by_key = {p["key"]: p for p in projects}
