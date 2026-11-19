@@ -35,8 +35,8 @@ import pf_model as PF  # noqa: E402
 
 st.markdown(U.CSS, unsafe_allow_html=True)
 st.markdown(
-    '<style>header[data-testid="stHeader"] {pointer-events: none;} '
-    'header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {pointer-events: auto;}</style>'
+    '<style>header[data-testid="stHeader"], header[data-testid="stHeader"] * {pointer-events: none !important;} '
+    'header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {pointer-events: auto !important;}</style>'
     '<div class="pfnav"><b>ПОРТФЕЛЬ ЖК</b><a href="#summary">Показатели</a><a href="#priority">Приоритет</a><a href="#segments">Структура</a>'
     '<a href="#reasons">Причины</a><a href="#forecast">Прогноз</a><a href="#decisions">Решения</a><a href="#contribution">Концентрация</a>'
     '<a href="#dynamics">Динамика</a><a href="#matrix">Матрица</a><a href="#remarks">Замечания</a><a href="#drill">Детализация</a><a href="#money">Финансы</a>'
