@@ -126,23 +126,31 @@ def _problem_rows(groups: list[dict], total_risk: float, total_n: int) -> list[d
     return rows
 
 
-def weekly(A: pd.DataFrame, cd: pd.Timestamp) -> pd.DataFrame:
+def weekly(A: pd.DataFrame, cd: pd.Timestamp, observed_through: pd.Timestamp | None = None) -> pd.DataFrame:
     """12 недель: передано (квартиры / все помещения) по датам передаточных актов и просрочка по ДДУ (квартиры) на конец недели."""
     tr = C.transferred_mask(A)
     acc = A["Дата принятия собственником"]
     kv = A["Тип объекта"].eq("Квартира")
+    cutoff = observed_through if observed_through is not None else cd - pd.Timedelta(days=5)
     rows = []
     for i in range(N_WEEKS):
         ws = WEEK0 + pd.Timedelta(days=7 * i)
         we = ws + pd.Timedelta(days=6)
         m = tr & acc.ge(ws) & acc.lt(ws + pd.Timedelta(days=7))
-        st = C.units_state_at(A, min(we, cd))
+        if observed_through is not None:
+            m &= acc.le(cutoff)
+        st = C.units_state_at(A, min(we, cd, observed_through) if observed_through is not None else min(we, cd))
         rows.append({"ws": ws, "Неделя": f"{ws:%d.%m}–{we:%d.%m}", "Передано, квартир": int((m & kv).sum()), "Передано, всего": int(m.sum()),
-                     "Просрочка на конец недели, квартир": int(st["nt_overdue_kv"]), "partial": bool(we > cd - pd.Timedelta(days=5))})
+                     "Просрочка на конец недели, квартир": int(st["nt_overdue_kv"]), "partial": bool(we > cutoff)})
     return pd.DataFrame(rows)
 
 
-def project(d: dict, P: dict, K: dict | None = None) -> dict:
+def comparison_cutoff(d: dict) -> pd.Timestamp:
+    last_act = d["units"]["Дата принятия собственником"].max()
+    return min(d["calc_date"], last_act) if pd.notna(last_act) else d["calc_date"]
+
+
+def project(d: dict, P: dict, K: dict | None = None, *, comparison_date: pd.Timestamp | None = None) -> dict:
     """Все показатели одного ЖК: один набор для каждого сегмента портфеля."""
     A, cd = d["units"], d["calc_date"]
     price = P["price"]
@@ -150,11 +158,12 @@ def project(d: dict, P: dict, K: dict | None = None) -> dict:
     pen = C.penalty(A, **P)
     ready_n, ready_daily = C.ready_overdue_daily(A, price)
     kv = _kv_overdue(A)
-    wk = weekly(A, cd)
+    ad = comparison_date if comparison_date is not None else comparison_cutoff(d)
+    wk = weekly(A, cd, ad)
     full = wk[~wk["partial"]]
-    last, prev = full.iloc[-1], (full.iloc[-2] if len(full) > 1 else None)
+    last = full.iloc[-1] if len(full) else {"Передано, квартир": 0, "Передано, всего": 0}
+    prev = full.iloc[-2] if len(full) > 1 else None
     K = {**DC.DEFAULT_K, **(K or {})}
-    ad = min(cd, A["Дата принятия собственником"].max())            # дата последних загруженных актов приёма
     rate = _rub_day(A["Ставка ЦБ на срок ДДУ, %"].fillna(0), price)
     sts = [C.units_state_at(A, ad - pd.Timedelta(days=7 * k)) for k in range(6)]
     ms = [x["mask_nt_kv"] for x in sts]
@@ -168,7 +177,7 @@ def project(d: dict, P: dict, K: dict | None = None) -> dict:
     inflow = [int((ms[k] & ~ms[k + 1]).sum()) for k in range(5)]
     burn_w = [Ns[k + 1] - Ns[k] for k in range(5)]                  # чистое сокращение просрочки за неделю k (0 — последняя)
     burn_pace = float(np.mean(burn_w[:4]))
-    target_burn = float(np.mean(burn_w[1:5])) * PLAN_UPLIFT
+    target_burn = max(0.0, float(np.mean(burn_w[1:5]))) * PLAN_UPLIFT
     r_start = Rs[1] / Ns[1] if Ns[1] else 0.0
     risk_target = -target_burn * r_start
     base4 = full["Передано, квартир"].iloc[-5:-1]
@@ -187,7 +196,8 @@ def project(d: dict, P: dict, K: dict | None = None) -> dict:
         transferred=u["transferred"], late_transferred=u["late_transferred"], refusals=u["refusals"],
         week_fact=int(last["Передано, квартир"]), week_all=int(last["Передано, всего"]),
         week_prev=int(prev["Передано, квартир"]) if prev is not None else None,
-        overdue_delta=int(now_kv - wk_kv), overdue_prev=int(wk_kv), risk_delta=risk_delta, risk_prev=float(pen["daily"] - risk_delta), risk_target=risk_target,
+        overdue_delta=int(now_kv - wk_kv), overdue_week_current=int(now_kv), overdue_prev=int(wk_kv),
+        risk_delta=risk_delta, risk_prev=Rs[1], risk_week_current=Rs[0], risk_target=risk_target,
         risk_vs_target=risk_delta - risk_target, burn_pace=burn_pace, target_burn=target_burn, gross_left=float(np.mean(gross_left[:4])),
         inflow=float(np.mean(inflow[:4])), act_date=ad, price=price,
         left_n=int(left.sum()), left_risk=float(rate[left].sum()), entered_n=int(entered.sum()), entered_risk=float(rate[entered].sum()),
@@ -211,7 +221,7 @@ def project(d: dict, P: dict, K: dict | None = None) -> dict:
     p["decisions"] = DC.pick(p["cands"])
     p["forecast"] = DC.forecast(p)
     p["trend"] = [int(x) for x in wk["Просрочка на конец недели, квартир"]]
-    p["capacity"] = int(full["Передано, квартир"].iloc[-8:].max())
+    p["capacity"] = int(full["Передано, квартир"].iloc[-8:].max()) if len(full) else 0
     return p
 
 
@@ -222,9 +232,10 @@ def build(D: dict, P: dict, K: dict | None = None) -> dict:
     """P: price (по умолчанию для всех ЖК), prices — {папка: цена, ₽} для отдельных ЖК; K — коэффициенты лесенки."""
     prices = P.get("prices") or {}
     projects = []
+    comparison_date = min(map(comparison_cutoff, D.values()), default=None)
     for d in D.values():
         Pk = dict(price=prices.get(d["key"], P["price"]), price_mm=P["price_mm"], price_nhp=P["price_nhp"])
-        projects.append(project(d, Pk, K))
+        projects.append(project(d, Pk, K, comparison_date=comparison_date))
     return dict(projects=projects, totals=totals(projects))
 
 
@@ -238,7 +249,8 @@ def totals(projects: list[dict]) -> dict:
         overdue_kv=s("overdue_kv"), ready=s("ready"), risk_day=s("risk_day"), ready_risk=s("ready_risk"),
         accrued_up=s("accrued_up"), accrued_lo=s("accrued_lo"), week_fact=s("week_fact"), overdue_delta=s("overdue_delta"),
         week_prev=(sum(wk_prev) if all(x is not None for x in wk_prev) else None),
-        risk_delta=s("risk_delta"), risk_prev=s("risk_prev"), overdue_prev=s("overdue_prev"), left_n=s("left_n"), left_risk=s("left_risk"),
+        risk_delta=s("risk_delta"), risk_prev=s("risk_prev"), overdue_prev=s("overdue_prev"),
+        overdue_week_current=s("overdue_week_current"), left_n=s("left_n"), left_risk=s("left_risk"),
         entered_n=s("entered_n"), entered_risk=s("entered_risk"), week_plan=s("week_plan"),
         risk_target=s("risk_target"), burn_pace=s("burn_pace"), target_burn=s("target_burn"), gross_left=s("gross_left"), inflow=s("inflow"),
         ladder={k: sum(p["ladder"][k] for p in projects) for k in projects[0]["ladder"]} if projects else {},
@@ -310,7 +322,7 @@ def risk_change(tot: dict, projects: list[dict]) -> tuple[bool, str]:
     verdict = ("опережение целевого темпа на " + C.fmt_k(abs(diff))) if diff < 0 else ("отставание от целевого темпа на " + C.fmt_k(abs(diff))) if diff > 0 else "строго в целевом темпе"
     txt = (f"За неделю расчётная экспозиция {'снизилась' if d < 0 else 'выросла' if d > 0 else 'не изменилась'}"
            + (f" на {C.fmt_k(abs(d))} в день ({C.fmt_pct(abs(pct), 1)} к началу недели)" if d else "")
-           + f": передано {C.fmt_int(tot['left_n'])} {C.plural(tot['left_n'], 'квартира', 'квартиры', 'квартир')} (−{C.fmt_k(tot['left_risk'])}), "
+           + f": вышли из просрочки {C.fmt_int(tot['left_n'])} {C.plural(tot['left_n'], 'квартира', 'квартиры', 'квартир')} (−{C.fmt_k(tot['left_risk'])}), "
            f"новые просрочки {C.fmt_int(tot['entered_n'])} {C.plural(tot['entered_n'], 'квартира', 'квартиры', 'квартир')} (+{C.fmt_k(tot['entered_risk'])}). "
            f"Целевой темп недели — {sg(tgt)} в день (средняя динамика четырёх предыдущих недель с запасом 10%): итог — {verdict}. "
            f"Наибольшее изменение — {mv['name']}: {sg(mv['risk_delta'])} в день.")

@@ -74,16 +74,18 @@ def classify_ready(A: pd.DataFrame, price: float) -> dict:
     return out
 
 
-def simulate(n0: float, burn: float, r_unit: float, ready: float = 0.0, ready_weeks: int | None = None, cap: int = HORIZON_W) -> dict:
-    """Недельная модель: остаток просрочки, накопленный риск. burn — чистый темп (минус приток), ready_weeks — сценарий «все готовые за N недель»."""
+def simulate(n0: float, burn: float, r_unit: float, ready: float = 0.0, ready_weeks: int | None = None,
+             cap: int = HORIZON_W, *, inflow: float = 0.0) -> dict:
+    """burn — чистый темп; сценарий задаёт объём передач готовых до вычета притока."""
     n, acc, path, left = float(n0), 0.0, [(0, float(n0), 0.0)], float(ready)
     if n <= 0:
         return dict(weeks=0.0, accrued=acc, path=path)
     for w in range(1, cap + 1):
         b = burn
         if ready_weeks and w <= ready_weeks and left > 0:
-            b = max(burn, ready / ready_weeks)
-            left = max(0.0, left - b)
+            transfers = max(burn + inflow, ready / ready_weeks)
+            b = transfers - inflow
+            left = max(0.0, left - transfers)
         if b > 0 and b >= n - 1e-9:
             frac = min(1.0, n / b)
             acc += 7 * frac * r_unit * n / 2
@@ -102,7 +104,7 @@ def forecast(p: dict, ready_weeks: int = 4) -> dict:
     r_unit = p["risk_day"] / n if n else 0.0
     base = simulate(n, burn, r_unit)
     tgt = simulate(n, p["target_burn"], r_unit)
-    scn = simulate(n, burn, r_unit, ready=p["ready"], ready_weeks=ready_weeks)
+    scn = simulate(n, burn, r_unit, ready=p["ready"], ready_weeks=ready_weeks, inflow=p["inflow"])
     return dict(base=base, target=tgt, scn=scn, r_unit=r_unit, saving=base["accrued"] - scn["accrued"],
                 saving_4w=_acc_at(base, MONTH_W) - _acc_at(scn, MONTH_W))
 
