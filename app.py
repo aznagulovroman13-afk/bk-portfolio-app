@@ -176,6 +176,7 @@ route_key = st.query_params.get("jk")
 if route_key in projects_by_key and route_key != st.session_state.get("_pf_applied_jk"):
     st.session_state["pf_sel"] = st.session_state["pf_goto"] = projects_by_key[route_key]["name"]
     st.session_state["_pf_applied_jk"] = st.session_state["_pf_sync_route"] = route_key
+    st.session_state["_pf_initial_route"] = True
     request_drill_scroll()
 
 
@@ -831,5 +832,6 @@ U.sources(
     "остаток на конец квартала = перенос + поступило нарастающим итогом − закрыто. Неустойка по квартирам с замечаниями включает сумму за день по просроченным квартирам с открытыми замечаниями. "
     "<br>Персональных данных в отчёте нет: объекты обозначены номерами, подрядчики — наименованиями организаций. Стоимость второй смены определяется допущением о цене одной дополнительной приёмки.")
 
-st.html(U.navigation_script(st.session_state.pop("_pf_sync_route", None), st.session_state.pop("_pf_scroll", None)),
+st.html(U.navigation_script(st.session_state.pop("_pf_sync_route", None), st.session_state.pop("_pf_scroll", None),
+                            st.session_state.pop("_pf_initial_route", False)),
         unsafe_allow_javascript=True)

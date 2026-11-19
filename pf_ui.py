@@ -114,7 +114,7 @@ table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px
 .fin td .improved { color: #2E7D32; font-weight: 600; }
 a[data-project-link] { color: #234F7A !important; text-decoration: underline; text-underline-offset: 3px; }
 .contrib-bars { border: 1px solid var(--line); background: var(--paper); border-radius: 4px; padding: 12px 14px; container-type: inline-size; }
-.contrib-row { display: grid; grid-template-columns: minmax(110px, 1.05fr) minmax(48px, .95fr) max-content; align-items: center;
+.contrib-row { display: grid; grid-template-columns: minmax(110px, 1.05fr) minmax(48px, .95fr) 150px; align-items: center;
   padding: 7px 0; gap: 10px; font-size: 13px; border-bottom: 1px solid #E6EAF0; }
 .contrib-row:last-child { border-bottom: 0; }
 .contrib-track { display: block; height: 9px; background: #E9EDF2; border-radius: 3px; overflow: hidden; }
@@ -168,16 +168,16 @@ NAVIGATION = """
 """
 
 
-def navigation_script(project_key: str | None, jump: int | None) -> str:
+def navigation_script(project_key: str | None, jump: int | None, initial_route: bool) -> str:
     route = json.dumps(project_key)
     return """<script>
 (() => {
-    function syncProjectAddress(key) {
+    function syncProjectAddress(key, section = 'drill') {
         for (const view of new Set([window, window.parent])) {
             try {
                 const address = new URL(view.location.href);
                 address.searchParams.set('jk', key);
-                address.hash = 'drill';
+                address.hash = section;
                 if (address.href !== view.location.href) {
                     view.history.replaceState(view.history.state, '', address);
                 }
@@ -251,10 +251,12 @@ def navigation_script(project_key: str | None, jump: int | None) -> str:
         });
     }
     const selectedProject = """ + route + """;
-    if (selectedProject) syncProjectAddress(selectedProject);
+    const initialRoute = """ + json.dumps(initial_route) + """;
+    const section = initialRoute && window.location.hash ? window.location.hash.slice(1) : 'drill';
+    if (selectedProject) syncProjectAddress(selectedProject, section);
     const jump = """ + json.dumps(jump) + """;
     if (jump) requestAnimationFrame(() => requestAnimationFrame(() => {
-        document.getElementById('drill')?.scrollIntoView({block: 'start'});
+        document.getElementById(section)?.scrollIntoView({block: 'start'});
     }));
     window.portfolioNavRefresh();
 })();
