@@ -36,7 +36,10 @@ import pf_model as PF  # noqa: E402
 st.markdown(U.CSS, unsafe_allow_html=True)
 st.markdown(
     '<style>header[data-testid="stHeader"], header[data-testid="stHeader"] * {pointer-events: none !important;} '
-    'header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {pointer-events: auto !important;}</style>'
+    'header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {pointer-events: auto !important;}'
+    '.fin.ready-reasons td:first-child {width: 48%;} '
+    '.ready-reasons .reason-track {display: block; height: 5px; margin-top: 6px; background: #E9EDF2; border-radius: 3px;} '
+    '.ready-reasons .reason-fill {display: block; height: 100%; background: #5B7BA6; border-radius: inherit;}</style>'
     '<div class="pfnav"><b>ПОРТФЕЛЬ ЖК</b><a href="#summary">Показатели</a><a href="#priority">Приоритет</a><a href="#segments">Структура</a>'
     '<a href="#reasons">Причины</a><a href="#forecast">Прогноз</a><a href="#decisions">Решения</a><a href="#contribution">Концентрация</a>'
     '<a href="#dynamics">Динамика</a><a href="#matrix">Матрица</a><a href="#remarks">Замечания</a><a href="#drill">Детализация</a><a href="#money">Финансы</a>'
@@ -82,17 +85,10 @@ import pf_detail as DT  # noqa: E402
 
 st.markdown('<div class="rh"><div class="kick">Отчёт для генерального директора · закрытая версия</div><div class="ttl">Портфель ЖК</div></div>',
             unsafe_allow_html=True)
-data_mode = st.radio("Состав отчёта", ["Только подтверждённые данные", "Демонстрационный портфель"],
-                     horizontal=True, key="pf_data_mode")
-demo_mode = data_mode == "Демонстрационный портфель"
-project_keys = tuple(key for key in DA if demo_mode or key in pf_data.CONFIRMED_PROJECTS)
+project_keys = tuple(DA)
 if not project_keys:
-    st.info("Нет данных по выбранному составу ЖК.")
+    st.info("Нет данных по ЖК.")
     st.stop()
-confirmed_count = len(pf_data.CONFIRMED_PROJECTS.intersection(DA))
-st.caption(f"Подтверждённые исходные данные: {confirmed_count} из {len(DA)} ЖК. "
-           + ("Итоги ниже включают иллюстративные срезы и срезы с неподтверждённым источником." if demo_mode
-              else "Расчётные денежные показатели и прогноз основаны на допущениях."))
 
 
 @st.cache_data(show_spinner="Расчёт показателей…")
@@ -120,18 +116,9 @@ rk_d, rk_t = tot["risk_delta"], tot["risk_target"]
 sgm = lambda x: ("+" if x > 0 else "−" if x < 0 else "") + C.fmt_k(x)
 RS = f"color:{U.RISK};font-weight:600"
 LD = tot["ladder"]
-by_key = {p_["key"]: p_ for p_ in projects}
-bk_project, zen = by_key.get("bunino"), by_key.get("zen")
-bk_action = "Проверить спрос на ранние визиты, число дополнительных слотов и стоимость второй смены"
-bk_note = (f'<div class="s"><b>Бунинские кварталы.</b> По {f(bk_project["reasons"]["queue"]["n"])} готовым квартирам приёмка назначена позже недели. '
-           f'<a href="#orders">{html.escape(bk_action)}</a>.</div>') if bk_project else ""
-zen_note = (f'<div class="s"><b>Дзен-кварталы · иллюстративный сценарий.</b> Для передачи {f(zen["ready"])} готовых квартир за четыре недели '
-            f'нужно около {f(ceil(zen["ready"] / DC.MONTH_W))} передач в неделю.</div>') if zen else ""
-st.markdown(
-    f'<div class="concl one"><div class="t">{html.escape(PF.headline(projects, tot))}</div>'
-    f'{bk_note}{zen_note}</div>',
-    unsafe_allow_html=True)
-U.section("Ключевые показатели портфеля", "", anchor="summary", num="1.")
+RSN = tot["reasons"]
+lagging = sum(p_["risk_vs_target"] > 0 for p_ in projects)
+U.section("Сводка по портфелю", f"{len(projects)} ЖК · портфель включает демонстрационные данные", anchor="summary", num="1.")
 U.kpi_cards([
     dict(label="Просрочка по ДДУ", value=f(tot["overdue_kv"]), risk=True, delta=(f"{sg(d_over)} {pl(abs(d_over))} за неделю", "bad" if d_over > 0 else "good" if d_over < 0 else "flat"),
          foot=f"{fr(tot['overdue_kv'] / max(tot['units_kv'], 1))} от всех квартир по ДДУ в портфеле"),
@@ -141,13 +128,16 @@ U.kpi_cards([
          delta=(f"{sgm(rk_d)} за неделю (целевой темп {sgm(rk_t)})", "bad" if rk_d > rk_t else "good"),
          foot=f"₽ в день; накопленная неустойка — до {fm(LD['upper'])} (верхняя граница)"),
 ], big=True)
+st.markdown(f'<div class="dev"><span class="k">За неделю</span> '
+            f'Из просрочки вышло <b>{f(tot["left_n"])}</b> {pl(tot["left_n"])}, новых просрочек — <b>{f(tot["entered_n"])}</b>. '
+            f'<b>{lagging} из {len(projects)} ЖК</b> отстают от целевого темпа снижения риска. <a href="#dynamics">Динамика по ЖК</a>.<br>'
+            f'<span class="k">Готовы к передаче</span> Нет записи и официального вызова у <b>{f(RSN["silent"]["n"])}</b> квартир. '
+            '<a href="#reasons">Причины непередачи</a>.</div>', unsafe_allow_html=True)
 slice_text = dd(slice_dates[0]) if min(slice_dates) == max(slice_dates) else f"{dd(min(slice_dates))}–{dd(max(slice_dates))}"
 st.markdown(f'<div class="slice">Дата среза: <b>{slice_text}</b> · неделя сравнения для всех выбранных ЖК по {dd(act_d)}</div>', unsafe_allow_html=True)
 st.markdown('<div class="note">Расчёт по действующей методике: 1/300 ключевой ставки Банка России × 2 × цена квартиры за каждый день просрочки передачи по ДДУ '
-            f'(ч. 2 ст. 6 214-ФЗ; цены по ЖК приняты допущением, см. «Методология»). Расчётная экспозиция определена по {n_cov} из {len(projects)} ЖК в выбранном режиме. '
+            f'(ч. 2 ст. 6 214-ФЗ; цены по ЖК приняты допущением, см. «Методология»). Расчётная экспозиция определена по {n_cov} из {len(projects)} ЖК. '
             '«Готовы к передаче» — часть просроченных квартир: объект не передан, готовность подтверждена, открытых замечаний нет.</div>', unsafe_allow_html=True)
-_mat, _txt = PF.risk_change(tot, projects)
-st.markdown(f'<div class="dev"><span class="k">{"Существенное отклонение" if _mat else "Изменение за неделю"}</span> {html.escape(_txt)}</div>', unsafe_allow_html=True)
 
 # Расчётная неустойка и сценарий выплат
 st.markdown('<div class="cmph">Расчётная неустойка и сценарий выплат</div>', unsafe_allow_html=True)
@@ -212,14 +202,14 @@ for r_ in srows:
     bad_ = r_["worse"]
     wk_cls = ' class="wr"' if bad_ else ""
     tb.append([
-        f'<b>{html.escape(r_["name"])}</b><span class="sub">{html.escape(pf_data.source_label(r_["key"]))}</span>',
+        f'<b>{html.escape(r_["name"])}</b>',
         f'{f(r_["over"])}<span class="sub{" wr" if r_["d_over"] > 0 else ""}">{arrow(r_["d_over"])} {sg(r_["d_over"])} за неделю</span>',
         f(r_["ready"]), f(round(r_["risk"])), fr(r_["share"]),
         f'<span class="nw">{U.spark(r_["trend"], bad_)}</span><span class="sub"><span{wk_cls}>{"ниже целевого темпа" if bad_ else "в рамках целевого темпа"}</span></span>',
         f(r_["left"]),
         f'{html.escape(r_["decision"])}<span class="sub">−{fm(r_["dec_day"])} в день · −{fm(r_["dec_4w"])} за 4 недели</span>' if r_["dec_day"] else html.escape(r_["decision"])])
 tot_dec_txt = ""
-tb.append(["Демонстрационный итог" if demo_mode else "Итого по подтверждённым ЖК", f'{f(tot["overdue_kv"])}<span class="sub">{arrow(d_over)} {sg(d_over)} за неделю</span>', f(tot["ready"]), f(round(tot["risk_day"])), "100%",
+tb.append(["Итого по портфелю", f'{f(tot["overdue_kv"])}<span class="sub">{arrow(d_over)} {sg(d_over)} за неделю</span>', f(tot["ready"]), f(round(tot["risk_day"])), "100%",
            f'<span class="nw">{U.spark([sum(p_["trend"][i] for p_ in projects) for i in range(len(projects[0]["trend"]))], rk_d > rk_t)}</span>',
            f(tot["rem"]["left_cum"]), ""])
 U.fin_table(["ЖК", "Просрочка по ДДУ", "Готовы к передаче", "Дневная экспозиция, ₽", "Доля в экспозиции", "Динамика просрочки за 12 недель", "Остаток замечаний", "Главное решение и ожидаемый эффект"],
@@ -256,38 +246,45 @@ with st.expander("Расширенные показатели по ЖК: экс�
                  "Передано за неделю: факт / расчётный ориентир", "Срок закрытия, недель", "Будущая расчётная неустойка до закрытия", "Ожидаемые выплаты по сценарию"], fall, right=range(1, 11), total_last=True)
 
 # ---------------------------------------------------------------- 4. Причины непередачи готовых квартир
-RSN = tot["reasons"]
-U.section("Причины непередачи готовых квартир", f"{f(tot['ready'])} готовых к передаче квартир распределены по взаимоисключающим причинам: каждая квартира учтена в одной причине", anchor="reasons", num="4.")
-RCOL = {"booked": "#8FA6C4", "queue": "#5B7BA6", "refused": "#1F3A5F", "missed": "#604968", "date_check": "#57636C",
-        "called": "#C9B27A", "expired": "#8A7440", "silent": "#14213D"}
-fr_ = go.Figure()
-cats = [p_["name"] for p_ in projects] + ["Портфель"]
-for k_, lab_ in DC.REASONS:
-    vals = [p_["reasons"][k_]["n"] for p_ in projects] + [RSN[k_]["n"]]
-    fr_.add_bar(y=cats, x=vals, orientation="h", name=lab_, marker_color=RCOL[k_], text=[f(v_) if v_ else "" for v_ in vals], textposition="inside",
-                insidetextanchor="middle", textfont=dict(color="#FFFFFF" if k_ not in ("booked", "called") else "#14213D", size=11))
-fr_.update_layout(barmode="stack", barnorm="percent", title="Готовые к передаче квартиры по причинам непередачи, доля ЖК (подписи — квартиры)", margin=dict(l=8, r=8, t=34, b=8),
-                  legend=dict(orientation="h", y=-0.12, font=dict(size=11)), bargap=.35)
-fr_.update_yaxes(autorange="reversed")
-fr_.update_xaxes(showticklabels=False)
-U.chart(fr_, key="pf_reasons", height=470)
-big_r = max(DC.REASONS, key=lambda kv: RSN[kv[0]]["n"])
-need = tot["ready"] / DC.MONTH_W
-st.markdown(f'<div class="dev"><span class="k">Самая большая группа</span> {html.escape(big_r[1])}: {f(RSN[big_r[0]]["n"])} из {f(tot["ready"])} квартир '
-            f'(≈{fm(RSN[big_r[0]]["risk"])} дневной экспозиции). Пропускная способность приёмки: за последнюю полную неделю передано {f(tot["week_fact"])} квартир, максимум за 8 недель — {f(tot["capacity"])} в неделю; '
-            f'для передачи всех готовых квартир за 4 недели требуется {f(round(need))} в неделю.</div>', unsafe_allow_html=True)
-with st.expander("Причины по ЖК, экспозиция и пропускная способность приёмки"):
+U.section("Причины непередачи готовых квартир",
+          "В каждой строке — количество квартир, их доля среди готовых и связанный расчётный риск.",
+          anchor="reasons", num="4.")
+reason_scope = st.selectbox("Причины по ЖК", ["Весь портфель"] + names, key="pf_reason_scope")
+reason_data = tot if reason_scope == "Весь портфель" else next(p_ for p_ in projects if p_["name"] == reason_scope)
+reason_groups = reason_data["reasons"]
+reason_count = reason_data["ready"]
+if reason_count:
+    reason_rows = []
+    ordered_reasons = sorted(DC.REASONS, key=lambda item: reason_groups[item[0]]["n"], reverse=True)
+    for key, label in ordered_reasons:
+        group = reason_groups[key]
+        share = group["n"] / reason_count
+        reason_rows.append([
+            f'<span>{html.escape(label)}</span><span class="reason-track" aria-hidden="true">'
+            f'<span class="reason-fill" style="width:{share:.1%}"></span></span>',
+            f(group["n"]), fr(share), fm(group["risk"]),
+        ])
+    reason_rows.append(["Итого", f(reason_count), "100%", fm(reason_data["ready_risk"])])
+    U.fin_table(["Причина", "Квартир", "Доля готовых", "Расчётный риск, ₽/день"],
+                reason_rows, right=(1, 2, 3), total_last=True, cls="ready-reasons")
+else:
+    st.info("В выбранном срезе нет готовых к передаче квартир с просрочкой по ДДУ.")
+
+with st.expander("Сравнение ЖК по причинам и темпу передачи"):
     rows_r = []
-    for k_, lab_ in DC.REASONS:
-        rows_r.append([lab_] + [f"{f(p_['reasons'][k_]['n'])} · {fm(p_['reasons'][k_]['risk'])}" for p_ in projects] + [f"{f(RSN[k_]['n'])} · {fm(RSN[k_]['risk'])}"])
-    U.fin_table(["Причина (квартир · дневная экспозиция)"] + [p_["name"] for p_ in projects] + ["Портфель"], rows_r, right=range(1, len(projects) + 2))
-    U.fin_table(["ЖК", "Факт за последнюю неделю", "Максимум за 8 недель", "Требуется для передачи за 4 недели", "Дефицит пропускной способности, передач в неделю"],
-                [[p_["name"], f(p_["week_fact"]), f(p_["capacity"]), f(round(p_["ready"] / DC.MONTH_W)), f(max(0, round(p_["ready"] / DC.MONTH_W) - p_["capacity"]))] for p_ in projects]
-                + [["Портфель", f(tot["week_fact"]), f(tot["capacity"]), f(round(need)), f(max(0, round(need) - tot["capacity"]))]],
-                right=range(1, 5), total_last=True)
-    st.markdown('<div class="note">Группы определены по статусу и дате записи и по реестру вызовов. '
-                'Поздняя запись показывает дату визита. Для оценки нехватки слотов нужно проверить доступность более ранних окон. '
-                'Границы в 7 и 30 дней приняты допущением; пропускная способность оценена по фактическому темпу передачи.</div>', unsafe_allow_html=True)
+    for key, label in DC.REASONS:
+        rows_r.append([label] + [f"{f(p_['reasons'][key]['n'])} · {fm(p_['reasons'][key]['risk'])}" for p_ in projects]
+                      + [f"{f(RSN[key]['n'])} · {fm(RSN[key]['risk'])}"])
+    U.fin_table(["Причина (квартир · дневной риск)"] + names + ["Портфель"], rows_r, right=range(1, len(projects) + 2))
+    capacity_rows = []
+    for p_ in projects + [tot]:
+        required = ceil(p_["ready"] / DC.MONTH_W)
+        capacity_rows.append([p_.get("name", "Портфель"), f(p_["week_fact"]), f(p_["capacity"]), f(required),
+                              f(max(0, required - p_["capacity"]))])
+    U.fin_table(["ЖК", "Передано за последнюю неделю", "Максимум за 8 недель", "Нужно в неделю для передачи за 4 недели",
+                 "Не хватает передач в неделю к максимуму"], capacity_rows, right=range(1, 5), total_last=True)
+    st.caption("Каждая квартира учтена в одной группе. Запись позже семи дней показывает дату визита. "
+               "Доступность более ранних слотов проверяется отдельно.")
 
 # ---------------------------------------------------------------- 5. Прогноз и целевой темп
 U.section("Прогноз и расчётный ориентир", "Текущий чистый темп, ориентир по истории и сценарий ускоренной передачи готовых квартир", anchor="forecast", num="5.")
@@ -439,8 +436,8 @@ U.kpi_cards([
 st.caption("История закрытия замечаний: нет данных.")
 st.markdown(f'<div class="dev"><b>Связь с финансовыми показателями.</b> На просроченные квартиры с открытыми замечаниями '
             f'приходится <b>{fm(blocked)}</b> расчётного риска в день, или {fr(blocked / tr_)} риска выбранных ЖК.</div>', unsafe_allow_html=True)
-if demo_mode:
-    st.caption("Демонстрационная оценка истории замечаний по профилям ЖК.")
+with st.expander("Демонстрационная история замечаний"):
+    st.caption("Оценка истории замечаний по профилям ЖК.")
     sel_q = st.selectbox("Демонстрационная динамика замечаний по кварталам", ["Весь портфель"] + names, key="pf_qsel")
     Q = RM["quarters"] if sel_q == "Весь портфель" else next(p_ for p_ in projects if p_["name"] == sel_q)["rem"]["quarters"]
     qf = make_subplots(specs=[[{"secondary_y": True}]])
@@ -482,7 +479,6 @@ p = next(x for x in projects if x["name"] == sel)
 d = DA[p["key"]]
 A_, REM, CT = d["units"], d["remarks"], d["contractors"]
 st.markdown(f'<div class="dec-h" style="font-size:20px">{html.escape(p["name"])}</div>', unsafe_allow_html=True)
-st.caption(pf_data.source_label(p["key"]))
 tabs = st.tabs(["Обзор", "Шахматка", "Замечания", "Подрядчики", "Финансы", "Динамика"])
 
 with tabs[0]:
@@ -656,7 +652,9 @@ U.fin_table(["ЖК", "Дневная экспозиция, ₽", "Накопле
 # ---------------------------------------------------------------- 9. Поручения
 U.section("Поручения к согласованию", "Предложения для решения, назначение и сроки подтверждаются на совещании", anchor="orders", num="13.")
 ro = []
+bk_project = next((p_ for p_ in projects if p_["key"] == "bunino"), None)
 if bk_project:
+    bk_action = "Проверить спрос на ранние визиты, число дополнительных слотов и стоимость второй смены"
     ro.append([bk_project["name"], bk_action, "Предлагается директор по заселению", "К согласованию",
                "Подтвердить доступные ранние слоты, готовность собственников и стоимость смены",
                "Нет данных", "Предложение"])
