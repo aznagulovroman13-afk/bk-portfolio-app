@@ -67,11 +67,12 @@ def test_projects_use_a_reproducible_demo_snapshot():
     pd.testing.assert_frame_equal(projects["bunino"]["units"], pf_demo.build(pf_data.PROJECTS)["bunino"]["units"])
 
 
-def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
+def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     import streamlit as st
     from streamlit.testing.v1 import AppTest
 
     st.cache_data.clear()
+    request.addfinalizer(st.cache_data.clear)
 
     data = {}
     for key, name in pf_data.PROJECTS:
@@ -122,7 +123,10 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert "Подтверждённые исходные данные" not in captions
     assert "нет данных" not in (report + captions).lower()
     summary = report.split('id="summary"', 1)[1].split('<div class="cmph">', 1)[0]
-    assert "Сводка по портфелю" in summary and summary.count('class="brief-row"') == 3
+    assert "Сводка по портфелю" in summary and summary.count('class="exec-metric"') == 3
+    assert "Самая высокая дневная неустойка" in summary and "Наибольший эффект главной меры" in summary
+    assert summary.count('class="exec-approval-item"') == 2
+    assert "Цель по остатку просрочки" in summary
     assert report.count("Демо-данные") == 1
     assert "сравнение с <b>04.11.2026</b>" in summary
     assert "Утвердить недельный план передач по каждому ЖК" in summary
@@ -138,11 +142,12 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     for section in (summary, orders):
         assert "Нужно решение ГД" in section and "В рабочем порядке" in section
         assert "18.11.2026" in section
-    assert "Расчётная неустойка, ₽/день" in summary and "один дополнительный день просрочки" in summary
+    assert "Расчётная неустойка</span>" in summary and "<em>₽/день</em>" in summary
+    assert "один дополнительный день просрочки" in summary
     assert "Накопленная неустойка (верхняя оценка)" in report
-    assert f'/?jk={priority["key"]}#drill" data-project-link>Открыть карточку ЖК' in summary
+    assert f'/?jk={priority["key"]}#drill" data-project-link>{priority["name"]}' in summary
     assert '<summary>Ещё</summary>' in report
-    assert "Открыть поручение" in summary
+    assert 'href="#orders">Поручения и план по ЖК' in summary
     assert report.count('class="contrib-row') == 10
     assert "Итого, квартиры" in report and "тем больше квартир" in report
     app.radio(key="pf_matrix_metric").set_value("₽ в день").run()
@@ -175,4 +180,3 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     linked.run()
     assert not linked.exception and linked.selectbox(key="pf_sel").value == "Бунинские кварталы"
     assert "const jump = 1;" in linked.get("html")[-1].proto.body
-    st.cache_data.clear()  # синтетический набор не должен попасть в кэш других тестов

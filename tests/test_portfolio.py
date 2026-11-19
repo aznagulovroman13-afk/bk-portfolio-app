@@ -309,7 +309,7 @@ def test_first_screen_shows_three_cards_slice_date_and_methodology():
     assert "Произведённые выплаты" not in t and "Предъявленные требования" not in t
     payout = next(expander for expander in at.expander if expander.label == "Сценарий будущих выплат по ЖК")
     assert any("Ожидаемые выплаты по сценарию" in block.value for block in payout.markdown)
-    assert t.index("Расчётная неустойка, ₽/день") < t.index("Приоритетный объект портфеля") < t.index("Структура портфеля по ЖК")
+    assert t.index("Расчётная неустойка") < t.index("Приоритетный объект портфеля") < t.index("Структура портфеля по ЖК")
     # порядок строк таблицы: по убыванию риска
     order = [p["name"] for p in PF.by_risk(PF.build(pf_demo.build(pf_data.PROJECTS), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])]
     i = [t.index(n, t.index("Структура портфеля по ЖК")) for n in order]
