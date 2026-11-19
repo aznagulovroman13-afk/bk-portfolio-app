@@ -302,10 +302,13 @@ def test_first_screen_shows_three_cards_slice_date_and_methodology():
     for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Срез на 13.11.2026", "Охват расчёта — 10 из 10 ЖК",
               "1/300 ключевой ставки Банка России", "Приоритетный объект портфеля", "Основная причина", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
               "Изменение за неделю к целевому темпу", "Передано за неделю: факт / целевой темп", "Неустойка на просроченную квартиру, ₽/день",
-              "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Произведённые выплаты", "Причины непередачи готовых квартир", "Прогноз и целевой темп",
+              "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Причины непередачи готовых квартир", "Прогноз и целевой темп",
               "Управленческие решения и ожидаемый эффект"):
         assert s in t, s
     assert sorted(at.selectbox(key="pf_goto").options) == sorted(n for _, n in pf_data.PROJECTS)
+    assert "Произведённые выплаты" not in t and "Предъявленные требования" not in t
+    payout = next(expander for expander in at.expander if expander.label == "Сценарий будущих выплат по ЖК")
+    assert any("Ожидаемые выплаты по сценарию" in block.value for block in payout.markdown)
     assert t.index("Расчётная неустойка, ₽/день") < t.index("Приоритетный объект портфеля") < t.index("Структура портфеля по ЖК")
     # порядок строк таблицы: по убыванию риска
     order = [p["name"] for p in PF.by_risk(PF.build(pf_demo.build(pf_data.PROJECTS), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])]
@@ -440,7 +443,7 @@ def test_new_sections_render_for_each_project_and_changed_coefficient():
     assert not re.search(r"Требует уточнения", t)
     at.slider(key="pf_k_claim").set_value(70).run()
     assert not at.exception
-    assert any("предъявляется 70%" in caption.value for caption in at.caption)
+    assert any("Возможные требования составляют 70%" in caption.value for caption in at.caption)
 
 
 # ---------------------------------------------------------------- v7: структура показателей по замечаниям, 10 ЖК, первый экран
