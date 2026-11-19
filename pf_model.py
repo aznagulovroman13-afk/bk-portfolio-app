@@ -1,11 +1,10 @@
-"""Портфель ЖК: расчёты для отчёта генерального директора (отдельный продукт, не часть отчёта по Бунинским).
+"""Портфель ЖК: расчёты для отчёта генерального директора.
 
 Все ЖК считаются одним и тем же конвейером из одной схемы таблиц: помещения, замечания (свёртка), подрядчики.
 Персональных данных нет: только счётчики, корпуса и роли исполнителей (без имён и сроков).
 """
 from __future__ import annotations
 
-import math
 
 import numpy as np
 import pandas as pd
@@ -97,7 +96,7 @@ def _real_groups(kv: pd.DataFrame, cd: pd.Timestamp, price: float) -> list[dict]
                      f"{C.fmt_int((pl > cd).sum())}, уже прошла у {C.fmt_int((pl <= cd).sum())}, "
                      f"не указана у {C.fmt_int(pl.isna().sum())}")
         elif key == "refusal":
-            cause = (f"Статус «Не принята»; отметка «мот. отказ / снятие готовности» у "
+            cause = (f"Статус «Не принята»; отметка «мотивированный отказ / снятие готовности» у "
                      f"{C.fmt_int(g['Мот. отказ / снятие готовности'].fillna(False).sum())}")
         elif key == "not_open":
             cause = "Статус «В ОЗ, готовность не открыта» либо готовность не подтверждена"
@@ -236,7 +235,18 @@ def build(D: dict, P: dict, K: dict | None = None) -> dict:
     for d in D.values():
         Pk = dict(price=prices.get(d["key"], P["price"]), price_mm=P["price_mm"], price_nhp=P["price_nhp"])
         projects.append(project(d, Pk, K, comparison_date=comparison_date))
+    assign_decisions(projects)
     return dict(projects=projects, totals=totals(projects))
+
+
+def assign_decisions(projects: list[dict], skip: tuple = ("crew",)) -> None:
+    """Главные решения всех ЖК различны: ЖК обрабатываются по убыванию расчётной неустойки, каждый получает наиболее результативную из ещё не использованных мер.
+    Вторая смена приёмки проверяется отдельно перед согласованием и главным решением не назначается."""
+    used: set = set()
+    for p in by_risk(projects):
+        p["decisions"] = DC.pick([c for c in p["cands"] if c["key"] not in skip], used)
+        if p["decisions"]:
+            used.add(p["decisions"][0]["key"])
 
 
 def totals(projects: list[dict]) -> dict:
@@ -418,38 +428,3 @@ def composition(projects: list[dict]) -> list[dict]:
         out.append(dict(name=p["name"], now=p["overdue_kv"] / kv, prev=p["overdue_prev"] / kv, ready=p["ready"] / kv, total=p.get("total", False),
                         n=p["overdue_kv"], units=p["units_kv"]))
     return out
-
-
-# ---------------------------------------------------------------- сверка Бунинских кварталов с действующим отчётом
-def _close(a, b, tol=1e-6) -> bool:
-    return math.isclose(float(a), float(b), rel_tol=tol, abs_tol=1.0)
-
-
-def reconcile(d: dict, P: dict, p: dict) -> list[dict]:
-    """Расчёт по общей схеме против независимых файлов действующего отчёта (только для ЖК, где они есть)."""
-    A = d["units"]
-    cur = d["ref_kpis"]["current"]
-    ks = d["ref_korpus"]
-    k_price = P["price"] / C.ILLUSTR_PRICE      # kpis.json посчитан при цене 10 млн ₽; риск линеен по цене
-    pen = C.penalty(A, **P)
-    ready_n, _ = C.ready_overdue_daily(A, P["price"])
-    mask_kv = A["Тип объекта"].eq("Квартира") & A["Просрочка ДДУ"].eq(C.NT_OVERDUE)
-    tw = d["ref_transfers"]
-    last = tw.iloc[-2]
-    rows = [
-        ("Просрочка по ДДУ, помещений", p["overdue_all"], cur["nt_overdue"]),
-        ("То же, сумма по корпусам", p["overdue_all"], int(ks["Не_передано_просрочка"].sum())),
-        ("Просрочка по ДДУ, квартир", p["overdue_kv"], cur["nt_overdue_kv"]),
-        ("То же, по реестру квартир", p["overdue_kv"], int(mask_kv.sum())),
-        ("Помещений всего", p["units"], cur["units_total"]),
-        ("Передано", p["transferred"], cur["transferred"]),
-        ("Готовые без замечаний (в просрочке)", p["ready"], ready_n),
-        ("Накоплено, верхняя оценка", p["accrued_up"], cur["penalty_accrued_est_up"] * k_price),
-        ("Накоплено, нижняя оценка", p["accrued_lo"], cur["penalty_accrued_est_lo"] * k_price),
-        ("Дневная экспозиция ₽, квартиры", p["risk_day"], pen["daily"]),
-        ("Передано за полную неделю, квартир", p["week_fact"], int(last["ПА, квартиры"])),
-        ("Передано за ту же неделю, помещений", p["week_all"], int(last["ПА, все помещения"])),
-        ("Открытых замечаний", p["remarks"], cur["remarks_open"]),
-        ("Критических замечаний", p["critical"], cur["critical"]),
-    ]
-    return [dict(name=n, portfolio=float(a), report=float(b), ok=_close(a, b)) for n, a, b in rows]

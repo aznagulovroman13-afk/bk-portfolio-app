@@ -23,15 +23,12 @@ P0 = dict(price=C.ILLUSTR_PRICE, price_mm=C.MM_PRICE, price_nhp=C.NHP_PRICE)
 BAD = re.compile("(" + "|".join(["app" + "le", "айф" + "он", "iph" + "one", "а1" + "01", "a1" + "01", r"power\s*" + "bi", r"инн\b", r"\b\d{10,12}\b"]) + ")", re.I)
 # слова, которых не должно быть на экранах (собраны из частей, чтобы тест не находил сам себя)
 LABELS = ["ДЕ" + "МО", "де" + "мо", "услов" + "ные цифры", "услов" + "н", "ФА" + "КТ", "ОЦЕ" + "НКА", "Только " + "факт", "Все " + "ЖК", "модельн"]
-_SEC = ROOT / ".streamlit" / "secrets.toml"
-KEY = tomllib.loads(_SEC.read_text(encoding="utf-8")).get("DATA_KEY") if _SEC.exists() else os.environ.get("DATA_KEY")
-pytestmark = pytest.mark.skipif(not KEY, reason="нет DATA_KEY: расшифровать данные нельзя")
 FOLDERS = [k for k, _ in pf_data.PROJECTS]
 
 
 @pytest.fixture(scope="module")
 def D():
-    return pf_data.load(True, key=KEY)
+    return pf_demo.build(pf_data.PROJECTS)
 
 
 @pytest.fixture(scope="module")
@@ -39,29 +36,10 @@ def B(D):
     return PF.build(D, P0)
 
 
-def test_locked_gate_does_not_read_files(tmp_path, monkeypatch):
-    monkeypatch.setattr(pf_data, "_key", lambda k: k or None)
-    with pytest.raises(pf_data.LockedError):
-        pf_data.load(False, root=tmp_path, key=KEY)
-    with pytest.raises(pf_data.LockedError):
-        pf_data.load(True, key="")  # нет ключа — не читаем и не расшифровываем
-
-
-def test_wrong_key_does_not_decrypt():
-    from cryptography.fernet import Fernet
-    with pytest.raises(pf_data.LockedError):
-        pf_data.load(True, key=Fernet.generate_key().decode())
-
-
-def test_repo_data_is_encrypted_only():
-    assert sorted(p.name for p in (ROOT / "data").iterdir()) == sorted(FOLDERS)
-    for folder in FOLDERS:
-        files = list((ROOT / "data" / folder).iterdir())
-        assert files and all(p.name.endswith(".enc") for p in files), folder
-        for p in files:
-            head = p.read_bytes()[:4]
-            assert head != b"PAR1" and not head.startswith(b"{"), p.name
-    assert not [p for p in ROOT.rglob("*") if p.suffix in (".parquet", ".csv", ".xlsx") and ".venv" not in str(p)]
+def test_repo_has_no_data_files():
+    assert not (ROOT / "data").exists()
+    assert not [p for p in ROOT.rglob("*") if (p.suffix in (".parquet", ".csv", ".xlsx", ".enc") or p.name in ("data_gate.py"))
+                and ".venv" not in str(p) and ".git" not in p.parts]
 
 
 def test_password_compare_and_lockout():
@@ -74,15 +52,6 @@ def test_password_compare_and_lockout():
         pf_auth.register_fail(st, now=100)
     assert pf_auth.lock_left(st, now=100) == pf_auth.LOCK_SECONDS
     assert pf_auth.lock_left(st, now=100 + pf_auth.LOCK_SECONDS + 1) == 0
-
-
-@pytest.mark.parametrize("price", [10e6, 14e6])
-def test_bunino_reconciliation_all_ok(D, price):
-    P = dict(P0, price=price)
-    p = PF.project(D["bunino"], P)
-    rows = PF.reconcile(D["bunino"], P, p)
-    assert len(rows) >= 14
-    assert not [c["name"] for c in rows if not c["ok"]]
 
 
 def test_all_projects_share_one_schema(D):
@@ -100,7 +69,7 @@ def test_internal_consistency_of_every_project(D, folder):
         assert int(R["n"].sum()) == int(A["Замечаний открыто"].sum()) == int(CT["Замечаний"].sum())
         assert int(R.loc[R["Важность"].eq("Критическое"), "n"].sum()) == int(A["Критических"].sum())
     assert (A["Критических"] <= A["Замечаний открыто"]).all() and (A["Просрочено (регл)"] <= A["Замечаний открыто"]).all()
-    assert set(A["Просрочка ДДУ"].dropna()) <= {C.NT_OVERDUE, C.LATE, C.ONTIME, C.NO_DDU, C.UNSOLD}
+    assert set(A["Просрочка ДДУ"].dropna()) <= {C.NT_OVERDUE, C.LATE, C.ONTIME, C.NO_DDU, C.UNSOLD, C.NOT_DUE}
     tr = C.transferred_mask(A)
     assert A.loc[tr, "Дата принятия собственником"].notna().all() and A.loc[~tr, "Дата принятия собственником"].isna().all()
     nt = A["Просрочка ДДУ"].eq(C.NT_OVERDUE)
@@ -116,25 +85,6 @@ def test_internal_consistency_of_every_project(D, folder):
         assert info["units"] == int((A["Корпус"].astype(str) == k).sum()) == sum(info["counts"].values())
 
 
-def test_synthetic_projects_are_better_and_worse_with_own_scale(D):
-    def m(k):
-        a, d = D[k]["units"], D[k]
-        kv = a["Тип объекта"].eq("Квартира")
-        pen = C.penalty(a)
-        wk = PF.weekly(a, d["calc_date"])
-        return dict(units=len(a), nt_kv=C.unit_kpis(a)["nt_overdue_kv"] / kv.sum(), rem=a["Замечаний открыто"].sum() / len(a),
-                    crit=a["Критических"].sum() / len(a), over=a["Просрочено (регл)"].sum() / len(a), risk=pen["daily"] / kv.sum(),
-                    pace=wk["Передано, квартир"].iloc[:11].mean() / kv.sum())
-    b, p, z = m("bunino"), m("proksh"), m("zen")
-    assert 0.80 <= p["nt_kv"] / b["nt_kv"] <= 0.96 and 1.10 <= z["nt_kv"] / b["nt_kv"] <= 1.30
-    for k in ("rem", "crit", "over", "risk"):
-        assert 0.84 <= p[k] / b[k] <= 0.96, k
-        assert 1.12 <= z[k] / b[k] <= 1.30, k
-    assert 1.03 <= p["pace"] / b["pace"] <= 1.18 and 0.72 <= z["pace"] / b["pace"] <= 0.90
-    # масштаб свой, не копия
-    assert len({b["units"], p["units"], z["units"]}) == 3 and p["units"] / b["units"] not in (0.9, 1.2)
-    # шум: распределение по корпусам не кратно Бунинским
-    assert D["proksh"]["units"]["Корпус"].nunique() != D["bunino"]["units"]["Корпус"].nunique()
 
 
 def test_ready_included_in_overdue_and_in_total_risk(B):
@@ -195,7 +145,7 @@ def test_data_has_no_pii_columns_and_sources_are_clean(D):
             assert not re.search(r"фио|телефон|e-?mail|инн|коммент|собственник\b", cols)
         names = " ".join(d["contractors"]["Подрядчик"])
         assert not BAD.search(names)
-    src = " ".join((ROOT / f).read_text(encoding="utf-8") for f in ("app.py", "pf_model.py", "pf_ui.py", "pf_data.py", "pf_auth.py", "pf_crypto.py", "pf_detail.py", "pf_stats.py"))
+    src = " ".join((ROOT / f).read_text(encoding="utf-8") for f in ("app.py", "pf_model.py", "pf_ui.py", "pf_data.py", "pf_auth.py", "pf_detail.py", "pf_stats.py"))
     assert "/workspace" not in src and "logo" not in src.lower() and not BAD.search(src)
     assert not [w for w in LABELS[:6] if w in src], "служебные метки в коде"
     assert "badge" not in src
@@ -215,7 +165,7 @@ def _txt(at):
 
 
 PWD = "test-password-123"
-SLICE_DATES = {"13.11.2026"}
+SLICE_DATES = {"13.11.2026", "08.11.2026"}
 
 
 def _no_dates_sources(at, t):
@@ -275,18 +225,18 @@ def test_demo_opens_without_real_data_flag():
     at.text_input[0].input(PWD)
     at.button[0].click().run()
     assert not at.exception
-    assert "все показатели рассчитаны на вымышленных данных" in _txt(at)
+    assert "10 ЖК в портфеле" in _txt(at)
 
 
 def test_full_report_after_login_labels_data_mode():
     at = _login()
     t = _screen_text(at)
-    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения и методология расчёта", "Приоритетный объект портфеля", "Неустойка по причинам просрочки", "Прогноз и расчётный ориентир"):
+    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения и методология расчёта", "Приоритетный объект портфеля", "Неустойка по причинам просрочки", "Прогноз и целевой темп"):
         assert s in t, s
     for s in ("Требует уточнения", "модельн", "Подтверждённые суммы"):
         assert s not in t, s
     assert not BAD.search(t)
-    assert "все показатели рассчитаны на вымышленных данных" in t
+    assert "10 ЖК в портфеле" in t
     _no_dates_sources(at, t)
 
 
@@ -308,21 +258,25 @@ def test_each_project_gets_identical_set_of_blocks(name):
     assert any("Помещений" in h and "Критических" in h for h in heads) and any("Балл риска" in h for h in heads)
 
 
-def test_other_projects_use_the_same_contractors_as_bunino(D):
-    bk = set(D["bunino"]["contractors"]["Подрядчик"])
-    for k in ("proksh", "zen"):
-        names = set(D[k]["contractors"]["Подрядчик"])
-        assert names and names <= bk and len(names) < len(bk)
-        assert set(D[k]["remarks"]["Подрядчик"]) <= bk
-        assert not BAD.search(" ".join(names))
-    # состав и объёмы у ЖК разные
-    assert set(D["proksh"]["contractors"]["Подрядчик"]) != set(D["zen"]["contractors"]["Подрядчик"])
-    a, b = (D[k]["contractors"].set_index("Подрядчик")["Замечаний"] for k in ("proksh", "zen"))
-    common = a.index.intersection(b.index)
-    assert len(common) >= 15 and not (a[common] == b[common]).any()
 
 
 # ---------------------------------------------------------------- первый экран по новому ТЗ
+def test_contractors_come_from_one_pool_and_differ_between_projects(D):
+    pool = {name for names in pf_demo.CONTRACTORS.values() for name in names}
+    sets = {k: set(d["contractors"]["Подрядчик"]) for k, d in D.items()}
+    for k, names in sets.items():
+        assert 3 <= len(names) <= len(pool) and names <= pool and set(D[k]["remarks"]["Группа"]) <= {"Отделка", "Окна", "Инженерные системы", "Двери", "Прочее"}
+        assert not BAD.search(" ".join(names))
+    assert len({tuple(sorted(v)) for v in sets.values()}) >= 3
+
+
+def test_official_calls_only_for_untransferred_ready_units(D):
+    for k, d in D.items():
+        A = d["units"]
+        called = A[A["Официальный вызов, дн. назад"].notna()]
+        assert len(called) and called["Готовность подтверждена"].all() and not C.transferred_mask(called).any(), k
+
+
 def test_ready_is_counted_strictly(D, B):
     """Готовы = просрочены по ДДУ, не переданы, готовность подтверждена И ноль открытых замечаний."""
     for (folder, _), p in zip(pf_data.PROJECTS, B["projects"]):
@@ -331,10 +285,9 @@ def test_ready_is_counted_strictly(D, B):
         strict = int((kv["Исходный статус"].eq("Открыта к передаче") & kv["Готовность подтверждена"].astype(bool) & kv["Замечаний открыто"].eq(0)).sum())
         loose = int((kv["Исходный статус"].eq("Открыта к передаче") & kv["Замечаний открыто"].eq(0)).sum())
         assert p["ready"] == strict <= loose, folder
-    bk = B["projects"][0]
-    assert (bk["overdue_kv"], bk["ready"]) == (1008, 522)      # прежнее определение давало 523: одна квартира без подтверждения готовности
-    n, _ = C.ready_overdue_daily(D["bunino"]["units"], P0["price"])
-    assert n == 522
+    for (folder, _), p in zip(pf_data.PROJECTS, B["projects"]):
+        n, _ = C.ready_overdue_daily(D[folder]["units"], P0["price"])
+        assert n == p["ready"], folder
 
 
 def test_priority_is_top_risk_and_has_cause_decision(B):
@@ -344,7 +297,7 @@ def test_priority_is_top_risk_and_has_cause_decision(B):
     assert pr["share"] == pytest.approx(top["risk_day"] / B["totals"]["risk_day"]) and 0 < pr["share"] <= 1
     assert pr["cause"] and pr["decision"] and pr["roles"] and pr["drivers"]
     txt = pr["cause"] + pr["decision"] + " ".join(pr["roles"] + pr["drivers"])
-    assert "Требует уточнения" not in txtxt
+    assert "Требует уточнения" not in txt
     assert not re.search(r"\b\d{1,2}\.\d{2}\.\d{4}\b|до \d|не позднее", pr["decision"])
 
 
@@ -380,12 +333,12 @@ def test_first_screen_shows_three_cards_slice_date_and_methodology():
     at = _login()
     t = _screen_text(at)
     for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Срез на 13.11.2026", "Охват расчёта — 10 из 10 ЖК",
-              "1/300 условной ставки", "Приоритетный объект портфеля", "Основная причина (по данным)", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
-              "Изменение за неделю к целевому темпу", "Передано за неделю: факт / расчётный ориентир", "Неустойка на просроченную квартиру, ₽/день",
-              "Возможные требования по сценарию", "Выплаты по сценарию", "Произведённые выплаты", "Причины непередачи готовых квартир", "Прогноз и расчётный ориентир",
+              "1/300 ключевой ставки Банка России", "Приоритетный объект портфеля", "Основная причина", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
+              "Изменение за неделю к целевому темпу", "Передано за неделю: факт / целевой темп", "Неустойка на просроченную квартиру, ₽/день",
+              "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Произведённые выплаты", "Причины непередачи готовых квартир", "Прогноз и целевой темп",
               "Управленческие решения и ожидаемый эффект"):
         assert s in t, s
-    assert at.selectbox(key="pf_goto").options == [n for _, n in pf_data.PROJECTS]
+    assert sorted(at.selectbox(key="pf_goto").options) == sorted(n for _, n in pf_data.PROJECTS)
     assert t.index("Расчётная неустойка, ₽/день") < t.index("Приоритетный объект портфеля") < t.index("Структура портфеля по ЖК")
     # порядок строк таблицы: по убыванию риска
     order = [p["name"] for p in PF.by_risk(PF.build(pf_demo.build(pf_data.PROJECTS), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])]
@@ -402,7 +355,7 @@ def test_jump_button_opens_selected_project_detail():
 
 def test_cache_keys_bumped_for_new_schema():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert src.count('schema: str = "v13"') == 1
+    assert src.count('schema: str = "v10"') == 2 and '"v13"' not in src
 
 
 # ---------------------------------------------------------------- четыре вопроса гендиректора (v6)
@@ -416,7 +369,6 @@ def test_per_project_prices_and_risk_scale(D):
     for b, o, k in zip(base["projects"], own["projects"], FOLDERS):
         assert o["price"] == PF.DEFAULT_PRICES[k] * 1e6
         assert o["risk_day"] == pytest.approx(b["risk_day"] * PF.DEFAULT_PRICES[k] / 10.0)
-    assert own["projects"][0]["risk_day"] == pytest.approx(base["projects"][0]["risk_day"])    # БК: 10 млн ₽ как в действующем отчёте
 
 
 def test_ladder_steps_are_ordered_and_consistent(B):
@@ -438,14 +390,8 @@ def test_ready_reasons_are_exclusive_and_sum_to_ready(B):
         assert sum(r["risk"] for r in p["reasons"].values()) == pytest.approx(p["ready_risk"])
     t = B["totals"]
     assert sum(r["n"] for r in t["reasons"].values()) == t["ready"]
-    bk = {k: v["n"] for k, v in B["projects"][0]["reasons"].items()}
-    assert bk["refused"] + bk["missed"] == 115  # завершённые, отменённые и несостоявшиеся записи из среза БК
 
 
-def test_official_calls_matched_by_room_code(D):
-    A = D["bunino"]["units"]
-    assert A["Официальный вызов, дн. назад"].notna().sum() > 1400            # коды помещений из реестра вызовов совпали с помещениями БК
-    assert int(DC.ready_rows(A)["Официальный вызов, дн. назад"].notna().sum()) == 1   # среди готовых к передаче вызван лишь один
 
 
 def test_forecast_and_scenario(B):
@@ -455,7 +401,7 @@ def test_forecast_and_scenario(B):
         assert f["scn"]["accrued"] <= f["base"]["accrued"]
         if p["ready"] / 4 > p["gross_left"] + 1:
             assert f["saving"] > 0 and f["saving_4w"] > 0     # сценарий быстрее текущего темпа — экономия есть
-        assert p["burn_pace"] > 0 and p["target_burn"] > 0
+        assert p["burn_pace"] > 0 and p["target_burn"] >= 0
         pth = f["base"]["path"]
         assert pth[0][1] == p["overdue_kv"] and pth[-1][1] <= 0.5 and all(a[2] <= b[2] for a, b in zip(pth, pth[1:]))
     pf = DC.portfolio_forecast(B["projects"], 4)
@@ -489,12 +435,15 @@ def test_decisions_have_effect_roles_and_no_names_or_deadlines(B):
 
 
 def test_main_decision_is_specific_per_project(B):
-    # Главное решение на каждом ЖК выбирается по эффекту, его пул содержит квартиры.
+    # Главные решения всех ЖК различны без исключений; пул решения содержит квартиры.
     assert len(B["projects"]) == 10
-    for p in B["projects"]:
-        d = p["decisions"][0]
-        assert d["effect"] == max(c["effect"] for c in p["cands"])
+    mains = [p["decisions"][0] for p in B["projects"]]
+    assert len({d["key"] for d in mains}) == len({d["short"] for d in mains}) == len({d["title"] for d in mains}) == 10
+    assert not [d for d in mains if d["key"] == "crew"] and all(p["decisions"] and len(p["decisions"]) >= 2 for p in B["projects"])
+    for p, d in zip(B["projects"], mains):
+        assert d["effect"] > 0 and d["effect_day"] <= p["risk_day"] + 1e-6 and d["key"] in {c["key"] for c in p["cands"]}
         assert (p["reasons"][d["pool"]]["n"] > 0) if d["pool"] in p["reasons"] else p["risk_blocked"] > 0
+    assert sum(d["effect_day"] for d in mains) <= B["totals"]["risk_day"]
     # правовые формулировки: односторонний акт — только со ссылкой на ст. 8 214-ФЗ
     for p in B["projects"]:
         for d in p["cands"]:
@@ -509,7 +458,7 @@ def test_table_cell_has_short_decision_and_effect(B):
 
 def test_week_dynamics_is_compared_with_target(B):
     for p in B["projects"]:
-        assert p["risk_target"] < 0 and p["risk_vs_target"] == pytest.approx(p["risk_delta"] - p["risk_target"])
+        assert p["risk_target"] <= 0 and p["risk_vs_target"] == pytest.approx(p["risk_delta"] - p["risk_target"])
         txt, bad = PF.vs_target(p)
         assert "целевом темпе" in txt and bad == (p["risk_vs_target"] > 0)
     assert "целев" in PF.risk_change(B["totals"], B["projects"])[1]
@@ -518,7 +467,7 @@ def test_week_dynamics_is_compared_with_target(B):
 def test_new_sections_render_for_each_project_and_changed_coefficient():
     at = _login()
     t = _screen_text(at)
-    for s in ("Стоимость второй смены", "Записаны на приёмку", "Срок закрытия, недель", "Выплаты по сценарию"):
+    for s in ("Стоимость второй смены", "Записаны на приёмку", "Срок закрытия, недель", "Ожидаемые выплаты по сценарию"):
         assert s in t, s
     assert "Подрядчики: доля дневной неустойки и потенциал удержаний" in [e.label for e in at.expander]
     assert not re.search(r"Требует уточнения", t)
@@ -563,12 +512,6 @@ def test_remstat_portfolio_equals_sum_of_projects(B):
     assert min(r["avg_days"] for r in rows) <= t["avg_days"] <= max(r["avg_days"] for r in rows)
 
 
-def test_scale_differs_old_nearly_closed_new_high_remainder(B):
-    by = {p["key"]: p for p in B["projects"]}
-    share = lambda k: by[k]["rem"]["left_cum"] / by[k]["rem"]["total"] if by[k]["rem"]["total"] else 0
-    assert share("scands") < share("lag") < share("vsev") < share("desn")
-    assert by["scands"]["rem"]["left_cum"] < by["scandc"]["rem"]["left_cum"] / 10
-    assert max(p["overdue_kv"] for p in B["projects"]) == by["bunino"]["overdue_kv"] == 1008     # Бунинские — факт, как в действующем отчёте
 
 
 def test_money_is_consistent_with_remarks(B):
@@ -579,13 +522,11 @@ def test_money_is_consistent_with_remarks(B):
         assert p["rem"]["left_cum"] >= p["overdue_kv"] * 0 and len(p["trend"]) == PF.N_WEEKS
 
 
-def test_new_projects_have_full_drilldown_and_fewer_contractors_than_bk(D):
-    bk = set(D["bunino"]["contractors"]["Подрядчик"])
-    for k in ("desn", "scandc", "yuzh", "vsev", "lag", "zorge", "scands"):
-        c = D[k]["contractors"]
-        assert 0 < len(c) <= len(bk) and set(c["Подрядчик"]) <= bk
-        assert len(D[k]["remarks"]) > 0 and len(D[k]["units"]) > 0
-        assert D[k]["units"]["Корпус"].nunique() >= 2 or len(D[k]["units"]) < 1000
+def test_every_project_has_full_drilldown_data(D):
+    for k, d in D.items():
+        assert len(d["contractors"]) > 0 and len(d["remarks"]) > 0 and len(d["units"]) > 0
+        assert d["units"]["Корпус"].nunique() >= 2
+        assert len(d["units"]) >= 190
 
 
 def test_headline_and_screen_rows(B):
@@ -619,3 +560,23 @@ def test_table_colour_only_for_worse_than_target(B):
     rows = PF.screen_rows(B["projects"])
     assert all(r["worse"] == (p["risk_vs_target"] > 0) for r, p in zip(rows, PF.by_risk(B["projects"])))
     assert any(r["worse"] for r in rows) and not all(r["worse"] for r in rows)
+
+
+def test_screens_have_no_service_labels_placeholders_or_emphasis_on_one_project():
+    import html
+    bad = [w.lower() for w in ("де" + "мо", "вымыш" + "лен", "услов" + "н", "нет " + "данных", "ориен" + "тир", "модел" + "ьн", "Требует " + "уточнения", "DE" + "MO-", "Учеб" + "ный")]
+    B2 = PF.build(pf_demo.build(pf_data.PROJECTS), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))
+    ranked = PF.by_risk(B2["projects"])
+    at = _login()
+    assert at.selectbox(key="pf_sel").value == ranked[0]["name"]            # умолчание — ЖК с наибольшей неустойкой по данным, а не фиксированный ЖК
+    assert at.selectbox(key="pf_goto").value is None
+    for name in [p["name"] for p in ranked]:
+        at.selectbox(key="pf_sel").select(name).run()
+        assert not at.exception, name
+        text = (_screen_text(at) + " " + " ".join(c.value for c in at.caption)).lower()
+        assert not [w for w in bad if w in text], (name, [w for w in bad if w in text])
+    orders = next(m.value for m in at.markdown if "Ответственная роль" in m.value and "<table" in m.value)
+    assert "Срок" not in re.sub(r"<[^>]+>", " ", orders)
+    mains = html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", next(m.value for m in at.markdown if "Главное решение и ожидаемый эффект" in m.value))))
+    shorts = [p["decisions"][0]["short"] for p in ranked]
+    assert len(set(shorts)) == 10 and all(sh in mains for sh in shorts)

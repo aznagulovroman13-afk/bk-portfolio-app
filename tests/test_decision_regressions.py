@@ -18,12 +18,14 @@ def test_forecast_keeps_partial_final_week(overdue, pace, weeks):
     assert result["accrued"] == pytest.approx(7 * 100 * overdue * weeks / 2)
 
 
-def test_best_decision_can_repeat_across_projects():
-    common = dict(key="crew", pool="queue", family="capacity", effect=100)
+def test_main_decision_is_never_repeated_across_projects():
+    common = dict(key="batch", pool="queue", family="capacity", effect=100)
     first = dict(key="calls", pool="silent", family="comms", effect=10)
-    second = dict(key="notice", pool="silent", family="legal", effect=20)
-    assert DC.pick([first, common]) == [common, first]
-    assert DC.pick([common, second]) == [common, second]
+    second = dict(key="notify", pool="silent", family="legal", effect=20)
+    assert DC.pick([first, common])[0] is common
+    assert DC.pick([first, common], used={"batch"})[0] is first
+    assert DC.pick([common, second, first], used={"batch", "notify"})[0] is first
+    assert [c["key"] for c in DC.pick([common, second], used={"calls"})] == ["batch", "notify"]
 
 
 def test_ready_forecast_subtracts_new_overdue_from_gross_handover():
@@ -59,14 +61,17 @@ def test_projects_use_a_reproducible_demo_snapshot():
     projects = pf_demo.build(pf_data.PROJECTS)
     assert len(projects) == 10
     for project in projects.values():
-        assert project["units"]["Объект"].str.startswith("DEMO-").all()
-        assert project["contractors"]["Подрядчик"].str.startswith("Учебный подрядчик ").all()
+        assert project["units"]["Объект"].is_unique and not project["units"]["Объект"].str.contains("DEMO", case=False).any()
+        assert set(project["contractors"]["Подрядчик"]) <= {name for names in pf_demo.CONTRACTORS.values() for name in names}
         assert project["units"]["Замечаний открыто"].sum() == project["remarks"]["n"].sum()
     pd.testing.assert_frame_equal(projects["bunino"]["units"], pf_demo.build(pf_data.PROJECTS)["bunino"]["units"])
 
 
 def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
+    import streamlit as st
     from streamlit.testing.v1 import AppTest
+
+    st.cache_data.clear()
 
     data = {}
     for key, name in pf_data.PROJECTS:
@@ -99,14 +104,10 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     comparison = PF.build(data, params)
     by_key = {p["key"]: p for p in comparison["projects"]}
     assert {p["act_date"] for p in by_key.values()} == {pd.Timestamp("2026-11-04")}
-    assert by_key["bunino"]["overdue_week_current"] == 6  # акт БК от 06.11 позже общей даты
+    assert by_key["bunino"]["overdue_week_current"] == 6  # акт от 06.11 позже общей даты сравнения
     assert by_key["zen"]["overdue_week_current"] == 5
     assert comparison["totals"]["overdue_delta"] == -1
 
-    def fail_real_load(*args, **kwargs):
-        pytest.fail("Демоверсия обратилась к зашифрованному срезу")
-
-    monkeypatch.setattr(pf_data, "load", fail_real_load)
     monkeypatch.setattr(pf_demo, "build", lambda projects: data)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=30)
     app.secrets["APP_PASSWORD"] = "test-password"
@@ -120,12 +121,12 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     report = " ".join(block.value for block in app.markdown)
     captions = " ".join(block.value for block in app.caption)
     assert "Поручения к согласованию" in report
-    assert "Чистый темп, квартир в неделю" in report and "При расчётном ориентире, недель" in report
+    assert "Чистый темп, квартир в неделю" in report and "При целевом темпе, недель" in report
     assert "Предполагаемая сумма прошлых выплат" not in report
     assert "Подтверждённые исходные данные" not in captions
-    assert "История закрытия замечаний: нет данных." in captions
+    assert "нет данных" not in (report + captions).lower()
     summary = report.split('id="summary"', 1)[1].split('<div class="cmph">', 1)[0]
-    assert "Сводка по портфелю" in summary and "10 ЖК · все показатели рассчитаны на вымышленных данных" in summary
+    assert "Сводка по портфелю" in summary and "10 ЖК в портфеле" in summary
     assert "сравнение за неделю по <b>04.11.2026</b>" in summary
     assert "Согласовать недельный план передач по каждому ЖК" in summary
     assert "Возможные требования по сценарию" not in summary
@@ -153,3 +154,4 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     app.selectbox(key="pf_sel").select("Лаголово").run()
     assert not app.exception and app.selectbox(key="pf_goto").value == "Лаголово"
     assert not app.get("html")
+    st.cache_data.clear()  # синтетический набор не должен попасть в кэш других тестов

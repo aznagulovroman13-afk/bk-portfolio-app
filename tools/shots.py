@@ -1,51 +1,74 @@
+"""Снимки отчёта: python tools/shots.py <адрес> <каталог/> <метка>. Пароль берётся из .streamlit/secrets.toml (APP_PASSWORD), в вывод не попадает."""
 import sys, time, tomllib
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-PORT = sys.argv[1] if len(sys.argv) > 1 else "8511"
-OUT = sys.argv[2] if len(sys.argv) > 2 else "./screens/"
-PWD = tomllib.loads((Path(__file__).resolve().parents[1] / ".streamlit" / "secrets.toml").read_text(encoding="utf-8"))["APP_PASSWORD"]
-BASE = f"http://127.0.0.1:{PORT}/"
-def ready(p):
-    p.wait_for_load_state("networkidle")
-    box = p.locator("input[type=password]")
+BASE, OUT, tag = sys.argv[1], sys.argv[2], sys.argv[3]
+PWD = tomllib.loads(Path(__file__).resolve().parents[1].joinpath(".streamlit", "secrets.toml").read_text(encoding="utf-8"))["APP_PASSWORD"]
+READY = "Сводка по портфелю"
+BAD = ("Требует уточнения", "Нет данных", "нет данных", "демо", "ДЕМО", "DEMO", "вымышл", "условн", "модельн", "Power BI", "А101", "ориентир", "war room", "one-stop")
+Path(OUT).mkdir(parents=True, exist_ok=True)
+
+
+def login(page):
+    page.goto(BASE); page.wait_for_load_state("networkidle"); time.sleep(6)
+    fr = next((x for x in page.frames if x.locator("input[type=password]").count()), page.main_frame)
+    started = None
+    if fr.locator("input[type=password]").count():
+        fr.locator("input[type=password]").fill(PWD); page.keyboard.press("Enter"); started = time.time()
+    for _ in range(240):
+        time.sleep(0.5)
+        if READY in fr.locator("body").inner_text():
+            break
+    return fr, round(time.time() - (started or time.time()), 1)
+
+
+def optional(step, *args):
     try:
-        box.wait_for(timeout=4000)
-        if OUT_LOGIN and not p.__dict__.get("_shot"):
-            p.screenshot(path=OUT_LOGIN)
-        box.fill(PWD); p.keyboard.press("Enter")
-    except Exception:
-        pass
-    for _ in range(80):
-        n = p.evaluate("(()=>{const m=document.querySelector('[data-testid=stMainBlockContainer]');return m?m.innerText.length:0})()")
-        if n > 800 and not p.evaluate("/Running\\.\\.\\./.test(document.body.innerText)"): break
-        time.sleep(.3)
-    time.sleep(3)
-OUT_LOGIN = None
+        step(*args)
+    except Exception as exc:                  # необязательный шаг: отчёт о пропуске, съёмка продолжается
+        print("пропущено:", getattr(step, "__name__", step), str(exc).splitlines()[0][:100])
 
 
-def go(p, sel, off=0):
-    p.evaluate("(s)=>{const e=document.querySelector(s); if(e) e.scrollIntoView({block:'start'})}", sel)
-    if off: p.evaluate(f"window.scrollBy(0,{off})")
-    time.sleep(1.5)
 with sync_playwright() as pw:
     b = pw.chromium.launch(executable_path="/usr/bin/google-chrome")
-    for w, h in ((1440, 900), (1920, 1080)):
-        p = b.new_page(viewport={"width": w, "height": h})
-        OUT_LOGIN = OUT + f"0_login_{w}.png"
-        p.goto(BASE); ready(p); OUT_LOGIN = None
-        print(w, "scrollW", p.evaluate("document.documentElement.scrollWidth"))
-        p.screenshot(path=OUT + f"1_first_screen_{w}.png")
-        go(p, "#portfolio"); p.screenshot(path=OUT + f"2_table_{w}.png")
-        go(p, "#concentration"); p.screenshot(path=OUT + f"3_concentration_{w}.png")
-        go(p, "#variance"); p.screenshot(path=OUT + f"4_variance_{w}.png")
-        go(p, "#drill"); p.screenshot(path=OUT + f"5_drill_real_{w}.png")
-        go(p, "#drill", 650); p.screenshot(path=OUT + f"5b_drill_problems_{w}.png")
-        go(p, "#money"); p.screenshot(path=OUT + f"7_money_{w}.png")
-        go(p, "#recon"); p.screenshot(path=OUT + f"8_recon_notes_{w}.png")
-        p.goto(BASE + "?mode=fact"); ready(p)
-        p.screenshot(path=OUT + f"6_fact_only_{w}.png")
-        go(p, "#portfolio"); p.screenshot(path=OUT + f"6b_fact_only_table_{w}.png")
-        p.goto(BASE + "?jk=%D0%9F%D1%80%D0%BE%D0%BA%D1%88%D0%B8%D0%BD%D0%BE"); ready(p)
-        go(p, "#drill"); p.screenshot(path=OUT + f"5c_drill_demo_{w}.png")
-        p.close()
+    p = b.new_page(viewport={"width": 1440, "height": 900})
+    f, secs = login(p)
+    print("первая загрузка после входа, с:", secs)
+    time.sleep(3)
+
+    def shot(name, sel=None, off=0):
+        if sel:
+            f.evaluate("(a)=>{const e=document.querySelector(a[0]); e.scrollIntoView({block:'start'}); window.scrollBy(0,a[1])}", [sel, off]); time.sleep(1.5)
+        p.screenshot(path=OUT + name + f"_{tag}_1440.png")
+
+    def open_text(label):
+        f.get_by_text(label).first.click(); time.sleep(1)
+
+    p.set_viewport_size({"width": 1440, "height": 1000})
+    shot("01_first_screen")
+    shot("02_portfolio_table", "#segments", -60)
+    optional(open_text, "Расширенные показатели по ЖК: неустойка, темп и сроки"); shot("03_table_expander", "#segments", 200)
+    shot("04_reasons", "#reasons", -50)
+    shot("05_forecast", "#forecast", -50)
+    shot("06_decisions", "#decisions", -50)
+    optional(open_text, "Дополнительные решения по ЖК"); shot("06b_decisions_extra", "#decisions", 330)
+    shot("07_remarks_portfolio", "#remarks", -50)
+    shot("08_money", "#money", -50)
+    shot("08b_orders", "#orders", -50)
+    sb = f.locator("[data-testid=stSelectbox]").filter(has_text="Перейти к детализации ЖК")
+    sb.click(); time.sleep(1); p.keyboard.type("Деснар"); time.sleep(.5); p.keyboard.press("Enter"); time.sleep(5)
+    print("верх блока детализации после перехода:", f.evaluate("()=>document.querySelector('#drill').getBoundingClientRect().top"))
+    shot("09_jump_desn")
+    optional(lambda: (f.evaluate("()=>{const e=[...document.querySelectorAll('.dec-h')].find(x=>x.innerText.includes('Решения по ЖК')); e.scrollIntoView({block:'start'}); window.scrollBy(0,-70)}"), time.sleep(1.5), p.screenshot(path=OUT + f"09b_detail_decisions_desn_{tag}_1440.png")))
+    for tab, name in (("Шахматка", "10_chess_desn"), ("Замечания", "11_remarks_desn"), ("Подрядчики", "12_contractors_desn")):
+        optional(lambda t=tab, n=name: (f.get_by_role("tab", name=t).click(), time.sleep(3), shot(n, "#drill")))
+    text = f.locator("body").inner_text()
+    print("запрещённые слова на экране:", [w for w in BAD if w in text])
+    m = b.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2)
+    fm, _ = login(m)
+    time.sleep(3)
+    m.screenshot(path=OUT + f"13_mobile_first_{tag}_390.png")
+    fm.evaluate("()=>{const e=document.querySelector('#segments'); e.scrollIntoView({block:'start'}); window.scrollBy(0,-20)}"); time.sleep(1.5)
+    m.screenshot(path=OUT + f"14_mobile_table_{tag}_390.png")
+    print("ширина прокрутки на мобильном:", fm.evaluate("()=>document.documentElement.scrollWidth"), "из 390")
     b.close()

@@ -2,7 +2,7 @@
 """Расчётная неустойка и ожидаемые выплаты, причины непередачи готовых, прогноз и решения уровня генерального директора.
 
 Факты — из данных ЖК (статусы записи, дата записи, реестр официальных вызовов, замечания, подрядчики).
-Модельные коэффициенты собраны здесь и в DEFAULT_K; их описание выводится в «Допущениях».
+Расчётные коэффициенты собраны здесь и в DEFAULT_K; их описание выводится в «Допущениях».
 """
 from __future__ import annotations
 
@@ -11,13 +11,14 @@ import pandas as pd
 
 import pf_core as C
 
-# ---- модельные коэффициенты (в данных нет претензий, исков и выплат)
+# ---- расчётные коэффициенты сценария (претензии, иски, выплаты и стоимость мер задаются допущениями)
 DEFAULT_K = dict(claim=0.35,   # доля неустойки, по которой собственники предъявляют претензии и иски
                  cut=0.50,     # на сколько в среднем суд снижает неустойку по ст. 333 ГК РФ
                  paid=0.25)    # доля ожидаемых выплат, уже выплаченная
 BOOK_DAYS = 7          # запись в пределах 7 дней — «записан», позже — очередь на слоты приёмщиков
 CALL_WAIT_DAYS = 30    # официальный вызов не старше 30 дней — ждём срок, старше — срок истёк
-EXTRA_CAPACITY = 0.25  # доп. бригады приёмки: +25% к фактическому темпу передачи
+EXTRA_CAPACITY = 0.25  # дополнительные бригады приёмки: +25% к фактическому темпу передачи
+SHIFT_UNIT_COST = 40_000  # стоимость одной дополнительной приёмки во второй смене, ₽
 CALL_RESPONSE = 0.50   # доля собственников, пришедших после официального вызова
 UNILATERAL_SHARE = 0.90
 REFUSAL_RESOLVED = 0.40
@@ -194,6 +195,7 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
               f"По {fi(rs['queue']['n'])} готовым квартирам визит назначен позже недели. За последнюю полную неделю передано {fi(p['week_fact'])} квартир",
               "Сценарий предполагает рост темпа до 25%. Нужно подтвердить спрос на ранние визиты, число слотов и стоимость смены",
               "Подтверждённые переносы на ранние даты; дополнительные передачи за неделю; стоимость смены")
+        out[-1].update(extra=extra, moved=min(MONTH_W * extra, rs["queue"]["n"]), cost=extra * MONTH_W * SHIFT_UNIT_COST)
     _cand(out, "realloc", "capacity", "queue", "Проверить загрузку приёмщиков и перераспределить смены в пользу ЖК с подтверждённой нехваткой слотов",
           "Перераспределение приёмщиков между ЖК", ["Директор по заселению", "Операционный директор"],
           mv(SLOT_SHARE, "queue") * unit("queue"), 14,
@@ -301,7 +303,7 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
                   f"Второй подрядчик по виду работ «{g0['Группа']}»", ["Операционный директор", "Договорной отдел", "Служба качества"],
                   CROSS_SHARE * sh * blk, 28,
                   f"На вид работ «{g0['Группа']}» приходится {C.fmt_pct(sh)} остатка замечаний, просрочено более 45 дней — {C.fmt_pct(float(g0['% просрочено']) / 100)}",
-                  "Ёмкость устранения по проблемному виду работ удваивается; сроки перестают зависеть от одного подрядчика",
+                  "Мощность устранения по проблемному виду работ удваивается; сроки перестают зависеть от одного подрядчика",
                   "Остаток замечаний по виду работ")
     _cand(out, "brigades", "contractor", "blocked", "Перейти на специализированные бригады по видам работ с двухсменным графиком устранения замечаний",
           "Специализированные бригады и двухсменный график", ["Операционный директор", "Служба качества"],
@@ -313,21 +315,23 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
     return out
 
 
-def pick(cands: list[dict], n: int = 3) -> list[dict]:
-    """Главная мера даёт наибольший расчётный эффект в ЖК, дополнительные охватывают другие группы квартир."""
+def pick(cands: list[dict], used: set | None = None, n: int = 3) -> list[dict]:
+    """Главная мера — наиболее результативная из мер, ещё не назначенных главными в других ЖК; дополнительные охватывают другие группы квартир."""
+    used = used or set()
     if not cands:
         return []
-    main = max(cands, key=lambda c: c["effect"])
+    ranked = sorted(cands, key=lambda c: -c["effect"])
+    main = next((c for c in ranked if c["key"] not in used), ranked[0])
     out, pools, fams = [main], {main["pool"]}, {main["family"]}
     for fam_strict in (True, False):
-        for c in cands:
+        for c in ranked:
             if len(out) >= n:
                 break
-            if c["pool"] in pools or (fam_strict and c["family"] in fams):
+            if c in out or c["pool"] in pools or (fam_strict and c["family"] in fams):
                 continue
             out.append(c); pools.add(c["pool"]); fams.add(c["family"])
     return out
 
 
-def decisions(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -> list[dict]:
-    return pick(candidates(p, ct, remarks))
+def decisions(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None, used: set | None = None) -> list[dict]:
+    return pick(candidates(p, ct, remarks), used)
