@@ -225,11 +225,6 @@ def build(D: dict, P: dict, K: dict | None = None) -> dict:
     for d in D.values():
         Pk = dict(price=prices.get(d["key"], P["price"]), price_mm=P["price_mm"], price_nhp=P["price_nhp"])
         projects.append(project(d, Pk, K))
-    used: set = set()                                   # главное решение не повторяется между ЖК: распределяем по убыванию экспозиции
-    for p in by_risk(projects):
-        p["decisions"] = DC.pick(p["cands"], used)
-        if p["decisions"]:
-            used.add(p["decisions"][0]["key"])
     return dict(projects=projects, totals=totals(projects))
 
 
@@ -381,12 +376,9 @@ def headline(projects: list[dict], tot: dict) -> str:
     if not pr:
         return "Просрочки по ДДУ в портфеле нет"
     worse = sum(1 for p in projects if p["risk_vs_target"] > 0)
-    d0 = pr["decisions"][0] if pr["decisions"] else None
     p = pr["project"]
     s = (f"Наибольшая расчётная экспозиция — {pr['name']}: {C.fmt_money(pr['risk_day'])} в день ({C.fmt_pct(pr['share'])} портфеля); просрочена передача {C.fmt_int(p['overdue_kv'])} квартир, "
          f"из них готовы к передаче {C.fmt_int(p['ready'])}.")
-    if d0:
-        s += f" Приоритетное решение — «{d0['short'].rstrip('.')}» (снижение дневной экспозиции на {C.fmt_money(d0['effect_day'])} к концу 4-й недели)."
     s += f" С отставанием от целевой динамики за неделю — {worse} из {len(projects)} ЖК."
     return s
 

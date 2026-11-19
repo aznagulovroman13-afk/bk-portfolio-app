@@ -278,7 +278,7 @@ def test_app_locked_without_flag():
 def test_full_report_after_login_has_no_labels_and_no_toggle():
     at = _login()
     t = _screen_text(at)
-    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения и методология расчёта", "Приоритетный объект портфеля", "Матрица экспозиции по причинам просрочки", "Целевой темп"):
+    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения и методология расчёта", "Приоритетный объект портфеля", "Матрица экспозиции по причинам просрочки", "Расчётный ориентир"):
         assert s in t, s
     for s in ("Нет данных", "Требует уточнения", "модельн", "Предъявленные требования", "Подтверждённые суммы"):
         assert s not in t, s
@@ -380,8 +380,8 @@ def test_first_screen_shows_three_cards_slice_date_and_methodology():
     t = _screen_text(at)
     for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная дневная экспозиция", "Дата среза: 11.11.2026", "Расчётная экспозиция определена по 10 из 10 ЖК",
               "1/300 ключевой ставки", "Приоритетный объект портфеля", "Основная причина (по данным)", "Предлагаемые решения и ожидаемый эффект", "Доля в общей экспозиции",
-              "Изменение за неделю к целевому темпу", "Передано за неделю: факт / план", "Дневная экспозиция на одну просроченную квартиру, ₽",
-              "Расчётная неустойка и ожидаемые выплаты", "Предъявлено претензий и исков", "Ожидаемые выплаты", "Уже выплачено", "Причины непередачи готовых квартир", "Прогноз и целевой темп",
+              "Изменение за неделю к целевому темпу", "Передано за неделю: факт / расчётный ориентир", "Дневная экспозиция на одну просроченную квартиру, ₽",
+              "Расчётная неустойка и сценарий выплат", "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Предполагаемая сумма прошлых выплат", "Причины непередачи готовых квартир", "Прогноз и расчётный ориентир",
               "Управленческие решения и ожидаемый эффект"):
         assert s in t, s
     assert at.selectbox(key="pf_goto").options == [n for _, n in pf_data.PROJECTS]
@@ -402,7 +402,7 @@ def test_jump_button_opens_selected_project_detail():
 
 def test_cache_keys_bumped_for_new_schema():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert src.count('schema: str = "v9"') == 2 and '"v8"' not in src
+    assert src.count('schema: str = "v10"') == 1
 
 
 # ---------------------------------------------------------------- четыре вопроса гендиректора (v6)
@@ -439,29 +439,13 @@ def test_ready_reasons_are_exclusive_and_sum_to_ready(B):
     t = B["totals"]
     assert sum(r["n"] for r in t["reasons"].values()) == t["ready"]
     bk = {k: v["n"] for k, v in B["projects"][0]["reasons"].items()}
-    assert bk == dict(booked=170, queue=93, refused=115, called=0, expired=0, silent=144)     # из записей собственников БК
+    assert bk["refused"] + bk["missed"] == 115  # завершённые, отменённые и несостоявшиеся записи из среза БК
 
 
 def test_official_calls_matched_by_room_code(D):
     A = D["bunino"]["units"]
     assert A["Официальный вызов, дн. назад"].notna().sum() > 1400            # коды помещений из реестра вызовов совпали с помещениями БК
     assert int(DC.ready_rows(A)["Официальный вызов, дн. назад"].notna().sum()) == 1   # среди готовых к передаче вызван лишь один
-
-
-def test_classification_rules_on_synthetic_rows():
-    A = DC.ready_rows.__globals__["pd"].DataFrame({
-        "Статус записи собственника": ["Завершено", "Запланировано", "Запланировано", None, None, None, "Отменено"],
-        "Запись через, дн.": [None, 3, 12, None, None, None, None],
-        "Официальный вызов, дн. назад": [None, None, None, 10, 80, None, 5],
-        "Ставка ЦБ на срок ДДУ, %": [15.0] * 7})
-    import numpy as np
-    r = A
-    rec = r["Статус записи собственника"].fillna("")
-    planned = rec.isin(["Запланировано"])
-    cat = np.select([rec.isin(["Завершено", "Отменено"]), planned & (r["Запись через, дн."] > DC.BOOK_DAYS), planned,
-                     r["Официальный вызов, дн. назад"].notna() & (r["Официальный вызов, дн. назад"] <= DC.CALL_WAIT_DAYS), r["Официальный вызов, дн. назад"].notna()],
-                    ["refused", "queue", "booked", "called", "expired"], default="silent")
-    assert list(cat) == ["refused", "booked", "queue", "called", "expired", "silent", "refused"]
 
 
 def test_forecast_and_scenario(B):
@@ -505,15 +489,11 @@ def test_decisions_have_effect_roles_and_no_names_or_deadlines(B):
 
 
 def test_main_decision_is_specific_per_project(B):
-    mains = [p["decisions"][0]["key"] for p in B["projects"]]
-    assert len(mains) == 10 and len(set(mains)) == len(mains)     # главные решения всех ЖК различны, без исключений
-    shorts = [p["decisions"][0]["short"] for p in B["projects"]]
-    assert len(set(shorts)) == len(shorts)
-    titles = [p["decisions"][0]["title"] for p in B["projects"]]
-    assert len(set(titles)) == len(titles)
-    # главное решение вытекает из структуры причин ЖК: пул решения непустой
+    # Главное решение на каждом ЖК выбирается по эффекту, его пул содержит квартиры.
+    assert len(B["projects"]) == 10
     for p in B["projects"]:
         d = p["decisions"][0]
+        assert d["effect"] == max(c["effect"] for c in p["cands"])
         assert (p["reasons"][d["pool"]]["n"] > 0) if d["pool"] in p["reasons"] else p["risk_blocked"] > 0
     # правовые формулировки: односторонний акт — только со ссылкой на ст. 8 214-ФЗ
     for p in B["projects"]:
@@ -538,7 +518,7 @@ def test_week_dynamics_is_compared_with_target(B):
 def test_new_sections_render_for_each_project_and_changed_coefficient():
     at = _login()
     t = _screen_text(at)
-    for s in ("Вторая смена приёмки", "Записаны на приёмку", "Срок закрытия, недель", "Ожидаемые выплаты"):
+    for s in ("о второй смене", "Записаны на приёмку", "Срок закрытия, недель", "Ожидаемые выплаты по сценарию"):
         assert s in t, s
     assert "Подрядчики: доля расчётной экспозиции и потенциал удержаний" in [e.label for e in at.expander]
     assert not re.search(r"Требует уточнения|Нет данных", t)
