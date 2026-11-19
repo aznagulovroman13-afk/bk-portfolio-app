@@ -6,6 +6,7 @@ import pytest
 import pf_core as C
 import pf_data
 import pf_decide as DC
+import pf_demo
 import pf_model as PF
 
 
@@ -54,6 +55,16 @@ def test_missing_dates_and_missed_appointments_have_separate_groups():
     assert sum(group["risk"] for group in groups.values()) == pytest.approx(100_000)
 
 
+def test_projects_use_a_reproducible_demo_snapshot():
+    projects = pf_demo.build(pf_data.PROJECTS)
+    assert len(projects) == 10
+    for project in projects.values():
+        assert project["units"]["Объект"].str.startswith("DEMO-").all()
+        assert project["contractors"]["Подрядчик"].str.startswith("Учебный подрядчик ").all()
+        assert project["units"]["Замечаний открыто"].sum() == project["remarks"]["n"].sum()
+    pd.testing.assert_frame_equal(projects["bunino"]["units"], pf_demo.build(pf_data.PROJECTS)["bunino"]["units"])
+
+
 def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     from streamlit.testing.v1 import AppTest
 
@@ -92,9 +103,12 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert by_key["zen"]["overdue_week_current"] == 5
     assert comparison["totals"]["overdue_delta"] == -1
 
-    monkeypatch.setattr(pf_data, "load", lambda allowed: data)
+    def fail_real_load(*args, **kwargs):
+        pytest.fail("Демоверсия обратилась к зашифрованному срезу")
+
+    monkeypatch.setattr(pf_data, "load", fail_real_load)
+    monkeypatch.setattr(pf_demo, "build", lambda projects: data)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=30)
-    app.secrets["SHOW_REAL_DATA"] = "yes"
     app.secrets["APP_PASSWORD"] = "test-password"
     app.run()
     assert not app.exception
@@ -105,16 +119,21 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert not app.exception
     report = " ".join(block.value for block in app.markdown)
     captions = " ".join(block.value for block in app.caption)
-    assert "стоимость второй смены" in report and "Поручения к согласованию" in report
-    assert "Расчётная неустойка и сценарий выплат" in report and "При расчётном ориентире, недель" in report
+    assert "Поручения к согласованию" in report
+    assert "Чистый темп, квартир в неделю" in report and "При расчётном ориентире, недель" in report
+    assert "Предполагаемая сумма прошлых выплат" not in report
     assert "Подтверждённые исходные данные" not in captions
     assert "История закрытия замечаний: нет данных." in captions
     summary = report.split('id="summary"', 1)[1].split('<div class="cmph">', 1)[0]
-    assert "Сводка по портфелю" in summary and "10 ЖК · портфель включает демонстрационные данные" in summary
-    assert "неделя сравнения для всех выбранных ЖК по 04.11.2026" in summary
+    assert "Сводка по портфелю" in summary and "10 ЖК · все показатели рассчитаны на вымышленных данных" in summary
+    assert "сравнение за неделю по <b>04.11.2026</b>" in summary
+    assert "Согласовать недельный план передач по каждому ЖК" in summary
+    assert "Возможные требования по сценарию" not in summary
+    assert "Возможные требования по сценарию" in report.split('id="money"', 1)[1]
+    assert "Вторая смена приёмки · проверка перед согласованием" in [e.label for e in app.expander]
     assert "Бунинские кварталы" not in summary and "Дзен-кварталы" not in summary
     assert "Расчётная неустойка, ₽/день" in summary and "один дополнительный день просрочки" in summary
-    assert "Накопленная неустойка, верхняя оценка" in report
+    assert "Накопленная неустойка (верхняя оценка)" in report
     assert len(app.selectbox(key="pf_goto").options) == 10
     assert app.selectbox(key="pf_reason_scope").value == "Весь портфель"
     portfolio_reasons = next(block.value for block in app.markdown if '<table class="fin ready-reasons">' in block.value)
