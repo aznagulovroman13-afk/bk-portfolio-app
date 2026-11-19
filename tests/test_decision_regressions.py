@@ -113,10 +113,12 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert "Сводка по портфелю" in summary and "10 ЖК · портфель включает демонстрационные данные" in summary
     assert "неделя сравнения для всех выбранных ЖК по 04.11.2026" in summary
     assert "Бунинские кварталы" not in summary and "Дзен-кварталы" not in summary
+    assert "Расчётная неустойка, ₽/день" in summary and "один дополнительный день просрочки" in summary
+    assert "Накопленная неустойка, верхняя оценка" in report
     assert len(app.selectbox(key="pf_goto").options) == 10
     assert app.selectbox(key="pf_reason_scope").value == "Весь портфель"
     portfolio_reasons = next(block.value for block in app.markdown if '<table class="fin ready-reasons">' in block.value)
-    assert "Доля готовых" in portfolio_reasons and "Расчётный риск, ₽/день" in portfolio_reasons
+    assert "Доля готовых" in portfolio_reasons and "Расчётная неустойка, ₽/день" in portfolio_reasons
     assert '<td class="r">40</td>' in portfolio_reasons
     app.selectbox(key="pf_reason_scope").select("Всеволожск").run()
     assert not app.exception
