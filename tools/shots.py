@@ -1,25 +1,24 @@
-"""Снимки отчёта: python tools/shots.py <адрес> <каталог/> <метка>. Пароль берётся из .streamlit/secrets.toml (APP_PASSWORD), в вывод не попадает."""
-import sys, time, tomllib
+"""Снимки отчёта: python tools/shots.py <адрес> <каталог/> <метка>. Вход без пароля."""
+import sys, time
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 BASE, OUT, tag = sys.argv[1], sys.argv[2], sys.argv[3]
-PWD = tomllib.loads(Path(__file__).resolve().parents[1].joinpath(".streamlit", "secrets.toml").read_text(encoding="utf-8"))["APP_PASSWORD"]
 READY = "Сводка по портфелю"
 BAD = ("Требует уточнения", "Нет данных", "нет данных", "демо", "ДЕМО", "DEMO", "вымышл", "условн", "модельн", "Power BI", "А101", "ориентир", "war room", "one-stop")
 Path(OUT).mkdir(parents=True, exist_ok=True)
 
 
 def login(page):
-    page.goto(BASE); page.wait_for_load_state("networkidle"); time.sleep(6)
-    fr = next((x for x in page.frames if x.locator("input[type=password]").count()), page.main_frame)
-    started = None
-    if fr.locator("input[type=password]").count():
-        fr.locator("input[type=password]").fill(PWD); page.keyboard.press("Enter"); started = time.time()
+    """Открывает отчёт; пароля нет. Возвращает кадр страницы и время до появления первого экрана."""
+    started = time.time()
+    page.goto(BASE); page.wait_for_load_state("networkidle")
+    fr = page.main_frame
     for _ in range(240):
         time.sleep(0.5)
         if READY in fr.locator("body").inner_text():
             break
-    return fr, round(time.time() - (started or time.time()), 1)
+    assert not fr.locator("input[type=password]").count(), "на странице есть поле пароля"
+    return fr, round(time.time() - started, 1)
 
 
 def optional(step, *args):
@@ -33,7 +32,7 @@ with sync_playwright() as pw:
     b = pw.chromium.launch(executable_path="/usr/bin/google-chrome")
     p = b.new_page(viewport={"width": 1440, "height": 900})
     f, secs = login(p)
-    print("первая загрузка после входа, с:", secs)
+    print("первый экран открыт без пароля, с:", secs)
     time.sleep(3)
 
     def shot(name, sel=None, off=0):

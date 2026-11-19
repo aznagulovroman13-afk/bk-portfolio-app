@@ -110,14 +110,9 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
 
     monkeypatch.setattr(pf_demo, "build", lambda projects: data)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=30)
-    app.secrets["APP_PASSWORD"] = "test-password"
     app.run()
     assert not app.exception
-    assert app.text_input[0].label == "Пароль"
-    assert not app.caption
-    app.text_input[0].input("test-password")
-    app.button[0].click().run()
-    assert not app.exception
+    assert not app.text_input and "Пароль" not in " ".join(block.value for block in app.markdown)
     report = " ".join(block.value for block in app.markdown)
     captions = " ".join(block.value for block in app.caption)
     assert "Поручения к согласованию" in report
