@@ -14,6 +14,18 @@ DATA_KEY_NAME = "DATA_KEY"
 PROJECTS = (("bunino", "Бунинские кварталы"), ("zen", "Дзен-кварталы"), ("proksh", "Прокшино"), ("desn", "Десноречье"),
             ("scandc", "Скандинавия Центр"), ("yuzh", "Южные Сады"), ("vsev", "Всеволожск"), ("lag", "Лаголово"),
             ("zorge", "Дом на Зорге"), ("scands", "Скандинавия Юг"))
+CONFIRMED_PROJECTS = {"bunino"}
+ILLUSTRATIVE_PROJECTS = {"zen", "proksh"}
+
+
+def source_label(key: str) -> str:
+    if key in CONFIRMED_PROJECTS:
+        return "Контрольный срез"
+    if key in ILLUSTRATIVE_PROJECTS:
+        return "Иллюстративные данные"
+    return "Источник не подтверждён"
+
+
 TABLES = ("units", "remarks", "contractors")
 
 
