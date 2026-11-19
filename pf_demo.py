@@ -31,13 +31,74 @@ STALLED = ("zen", "scands", "vsev")
 # порядок ЖК фиксирует параметры генератора и не связан с порядком показа в отчёте
 SAMPLE_ORDER = ("bunino", "zen", "proksh", "desn", "scandc", "yuzh", "vsev", "lag", "zorge", "scands")
 ACCRUAL_START = pd.Timestamp("2026-01-01")
+BASE_SNAPSHOT = pd.Timestamp("2026-11-13")
+REPORT_SNAPSHOT = pd.Timestamp("2026-11-20")
+WEEK_OVERDUE_TRANSFERS = {
+    "bunino": 16, "zen": 6, "proksh": 12, "desn": 9, "scandc": 11,
+    "yuzh": 11, "vsev": 4, "lag": 12, "zorge": 11, "scands": 8,
+}
+BK_WEEK_UNILATERAL = 3
 BK_EXPIRED_POOL = 12
 BK_NOTICE_AGE = 45
 UNILATERAL_ACT_INTERVAL = 9
 
 
+def _advance_week(apartments: pd.DataFrame, remarks: pd.DataFrame, key: str) -> None:
+    days = (REPORT_SNAPSHOT - BASE_SNAPSHOT).days
+    ready = apartments[C.ready_mask(apartments)].sort_values("Срок по ДДУ")
+    overdue = ready[ready["Срок по ДДУ"].lt(BASE_SNAPSHOT)]
+    expedited = overdue.iloc[:0]
+    unilateral = expedited.index
+    if key == "bunino":
+        expedited = overdue[overdue["Официальный вызов, дн. назад"].gt(30)].head(BK_WEEK_UNILATERAL)
+        unilateral = expedited.index
+    elif key == "zorge":
+        without_visit = overdue["Статус записи собственника"].eq("") & overdue["Официальный вызов, дн. назад"].isna()
+        expedited = overdue[without_visit].head(6)
+    rest = overdue.drop(index=expedited.index).head(WEEK_OVERDUE_TRANSFERS[key] - len(expedited))
+    ontime = ready[ready["Срок по ДДУ"].ge(REPORT_SNAPSHOT)].head(2)
+    handed = expedited.index.append(rest.index).append(ontime.index)
+    apartments.loc[handed, "Дата принятия собственником"] = [
+        BASE_SNAPSHOT + pd.Timedelta(days=1 + i % days) for i in range(len(handed))
+    ]
+    apartments.loc[handed, "Односторонний ПА"] = handed.isin(unilateral)
+    apartments.loc[handed, "Исходный статус"] = "Принята"
+    apartments.loc[handed, "Готовность подтверждена"] = False
+    apartments.loc[handed, "Статус записи собственника"] = ""
+    apartments.loc[handed, ["Запись через, дн.", "Официальный вызов, дн. назад"]] = None
+
+    apartments["Запись через, дн."] -= days
+    missed = apartments["Запись через, дн."].lt(0)
+    apartments.loc[missed, "Статус записи собственника"] = "Не состоялось"
+    apartments.loc[missed, "Запись через, дн."] = None
+    rebooked = missed & apartments["Квартира"].mod(3).ne(0)
+    if key == "vsev":
+        rebooked |= (C.ready_mask(apartments) & apartments["Срок по ДДУ"].lt(REPORT_SNAPSHOT)
+                     & apartments["Статус записи собственника"].eq("Не состоялось"))
+    apartments.loc[rebooked, "Статус записи собственника"] = "Запланировано"
+    apartments.loc[rebooked, "Запись через, дн."] = 8 + apartments.loc[rebooked, "Квартира"].mod(5)
+    apartments["Официальный вызов, дн. назад"] += days
+
+    act_date = apartments["Дата принятия собственником"]
+    due = apartments["Срок по ДДУ"]
+    end_date = act_date.fillna(REPORT_SNAPSHOT)
+    delay = (end_date - due).dt.days.clip(lower=0)
+    accrual_days = (end_date - due.clip(lower=ACCRUAL_START - pd.Timedelta(days=1))).dt.days.clip(lower=0)
+    apartments["Просрочка ДДУ"] = np.where(act_date.notna(),
+        np.where(delay.gt(0), C.LATE, C.ONTIME), np.where(delay.gt(0), C.NT_OVERDUE, C.NOT_DUE))
+    apartments["Просрочка ДДУ факт, дн."] = delay
+    apartments["Дней для неустойки (после моратория)"] = delay
+    rates = apartments["Ставка ЦБ на срок ДДУ, %"]
+    apartments["Коэф. неустойки на 1 ₽ цены (верх)"] = accrual_days * rates / 15000
+    apartments["Коэф. неустойки на 1 ₽ цены (низ)"] = accrual_days * rates / 20000
+    remarks["Возраст"] += days
+    remarks["Просрочено45"] = remarks["Возраст"].gt(45)
+    late_remarks = remarks.groupby("Объект")["Просрочено45"].sum()
+    apartments["Просрочено (регл)"] = apartments["Объект"].map(late_remarks).fillna(0).astype(int)
+
+
 def build(projects: tuple) -> dict:
-    snapshot = pd.Timestamp("2026-11-13")
+    snapshot = BASE_SNAPSHOT
     result = {}
     for key, name in projects:
         index = SAMPLE_ORDER.index(key)
@@ -120,6 +181,7 @@ def build(projects: tuple) -> dict:
             unbooked = overdue_ready["Статус записи собственника"].eq("") & overdue_ready[notice].isna()
             supplement = overdue_ready[unbooked].index[:max(0, BK_EXPIRED_POOL - expired)]
             apartments.loc[supplement, notice] = BK_NOTICE_AGE
-        result[key] = dict(key=key, name=name, units=apartments, calc_date=snapshot, observed_through=snapshot,
+        _advance_week(apartments, source, key)
+        result[key] = dict(key=key, name=name, units=apartments, calc_date=REPORT_SNAPSHOT, observed_through=REPORT_SNAPSHOT,
                            remarks=pf_stats.remark_agg(source), contractors=pf_stats.contractor_table(source))
     return result
