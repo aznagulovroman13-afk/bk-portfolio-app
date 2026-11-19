@@ -107,17 +107,21 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     captions = " ".join(block.value for block in app.caption)
     assert "стоимость второй смены" in report and "Поручения к согласованию" in report
     assert "Расчётная неустойка и сценарий выплат" in report and "При расчётном ориентире, недель" in report
-    assert "Подтверждённые исходные данные: 1 из 10 ЖК" in captions
+    assert "Подтверждённые исходные данные" not in captions
     assert "История закрытия замечаний: нет данных." in captions
-    assert "неделя сравнения для всех выбранных ЖК по 06.11.2026" in report
-    assert "Демонстрационная динамика замечаний" not in report and "Прокшино" not in report
-    assert app.selectbox(key="pf_goto").options == ["Бунинские кварталы"]
-    app.radio(key="pf_data_mode").set_value("Демонстрационный портфель").run()
-    assert not app.exception
-    demo_report = " ".join(block.value for block in app.markdown)
-    assert "неделя сравнения для всех выбранных ЖК по 04.11.2026" in demo_report
-    assert "Дзен-кварталы · иллюстративный сценарий" in demo_report
+    summary = report.split('id="summary"', 1)[1].split('<div class="cmph">', 1)[0]
+    assert "Сводка по портфелю" in summary and "10 ЖК · портфель включает демонстрационные данные" in summary
+    assert "неделя сравнения для всех выбранных ЖК по 04.11.2026" in summary
+    assert "Бунинские кварталы" not in summary and "Дзен-кварталы" not in summary
     assert len(app.selectbox(key="pf_goto").options) == 10
+    assert app.selectbox(key="pf_reason_scope").value == "Весь портфель"
+    portfolio_reasons = next(block.value for block in app.markdown if '<table class="fin ready-reasons">' in block.value)
+    assert "Доля готовых" in portfolio_reasons and "Расчётный риск, ₽/день" in portfolio_reasons
+    assert '<td class="r">40</td>' in portfolio_reasons
+    app.selectbox(key="pf_reason_scope").select("Всеволожск").run()
+    assert not app.exception
+    project_reasons = next(block.value for block in app.markdown if '<table class="fin ready-reasons">' in block.value)
+    assert '<td class="r">4</td>' in project_reasons and '<td class="r">40</td>' not in project_reasons
     app.selectbox(key="pf_goto").select("Всеволожск").run()
     assert not app.exception and app.selectbox(key="pf_sel").value == "Всеволожск"
     assert any('href="#drill">Открыть карточку ЖК «Всеволожск»' in block.value for block in app.markdown)
@@ -128,5 +132,3 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     app.selectbox(key="pf_sel").select("Лаголово").run()
     assert not app.exception and app.selectbox(key="pf_goto").value == "Лаголово"
     assert not app.get("html")
-    app.radio(key="pf_data_mode").set_value("Только подтверждённые данные").run()
-    assert not app.exception and app.selectbox(key="pf_sel").value == "Бунинские кварталы"
