@@ -13,10 +13,12 @@ def login(page):
     started = time.time()
     page.goto(BASE); page.wait_for_load_state("networkidle")
     fr = page.main_frame
-    for _ in range(240):
+    for _ in range(240):                      # на Streamlit Cloud приложение открыто во вложенном кадре
         time.sleep(0.5)
-        if READY in fr.locator("body").inner_text():
+        fr = next((x for x in page.frames if READY in x.locator("body").inner_text()), None)
+        if fr:
             break
+    assert fr, "первый экран не открылся"
     assert not fr.locator("input[type=password]").count(), "на странице есть поле пароля"
     return fr, round(time.time() - started, 1)
 
