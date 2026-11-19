@@ -27,8 +27,10 @@ HORIZON_W = 104
 
 REASONS = [
     ("booked", "Записаны на приёмку в ближайшие 7 дней"),
-    ("queue", "Записаны позже 7 дней: очередь на слоты приёмки"),
+    ("queue", "Записаны на приёмку позже 7 дней"),
     ("refused", "Приёмка проведена, акт не подписан"),
+    ("missed", "Запись отменена или приёмка не состоялась"),
+    ("date_check", "Запись есть, дату нужно проверить"),
     ("called", "Вызваны официально, срок не истёк"),
     ("expired", "Срок официального вызова истёк"),
     ("silent", "Нет записи и официального вызова"),
@@ -55,10 +57,15 @@ def classify_ready(A: pd.DataFrame, price: float) -> dict:
     days = r["Запись через, дн."]
     call = r["Официальный вызов, дн. назад"]
     planned = rec.isin(["Запланировано", "Демонстрация началась", "Демонстрация завершена"])
-    refused = rec.isin(["Завершено", "Отменено", "Не состоялось"])
+    refused = rec.eq("Завершено")
+    missed = rec.isin(["Отменено", "Не состоялось"])
+    dated = planned & days.ge(0).fillna(False)
+    called = call.ge(0).fillna(False)
+    masks = (refused, missed, dated & days.gt(BOOK_DAYS).fillna(False), dated, planned,
+             called & call.le(CALL_WAIT_DAYS).fillna(False), called)
     cat = np.select(
-        [refused, planned & (days > BOOK_DAYS), planned, call.notna() & (call <= CALL_WAIT_DAYS), call.notna()],
-        ["refused", "queue", "booked", "called", "expired"], default="silent")
+        [mask.to_numpy(dtype=bool) for mask in masks],
+        ["refused", "missed", "queue", "booked", "date_check", "called", "expired"], default="silent")
     rate = r["Ставка ЦБ на срок ДДУ, %"].fillna(0) / 100 / 150 * price
     out = {}
     for k in REASON_KEYS:
@@ -70,25 +77,23 @@ def classify_ready(A: pd.DataFrame, price: float) -> dict:
 def simulate(n0: float, burn: float, r_unit: float, ready: float = 0.0, ready_weeks: int | None = None, cap: int = HORIZON_W) -> dict:
     """Недельная модель: остаток просрочки, накопленный риск. burn — чистый темп (минус приток), ready_weeks — сценарий «все готовые за N недель»."""
     n, acc, path, left = float(n0), 0.0, [(0, float(n0), 0.0)], float(ready)
-    weeks = None
+    if n <= 0:
+        return dict(weeks=0.0, accrued=acc, path=path)
     for w in range(1, cap + 1):
         b = burn
         if ready_weeks and w <= ready_weeks and left > 0:
             b = max(burn, ready / ready_weeks)
             left = max(0.0, left - b)
-        n2 = max(0.0, n - b)
-        if n2 > 0.5 or b <= 0:
-            acc += 7 * r_unit * (n + n2) / 2
-        else:                                   # последняя неделя: остаток обнуляется на доле недели
+        if b > 0 and b >= n - 1e-9:
             frac = min(1.0, n / b)
             acc += 7 * frac * r_unit * n / 2
-            n2 = 0.0
+            path.append((w, 0.0, acc))
+            return dict(weeks=w - 1 + frac, accrued=acc, path=path)
+        n2 = n - b
+        acc += 7 * r_unit * (n + n2) / 2
         n = n2
         path.append((w, n, acc))
-        if n <= 0.5:
-            weeks = (w - 1) + (n / b if b > 0 else 1.0)
-            break
-    return dict(weeks=weeks, accrued=acc, path=path)
+    return dict(weeks=None, accrued=acc, path=path)
 
 
 def forecast(p: dict, ready_weeks: int = 4) -> dict:
@@ -172,7 +177,6 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
     out: list[dict] = []
     unit = lambda k: (rs[k]["risk"] / rs[k]["n"]) if rs[k]["n"] else 0.0
     mv = lambda share, k, lo=3: min(rs[k]["n"], max(1, round(share * rs[k]["n"]))) if rs[k]["n"] >= lo else 0   # пул меньше lo квартир — мера не имеет смысла
-    wait = rs["queue"]["n"] + rs["booked"]["n"]
     # --- мощность приёмки
     n = mv(NO_SHOW_SHARE, "booked")
     _cand(out, "noshow", "capacity", "booked", "Ввести управление явкой на приёмку: подтверждение записи за двое суток, резервные слоты и вечерние смены",
@@ -182,22 +186,22 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
           "Передано за неделю; доля несостоявшихся приёмок")
     extra = min(max(1, round(EXTRA_CAPACITY * p["week_fact"])), p["ready"] // MONTH_W)
     if extra > 0 and rs["queue"]["n"] >= 3:
-        _cand(out, "crew", "capacity", "queue", f"Утвердить дополнительные приёмочные бригады: +{fi(extra)} передач в неделю за счёт второй смены",
+        _cand(out, "crew", "capacity", "queue", f"Рассмотреть вторую смену приёмки после проверки спроса и стоимости: до +{fi(extra)} передач в неделю по сценарию",
               "Вторая смена приёмки: дополнительные бригады", ["Генеральный директор", "Финансовый директор", "Директор по заселению"],
               min(4 * extra, rs["queue"]["n"]) * unit("queue"), 14,
-              f"{fi(wait)} готовых квартир ждут слотов приёмки; фактический темп {fi(p['week_fact'])} передач в неделю",
-              "Пропускная способность приёмки растёт на 25% к фактическому темпу; очередь на слоты сокращается",
-              "Передано за неделю; средний срок ожидания слота")
-    _cand(out, "realloc", "capacity", "queue", "Перераспределить приёмщиков между ЖК портфеля в пользу объектов с наибольшей очередью на слоты",
+              f"По {fi(rs['queue']['n'])} готовым квартирам визит назначен позже недели. За последнюю полную неделю передано {fi(p['week_fact'])} квартир",
+              "Сценарий предполагает рост темпа до 25%. Нужно подтвердить спрос на ранние визиты, число слотов и стоимость смены",
+              "Подтверждённые переносы на ранние даты; дополнительные передачи за неделю; стоимость смены")
+    _cand(out, "realloc", "capacity", "queue", "Проверить загрузку приёмщиков и перераспределить смены в пользу ЖК с подтверждённой нехваткой слотов",
           "Перераспределение приёмщиков между ЖК", ["Директор по заселению", "Операционный директор"],
           mv(SLOT_SHARE, "queue") * unit("queue"), 14,
-          f"В очереди на слоты позже 7 дней — {fi(rs['queue']['n'])} готовых квартир",
+          f"У {fi(rs['queue']['n'])} готовых квартир визит назначен позже недели",
           "Мощность приёмки в портфеле используется равномерно: простаивающие бригады переходят на ЖК с очередью",
           "Загрузка приёмщиков по ЖК; длина очереди на слоты")
     _cand(out, "batch", "capacity", "queue", "Перейти на пакетную приёмку по секциям: слоты закрепляются за секцией, приёмщики работают без переездов",
           "Пакетная приёмка по секциям", ["Директор по заселению", "Начальник приёмочной группы"],
           mv(BATCH_SHARE, "queue") * unit("queue"), 21,
-          f"Очередь на слоты — {fi(rs['queue']['n'])} готовых квартир",
+          f"У {fi(rs['queue']['n'])} готовых квартир визит назначен позже недели",
           "Растёт число приёмок на бригаду в смену; снижаются потери времени на переезды между корпусами",
           "Приёмок на бригаду в смену")
     # --- приёмка без подписанного акта
@@ -205,19 +209,19 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
     _cand(out, "onestop", "comms", "refused", "Перейти на сквозную приёмку с выездной группой: замечания фиксируются и устраняются в день осмотра, акт подписывается в тот же визит",
           "Сквозная приёмка с выездной группой", ["Директор по заселению", "Юридический департамент"],
           mv(REFUSAL_RESOLVED, "refused") * unit("refused"), 14,
-          f"{fi(n_ref)} приёмок проведено или отменено, акт не подписан",
+          f"Приёмка завершена по {fi(n_ref)} квартирам, акты не подписаны",
           "Устранение мелких замечаний переносится на день осмотра, число повторных визитов сокращается",
           "Доля актов, подписанных с первого визита")
     _cand(out, "compensation", "settle", "refused", "Заключать соглашения о компенсации за просрочку передачи с подписанием акта и отказом от дальнейших претензий в согласованной части",
           "Досудебное соглашение о компенсации", ["Юридический департамент", "Финансовый директор"],
           mv(COMPENSATION_SHARE, "refused") * unit("refused"), 14,
-          f"{fi(n_ref)} собственников отказались подписать акт; расчётная неустойка растёт ежедневно",
+          f"По {fi(n_ref)} завершённым приёмкам акты не подписаны; причину нужно установить отдельно",
           "Экономический спор закрывается до суда; неустойка по ст. 333 ГК РФ фиксируется по соглашению",
           "Число подписанных актов; сумма фактической компенсации к расчётной неустойке")
     _cand(out, "reply", "legal", "refused", "Направлять мотивированные ответы на отказы и проводить повторную приёмку; при необоснованном отказе составлять односторонний акт по ч. 6 ст. 8 214-ФЗ после правовой оценки",
           "Мотивированный ответ и повторная приёмка", ["Юридический департамент", "Директор по заселению"],
           mv(REPLY_SHARE, "refused") * unit("refused"), 18,
-          f"{fi(n_ref)} приёмок без подписанного акта; не все отказы содержат обоснованные недостатки",
+          f"{fi(n_ref)} завершённых приёмок без подписанного акта; применимость меры зависит от причины",
           "Обоснованные недостатки устраняются, необоснованные отказы оформляются правовым путём",
           "Доля повторных приёмок, завершённых актом")
     # --- вызовы и уведомления
@@ -307,23 +311,21 @@ def candidates(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -
     return out
 
 
-def pick(cands: list[dict], used: set | None = None, n: int = 3) -> list[dict]:
-    """Главное решение — наиболее эффективное из ещё не использованных в других ЖК; 1–2 дополнительных — из других групп причин и других правовых/операционных режимов."""
-    used = used or set()
+def pick(cands: list[dict], n: int = 3) -> list[dict]:
+    """Главная мера даёт наибольший расчётный эффект в ЖК, дополнительные охватывают другие группы квартир."""
     if not cands:
         return []
-    # главное решение не повторяется между ЖК без исключений: берём наиболее эффективное из ещё не использованных
-    main = next((c for c in cands if c["key"] not in used), cands[0])
+    main = max(cands, key=lambda c: c["effect"])
     out, pools, fams = [main], {main["pool"]}, {main["family"]}
-    for cap, fam_strict, need in ((True, True, n), (True, False, n), (False, False, 2)):
+    for fam_strict in (True, False):
         for c in cands:
-            if len(out) >= need:
+            if len(out) >= n:
                 break
-            if c in out or c["pool"] in pools or (cap and c["effect"] > main["effect"]) or (fam_strict and c["family"] in fams):
+            if c["pool"] in pools or (fam_strict and c["family"] in fams):
                 continue
             out.append(c); pools.add(c["pool"]); fams.add(c["family"])
     return out
 
 
-def decisions(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None, used: set | None = None) -> list[dict]:
-    return pick(candidates(p, ct, remarks), used)
+def decisions(p: dict, ct: pd.DataFrame, remarks: pd.DataFrame | None = None) -> list[dict]:
+    return pick(candidates(p, ct, remarks))
