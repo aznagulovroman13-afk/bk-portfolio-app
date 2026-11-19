@@ -262,7 +262,7 @@ plan_attention = sorted(
     key=lambda row: row["total"] - row["groups"]["ready"], reverse=True,
 )[:2]
 plan_attention_keys = {row["project"]["key"] for row in plan_attention}
-plan_history = f'{f(tot["left_n"])} факт → {f(plan_total)} цель'
+plan_history = f'факт {f(tot["left_n"])} → цель {f(plan_total)}'
 plan_title = "Утвердить недельный план передач по каждому ЖК"
 plan_owner = "Директор по заселению"
 risk_leader = projects[0]
@@ -281,7 +281,7 @@ priority_check = (f"{f(priority_package['week_units'])} {C.plural(priority_packa
                   if priority_package else "проверить применимость меры")
 priority_approval = "Оформить односторонние акты при подтверждённых основаниях" if priority_package else priority_request
 priority_check_detail = (f'В группе {f(priority_package["eligible"])} квартир с истёкшим сроком вызова. '
-                         "На контроле отдельно: основания подтверждены и акты оформлены." if priority_package else "")
+                         "На контроле отдельно показать число подтверждённых оснований и оформленных актов." if priority_package else "")
 plan_attention_text = " · ".join(
     f'{html.escape(row["project"]["name"])} — {f(row["groups"]["ready"])} из {f(row["total"])}'
     for row in plan_attention
@@ -289,7 +289,7 @@ plan_attention_text = " · ".join(
 plan_readiness = (
     f'<div class="exec-plan-readiness"><strong>{f(plan_ready)} уже готовы</strong>'
     + (f' · <span class="pending">по {f(plan_pending)} нужно снять препятствия к передаче</span>'
-       f' · готовы из плана: {plan_attention_text}. До утверждения — подтвердить сроки и ресурсы.' if plan_pending else "")
+       f' · готовы из плана — {plan_attention_text}. До утверждения подтвердить сроки и ресурсы.' if plan_pending else "")
     + '</div>'
 )
 if not priority_package and priority_measure:
@@ -317,7 +317,7 @@ st.markdown(
     f'<h3 id="exec-risk-title">{project_link(risk_leader["key"], risk_leader["name"])}</h3>'
     f'<span class="exec-value">{f(round(risk_leader["risk_day"]))} <em>₽/день</em></span>'
     f'<p>{f(risk_leader["overdue_kv"])} в просрочке · {f(risk_leader["ready"])} готовы к передаче</p>'
-    f'<p>К {review_date:%d.%m}: <b>{f(risk_leader_plan["total"])} из просрочки</b> к передаче · '
+    f'<p>К {review_date:%d.%m} — передать <b>{f(risk_leader_plan["total"])} квартир из просрочки</b> · '
     f'ожидается {f(risk_leader_plan["new"])} {C.plural(risk_leader_plan["new"], "новая просрочка", "новые просрочки", "новых просрочек")}</p></article>'
     '<article class="exec-project is-action" aria-labelledby="exec-priority-title">'
     f'<span class="exec-label">{"Наибольший эффект главной меры" if priority_measure else "Приоритет недели"}</span>'
@@ -332,7 +332,7 @@ st.markdown(
     f'<span>{html.escape(priority_owner)} · цель — {priority_check}</span>'
     f'<span>{priority_check_detail}</span></div>'
     '<div class="exec-approval-item"><strong>Согласовать недельный план и бюджет пакета</strong>'
-    f'<span>{plan_owner} · передано из просрочки: <b>{plan_history}</b></span>'
+    f'<span>{plan_owner} · передачи из просрочки · <b>{plan_history}</b></span>'
     f'<span>{html.escape(pack_budget)}</span></div>'
     '</div>' + plan_readiness +
     f'<div class="exec-control"><span>Цель по остатку просрочки <strong>{f(tot["overdue_kv"])} → {f(plan_closing)}</strong> · ожидается {f(plan_new)} новых</span>'
