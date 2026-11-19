@@ -32,11 +32,58 @@ st.markdown(
     '.fin.ready-reasons td:first-child {width: 48%;} '
     '.ready-reasons .reason-track {display: block; height: 5px; margin-top: 6px; background: #E9EDF2; border-radius: 3px;} '
     '.ready-reasons .reason-fill {display: block; height: 100%; background: #5B7BA6; border-radius: inherit;}'
-    '.week-priority {padding: 13px 18px; margin: 4px 0 8px; border-left: 4px solid var(--navy);}'
-    '.week-priority .h {font-size: 17px;}'
-    '.week-priority .deadlines {display: flex; gap: 4px 22px; flex-wrap: wrap; margin-top: 5px;}'
-    '.brief-row {padding: 10px 0; font-size: 15px; line-height: 1.5; color: var(--ink);}'
-    '.brief-row + .brief-row {border-top: 1px solid var(--line);}'
+    """
+    .exec-header {padding: 16px 24px; margin: 2px 0 0;}
+    .exec-header .ttl {margin: 2px 0 0; line-height: 1.2;}
+    #summary {margin-top: 14px;}
+    .exec-summary {display: grid; gap: 12px; color: var(--ink);}
+    .exec-date {font-size: 13px; color: var(--ink2); margin: 0;}
+    .exec-metrics, .exec-projects, .exec-approval-grid {display: grid; gap: 12px;}
+    .exec-metrics {grid-template-columns: repeat(3, minmax(0, 1fr));}
+    .exec-projects, .exec-approval-grid {grid-template-columns: repeat(2, minmax(0, 1fr));}
+    .exec-metric, .exec-project, .exec-approvals {border: 1px solid var(--line); background: var(--paper); border-radius: 7px;}
+    .exec-metric {padding: 11px 16px 12px;}
+    .exec-label {display: block; font-size: 12px; line-height: 1.35; color: var(--ink2); font-weight: 600;}
+    .exec-metric strong, .exec-value {display: block; font-size: clamp(25px, 3vw, 41px); line-height: 1.1; font-weight: 700;
+      font-variant-numeric: tabular-nums; letter-spacing: -.035em; margin: 4px 0; color: var(--navy);}
+    .exec-metric em, .exec-value em {font-style: normal; font-size: .48em; font-weight: 600; letter-spacing: 0; white-space: nowrap;}
+    .exec-delta {display: block; font-size: 12px; color: var(--ink2);}
+    .exec-delta.good {color: #246829;}
+    .exec-delta.bad {color: var(--risk);}
+    .exec-project {min-width: 0; padding: 15px 18px; border-top: 3px solid var(--gold);}
+    .exec-project h3 {font-size: clamp(17px, 1.55vw, 22px); line-height: 1.25; margin: 5px 0 0; padding: 0; font-weight: 650;}
+    .exec-project h3 a {color: var(--navy) !important;}
+    .exec-project .exec-value {margin: 8px 0 5px;}
+    .exec-project p {font-size: 13px; line-height: 1.45; color: var(--ink2); margin: 3px 0 0;}
+    .exec-project.is-action {border-color: #173653; border-top-color: #6799CE; background: var(--navy);}
+    .exec-project.is-action h3 a, .exec-project.is-action .exec-value {color: #fff !important;}
+    .exec-project.is-action .exec-label, .exec-project.is-action p {color: #CBDCED;}
+    .exec-approvals {padding: 13px 16px; line-height: 1.45;}
+    .exec-approval-heading, .exec-control {display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 16px;}
+    .exec-approval-heading h2 {font-size: 16px; line-height: 1.3; margin: 0; padding: 0; font-weight: 700;}
+    .exec-review {font-size: 13px; color: var(--ink2);}
+    .exec-approval-grid {margin-top: 9px;}
+    .exec-approval-item {background: #F3F6FA; border-radius: 4px; padding: 9px 12px; font-size: 13px;}
+    .exec-approval-item strong {display: block; color: var(--navy); margin-bottom: 3px;}
+    .exec-approval-item span, .exec-control {color: var(--ink2);}
+    .exec-control {margin-top: 9px; font-size: 13px;}
+    .exec-control strong {color: var(--navy);}
+    .exec-summary :focus-visible {outline: 2px solid #6799CE; outline-offset: 3px;}
+    @media (max-width: 630px) {
+      .exec-projects, .exec-approval-grid {grid-template-columns: 1fr;}
+      .exec-metrics {gap: 6px;}
+      .exec-metric {padding: 8px;}
+      .exec-metric .exec-label {font-size: 11px;}
+      .exec-metric strong {font-size: clamp(15px, 4vw, 25px); letter-spacing: -.04em;}
+      .exec-metric em {font-size: .75em;}
+      .exec-delta {font-size: 11px;}
+      .exec-header, .exec-project, .exec-approvals {padding: 12px;}
+    }
+    @media (max-width: 380px) {
+      .exec-metric:last-child {grid-column: 1 / -1;}
+      .exec-metrics {grid-template-columns: repeat(2, minmax(0, 1fr));}
+    }
+    """
     '.priority-label {display: block; font-size: 11px; color: #234F7A; font-weight: 700;}'
     '.contrib-row.focus .contrib-track i {background: #0B1F3A;}'
     '.contrib-row.focus a {font-weight: 700;}'
@@ -125,7 +172,7 @@ def scope_label(measure):
 
 import pf_detail as DT  # noqa: E402
 
-st.markdown('<div class="rh"><div class="kick">Отчёт для генерального директора · Демо-данные</div><div class="ttl">Портфель ЖК</div></div>',
+st.markdown('<div class="rh exec-header"><div class="kick">Отчёт для генерального директора · Демо-данные</div><div class="ttl">Портфель ЖК</div></div>',
             unsafe_allow_html=True)
 project_keys = tuple(DA)
 if not project_keys:
@@ -208,40 +255,61 @@ risk_leader = projects[0]
 pack_status = "окупается по расчётной неустойке" if pack_effect >= pack_cost else "не окупается по расчётной неустойке"
 U.section("Сводка по портфелю", anchor="summary", num="1.")
 slice_text = dd(slice_dates[0]) if min(slice_dates) == max(slice_dates) else f"{dd(min(slice_dates))}–{dd(max(slice_dates))}"
-priority_cost = fm(priority_package["cost"]) if priority_package else "не предусмотрены"
-priority_effect = f'−{fm(priority_measure["effect_day"])}/день к концу 4-й недели' if priority_measure else "без отдельного эффекта"
+priority_amount = f'−{fm(priority_measure["effect_day"])}' if priority_measure else ""
+priority_effect = f"{priority_amount}/день к концу 4-й недели" if priority_measure else "без отдельного эффекта"
 risk_leader_name = html.escape(risk_leader["name"])
 risk_leader_context = f'{risk_leader_name} — {f(round(risk_leader["risk_day"]))} ₽/день'
-priority_reason = "Наибольший расчётный эффект главной меры по ЖК." if priority_measure else ""
-priority_check = (f'односторонних актов в ЖК «{focus["name"]}» 0 → {f(priority_package["week_units"])}'
-                  if priority_package else "проверка применимости 0 → 1")
+priority_check = (f"{f(priority_package['week_units'])} {C.plural(priority_package['week_units'], 'односторонний акт', 'односторонних акта', 'односторонних актов')}"
+                  if priority_package else "проверить применимость меры")
+priority_approval = ("Утвердить одностороннюю передачу после правовой проверки" if priority_package else priority_request)
 if not priority_package and priority_measure:
     priority_effect += ", потенциал вне пакета"
-links_brief = f'<a href="#orders">Открыть поручение</a> · {project_link(focus["key"], "Открыть карточку ЖК")}'
+priority_qualifier = ("к концу 4-й недели, до затрат" if priority_package
+                      else "к концу 4-й недели, расчёт вне пакета" if priority_measure
+                      else "Меры по ЖК рассчитаны по доступным группам квартир")
+priority_detail = priority_package["title"] if priority_package else priority_measure["short"] if priority_measure else ""
+priority_value = f'<span class="exec-value">{priority_amount}<em>/день</em></span>' if priority_amount else ""
+priority_cost_line = f' · {f(priority_package["cost"])} ₽ на меру' if priority_package else ""
+overdue_tone = "good" if d_over < 0 else "bad" if d_over > 0 else "flat"
 st.markdown(
-    '<div class="card week-priority">'
-    f'<div class="brief-row"><b>Что происходит</b> · Факт на {slice_text} — {f(tot["overdue_kv"])} квартир в просрочке, '
-    f'{f(tot["ready"])} из них готовы к передаче. Расчётная неустойка — {f(round(tot["risk_day"]))} ₽/день. '
-    f'Наибольшая сумма по ЖК: {risk_leader_context}.</div>'
-    f'<div class="brief-row"><b>Что согласовать</b> · {html.escape(focus["name"])} — {html.escape(priority_request)}. '
-    f'{html.escape(priority_owner)}. {priority_reason} Расчёт до затрат: {priority_effect}. '
-    f'Затраты на меру: {priority_cost}. '
-    f'Утвердить недельный план и бюджет пакета — {f(pack_cost)} ₽.</div>'
-    f'<div class="brief-row"><b>Когда проверяем</b> · {priority_due}. Просрочка {f(tot["overdue_kv"])} → {f(plan_closing)}, '
-    f'передано из текущей просрочки 0 → {f(plan_total)}{f", {priority_check}" if priority_check else ""}. {links_brief}</div></div>',
+    '<div class="exec-summary">'
+    f'<p class="exec-date">Факт на <b>{slice_text}</b> · {len(projects)} ЖК</p>'
+    '<div class="exec-metrics">'
+    f'<div class="exec-metric"><span class="exec-label">Квартир в просрочке</span><strong>{f(tot["overdue_kv"])}</strong>'
+    f'<span class="exec-delta {overdue_tone}">{sg(d_over)} за неделю</span></div>'
+    f'<div class="exec-metric"><span class="exec-label">Готовы к передаче</span><strong>{f(tot["ready"])}</strong>'
+    f'<span class="exec-delta">{fr(tot["ready"] / to_)} от просрочки</span></div>'
+    f'<div class="exec-metric"><span class="exec-label">Расчётная неустойка</span><strong>{f(round(tot["risk_day"]))} <em>₽/день</em></strong>'
+    f'<span class="exec-delta {"good" if rk_d < 0 else "bad" if rk_d > 0 else "flat"}">{sgm(rk_d)}/день за неделю</span></div>'
+    '</div>'
+    '<div class="exec-projects">'
+    '<article class="exec-project" aria-labelledby="exec-risk-title">'
+    '<span class="exec-label">Самая высокая дневная неустойка</span>'
+    f'<h3 id="exec-risk-title">{project_link(risk_leader["key"], risk_leader["name"])}</h3>'
+    f'<span class="exec-value">{f(round(risk_leader["risk_day"]))} <em>₽/день</em></span>'
+    f'<p>{f(risk_leader["overdue_kv"])} в просрочке · {f(risk_leader["ready"])} готовы к передаче</p></article>'
+    '<article class="exec-project is-action" aria-labelledby="exec-priority-title">'
+    f'<span class="exec-label">{"Наибольший эффект главной меры" if priority_measure else "Приоритет недели"}</span>'
+    f'<h3 id="exec-priority-title">{project_link(focus["key"], focus["name"])}</h3>'
+    f'{priority_value}<p>{priority_qualifier}</p><p>{html.escape(priority_detail)}</p></article>'
+    '</div>'
+    '<section class="exec-approvals" aria-labelledby="exec-approvals-title">'
+    '<div class="exec-approval-heading"><h2 id="exec-approvals-title">Что согласовать</h2>'
+    f'<span class="exec-review">Контроль <time datetime="{review_date:%Y-%m-%d}">{priority_due}</time></span></div>'
+    '<div class="exec-approval-grid">'
+    f'<div class="exec-approval-item"><strong>{html.escape(priority_approval)}</strong>'
+    f'<span>{html.escape(priority_owner)} · {priority_check}{priority_cost_line}</span></div>'
+    '<div class="exec-approval-item"><strong>Утвердить недельный план и бюджет пакета</strong>'
+    f'<span>{plan_owner} · {f(plan_total)} {C.plural(plan_total, "передача", "передачи", "передач")} из просрочки · {f(pack_cost)} ₽</span></div>'
+    '</div>'
+    f'<div class="exec-control"><span>Цель по остатку просрочки <strong>{f(tot["overdue_kv"])} → {f(plan_closing)}</strong></span>'
+    '<a href="#orders">Поручения и план по ЖК</a></div></section></div>',
     unsafe_allow_html=True)
 with st.expander("Показатели портфеля и динамика за неделю"):
-    st.markdown(f'<div class="slice">Факт на <b>{slice_text}</b> · сравнение с <b>{dd(period_start)}</b> '
+    st.markdown(f'<div class="slice">Срез на <b>{slice_text}</b> · сравнение с <b>{dd(period_start)}</b> '
                 f'за полные 7 дней по <b>{dd(act_d)}</b></div>', unsafe_allow_html=True)
-    U.kpi_cards([
-        dict(label="Просрочка по ДДУ", value=f(tot["overdue_kv"]), delta=(f"{sg(d_over)} {pl(abs(d_over))} за неделю", "bad" if d_over > 0 else "good" if d_over < 0 else "flat"),
-             foot=f"{fr(tot['overdue_kv'] / max(tot['units_kv'], 1))} от всех квартир по ДДУ в портфеле"),
-        dict(label="Из них готовы к передаче", value=f(tot["ready"]), foot=f"{fr(tot['ready'] / to_)} просрочки"),
-        dict(label=DAILY_PENALTY, value=fm(tot["risk_day"]),
-             delta=(f"{sgm(rk_d)}/день к {dd(period_start)}", "bad" if portfolio_lag else "good" if rk_d < 0 else "flat"),
-             foot=f"Цель на эту неделю: {sgm(rk_t)}/день · изменение по срезам: {sgm(rk_d)}/день"),
-    ], big=True)
-
+    st.markdown(f'<div class="note">Просрочка по ДДУ — {fr(tot["overdue_kv"] / max(tot["units_kv"], 1))} квартир портфеля. '
+                f'Недельная цель по дневной неустойке — {sgm(rk_t)}/день.</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="dev">Из просрочки за неделю вышло <b>{f(tot["left_n"])}</b>, новых просрочек — <b>{f(tot["entered_n"])}</b>. '
                 f'Отстают от цели <b>{lagging} из {len(projects)} ЖК</b>. <a href="#dynamics">Динамика по ЖК</a>.</div>', unsafe_allow_html=True)
 week_cards = []
