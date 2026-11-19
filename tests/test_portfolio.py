@@ -305,6 +305,12 @@ def test_first_screen_shows_three_cards_slice_date_and_methodology():
               "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Причины непередачи готовых квартир", "Прогноз и целевой темп",
               "Управленческие решения и ожидаемый эффект"):
         assert s in t, s
+    assert "факт 100 → цель 142" in t
+    assert "49 уже готовы" in t and "по 93 нужно снять препятствия к передаче" in t
+    assert "Лаголово — 2 из 25" in t and "Прокшино — 2 из 22" in t
+    assert "Бюджет пакета на 4 недели — 1 231 000 ₽" in t and "в том числе 108 000 ₽" in t
+    assert "подтверждённых оснований и оформленных актов" in t
+    assert "13 квартир из просрочки" in t and "ожидается 9 новых просрочек" in t
     assert sorted(at.selectbox(key="pf_goto").options) == sorted(n for _, n in pf_data.PROJECTS)
     assert "Произведённые выплаты" not in t and "Предъявленные требования" not in t
     payout = next(expander for expander in at.expander if expander.label == "Сценарий будущих выплат по ЖК")
