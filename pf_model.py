@@ -15,7 +15,7 @@ import pf_remstat as RS
 import pf_stats
 
 DASH = "—"
-REPORT_SCHEMA = "v13"
+REPORT_SCHEMA = "v14"
 PLAN_UPLIFT = 1.10       # план передачи за неделю = средний факт 4 предыдущих недель × 1,10
 RISK_MATERIAL = 0.02     # изменение риска за 7 дней от 2% считаем существенным
 WEEK0 = pd.Timestamp("2026-08-17")     # первая из 12 недель динамики (понедельник)
@@ -133,6 +133,9 @@ def weekly(A: pd.DataFrame, cd: pd.Timestamp, observed_through: pd.Timestamp | N
     """12 недель: передано (квартиры / все помещения) по датам передаточных актов и просрочка по ДДУ (квартиры) на конец недели."""
     tr = C.transferred_mask(A)
     acc = A["Дата принятия собственником"]
+    act_kind = A.get("Односторонний ПА", pd.Series(pd.NA, index=A.index, dtype="boolean"))
+    unilateral = act_kind.eq(True).fillna(False)
+    bilateral = act_kind.eq(False).fillna(False)
     kv = A["Тип объекта"].eq("Квартира")
     cutoff = observed_through if observed_through is not None else cd - pd.Timedelta(days=5)
     start = cutoff - pd.Timedelta(days=7 * N_WEEKS - 1) if align_to_cutoff else WEEK0
@@ -144,7 +147,9 @@ def weekly(A: pd.DataFrame, cd: pd.Timestamp, observed_through: pd.Timestamp | N
         if observed_through is not None:
             m &= acc.le(cutoff)
         st = C.units_state_at(A, min(we, cd, observed_through) if observed_through is not None else min(we, cd))
-        rows.append({"ws": ws, "Неделя": f"{ws:%d.%m}–{we:%d.%m}", "Передано, квартир": int((m & kv).sum()), "Передано, всего": int(m.sum()),
+        rows.append({"ws": ws, "Неделя": f"{ws:%d.%m}–{we:%d.%m}", "Передано, квартир": int((m & kv).sum()),
+                     "По двусторонним ПА": int((m & kv & bilateral).sum()),
+                     "По односторонним ПА": int((m & kv & unilateral).sum()), "Передано, всего": int(m.sum()),
                      "Просрочка на конец недели, квартир": int(st["nt_overdue_kv"]), "partial": bool(we > cutoff)})
     return pd.DataFrame(rows)
 
@@ -205,6 +210,8 @@ def project(d: dict, P: dict, K: dict | None = None, *, comparison_date: pd.Time
         median_days=u["nt_overdue_median"], units=u["units_total"], units_kv=int(A["Тип объекта"].eq("Квартира").sum()),
         transferred=u["transferred"], late_transferred=u["late_transferred"], refusals=u["refusals"],
         week_fact=int(last["Передано, квартир"]), week_all=int(last["Передано, всего"]),
+        week_pa_bilateral=int(last.get("По двусторонним ПА", 0)),
+        week_pa_unilateral=int(last.get("По односторонним ПА", 0)),
         week_prev=int(prev["Передано, квартир"]) if prev is not None else None,
         overdue_delta=int(now_kv - wk_kv), overdue_week_current=int(now_kv), overdue_prev=int(wk_kv),
         risk_delta=risk_delta, risk_prev=Rs[1], risk_week_current=Rs[0], risk_target=risk_target,
@@ -274,6 +281,7 @@ def totals(projects: list[dict]) -> dict:
         overdue_kv=s("overdue_kv"), ready=s("ready"), risk_day=s("risk_day"), ready_risk=s("ready_risk"),
         accrued_up=s("accrued_up"), accrued_lo=s("accrued_lo"), week_fact=s("week_fact"), overdue_delta=s("overdue_delta"),
         week_prev=(sum(wk_prev) if all(x is not None for x in wk_prev) else None),
+        week_pa_bilateral=s("week_pa_bilateral"), week_pa_unilateral=s("week_pa_unilateral"),
         risk_delta=s("risk_delta"), risk_prev=s("risk_prev"), overdue_prev=s("overdue_prev"),
         overdue_week_current=s("overdue_week_current"), left_n=s("left_n"), left_risk=s("left_risk"),
         entered_n=s("entered_n"), entered_risk=s("entered_risk"), week_plan=s("week_plan"),

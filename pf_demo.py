@@ -33,6 +33,7 @@ SAMPLE_ORDER = ("bunino", "zen", "proksh", "desn", "scandc", "yuzh", "vsev", "la
 ACCRUAL_START = pd.Timestamp("2026-01-01")
 BK_EXPIRED_POOL = 12
 BK_NOTICE_AGE = 45
+UNILATERAL_ACT_INTERVAL = 9
 
 
 def build(projects: tuple) -> dict:
@@ -42,6 +43,7 @@ def build(projects: tuple) -> dict:
         index = SAMPLE_ORDER.index(key)
         rng = np.random.default_rng(1847 + 31 * index)
         units = []
+        acts = []
         remarks = []
         count = 190 + 34 * ((index * 7 + 3) % 9)
         readiness = (0.6, 0.72, 0.42, 0.63, 0.5)[index % 5]
@@ -57,6 +59,8 @@ def build(projects: tuple) -> dict:
                 recent = rng.random() < (0.30, 0.24, 0.33, 0.27, 0.29)[index % 5]
                 accepted = snapshot - pd.Timedelta(days=int(rng.integers(4 if key in STALLED else 0, 28) if recent else rng.integers(28, 210)))
                 due = accepted - pd.Timedelta(days=int(rng.integers(-14, 105)))
+                acts.append({"Объект": unit_id, "Дата ПА": accepted,
+                             "Односторонний ПА": (number + index) % UNILATERAL_ACT_INTERVAL == 0})
             else:
                 late_share = (0.34, 0.46, 0.30, 0.40, 0.37)[(index * 3 + 1) % 5]
                 due_offset = rng.integers(2, 150) if rng.random() < late_share else -rng.integers(5, 220)
@@ -95,7 +99,7 @@ def build(projects: tuple) -> dict:
             units.append({"Объект": unit_id, "Квартира": number, "Корпус": block, "Секция": section, "Этаж": floor,
                           "Тип объекта": "Квартира", "Исходный статус": status, "Готовность подтверждена": ready,
                           "Просрочка ДДУ": (C.LATE if overdue else C.ONTIME) if transferred else (C.NT_OVERDUE if overdue else C.NOT_DUE),
-                          "Просрочка ДДУ факт, дн.": delay, "Дней для неустойки (после моратория)": delay, "Срок по ДДУ": due, "Дата принятия собственником": accepted,
+                          "Просрочка ДДУ факт, дн.": delay, "Дней для неустойки (после моратория)": delay, "Срок по ДДУ": due,
                           "Коэф. неустойки на 1 ₽ цены (верх)": accrual_days * rate / 15000,
                           "Коэф. неустойки на 1 ₽ цены (низ)": accrual_days * rate / 20000,
                           "Ставка ЦБ на срок ДДУ, %": rate, "Мот. отказ / снятие готовности": status == "Не принята",
@@ -103,7 +107,12 @@ def build(projects: tuple) -> dict:
                           "Статус записи собственника": visit, "Запись через, дн.": visit_day, "Официальный вызов, дн. назад": notice_day,
                           "Замечаний открыто": issue_count, "Критических": critical, "Просрочено (регл)": late_remarks})
         source = pd.DataFrame(remarks)
-        apartments = pd.DataFrame(units)
+        act_registry = pd.DataFrame(acts, columns=["Объект", "Дата ПА", "Односторонний ПА"])
+        act_registry["Односторонний ПА"] = act_registry["Односторонний ПА"].astype("boolean")
+        apartments = pd.DataFrame(units).merge(
+            act_registry.rename(columns={"Дата ПА": "Дата принятия собственником"}),
+            on="Объект", how="left", validate="one_to_one",
+        )
         if key == "bunino":
             overdue_ready = apartments[C.ready_mask(apartments) & apartments["Просрочка ДДУ"].eq(C.NT_OVERDUE)]
             notice = "Официальный вызов, дн. назад"
