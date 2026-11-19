@@ -128,10 +128,15 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert "Возможные требования по сценарию" in report.split('id="money"', 1)[1]
     assert "Вторая смена приёмки · проверка перед согласованием" in [e.label for e in app.expander]
     priced_projects = PF.build(data, dict(params, prices={key: value * 1e6 for key, value in PF.DEFAULT_PRICES.items()}))
-    priority = PF.priority(priced_projects["projects"])
-    assert f'Приоритет недели — {priority["name"]} · {C.fmt_money(priority["risk_day"])}/день' in summary
+    priority = next(project for project in priced_projects["projects"] if project["key"] == "bunino")
+    assert f'Приоритет недели — Бунинские кварталы · {C.fmt_money(priority["risk_day"])}/день' in summary
+    share = priority["risk_day"] / priced_projects["totals"]["risk_day"]
+    assert f"{C.fmt_pct(share, 1)} расчётной неустойки портфеля за день" in summary
+    details = report.split('id="priority"', 1)[1].split('id="segments"', 1)[0]
+    assert "Управленческий приоритет компании" in details and "Бунинские кварталы" in details
     assert summary.index("Приоритет недели") < summary.index("Решения недели по портфелю")
     orders = report.split('id="orders"', 1)[1].split('id="notes"', 1)[0]
+    assert ">Бунинские кварталы</td>" in orders.split("</tr>", 2)[1]
     for section in (summary, orders):
         assert "до конца следующего рабочего дня после согласования" in section
         assert "через неделю после согласования" in section
