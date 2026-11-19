@@ -142,6 +142,15 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
         assert "через неделю после согласования" in section
     assert "Расчётная неустойка, ₽/день" in summary and "один дополнительный день просрочки" in summary
     assert "Накопленная неустойка (верхняя оценка)" in report
+    assert '/?jk=bunino#drill" data-project-link>Открыть карточку ЖК' in summary
+    assert '<summary>Ещё</summary>' in report
+    assert "Открыть поручение" in summary
+    assert report.count('class="contrib-row"') == 10
+    assert "Итого, квартиры" in report and "тем больше квартир" in report
+    app.radio(key="pf_matrix_metric").set_value("₽ в день").run()
+    assert not app.exception
+    money_report = " ".join(block.value for block in app.markdown)
+    assert "Итого, ₽ в день" in money_report and "тем выше расчётная неустойка в ₽/день" in money_report
     assert len(app.selectbox(key="pf_goto").options) == 10
     assert app.selectbox(key="pf_reason_scope").value == "Весь портфель"
     portfolio_reasons = next(block.value for block in app.markdown if '<table class="fin ready-reasons">' in block.value)
@@ -153,12 +162,19 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert '<td class="r">4</td>' in project_reasons and '<td class="r">40</td>' not in project_reasons
     app.selectbox(key="pf_goto").select("Всеволожск").run()
     assert not app.exception and app.selectbox(key="pf_sel").value == "Всеволожск"
-    assert any('href="#drill">Открыть карточку ЖК «Всеволожск»' in block.value for block in app.markdown)
-    assert "Navigation 1" in app.get("html")[-1].proto.body
+    assert app.query_params["jk"] == "vsev"
+    assert any('href="/?jk=vsev#drill" data-project-link>Открыть карточку ЖК «Всеволожск»' in block.value for block in app.markdown)
+    assert "const jump = 1;" in app.get("html")[-1].proto.body
     app.selectbox(key="pf_goto").select("Дзен-кварталы").run()
     assert not app.exception and app.selectbox(key="pf_sel").value == "Дзен-кварталы"
-    assert "Navigation 2" in app.get("html")[-1].proto.body
+    assert "const jump = 2;" in app.get("html")[-1].proto.body
     app.selectbox(key="pf_sel").select("Лаголово").run()
     assert not app.exception and app.selectbox(key="pf_goto").value == "Лаголово"
-    assert not app.get("html")
+    assert app.query_params["jk"] == "lag"
+    assert "const jump = null;" in app.get("html")[-1].proto.body
+    linked = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=30)
+    linked.query_params["jk"] = "bunino"
+    linked.run()
+    assert not linked.exception and linked.selectbox(key="pf_sel").value == "Бунинские кварталы"
+    assert "const jump = 1;" in linked.get("html")[-1].proto.body
     st.cache_data.clear()  # синтетический набор не должен попасть в кэш других тестов
