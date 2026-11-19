@@ -11,7 +11,7 @@ from data_gate import real_data_allowed
 DATA_ROOT = Path(__file__).resolve().parent / "data"
 DATA_KEY_NAME = "DATA_KEY"
 # ключ папки данных → название ЖК (порядок — порядок в отчёте; все ЖК равноправны)
-PROJECTS = (("bunino", "Бунинские кварталы"), ("zen", "Дзен-кварталы"), ("proksh", "Прокшино"), ("desn", "Десноречье"),
+PROJECTS = (("bunino", "Бунинские кварталы"), ("zen", "Дзен-кварталы"), ("proksh", "Прокшино"), ("desn", "Деснаречье"),
             ("scandc", "Скандинавия Центр"), ("yuzh", "Южные Сады"), ("vsev", "Всеволожск"), ("lag", "Лаголово"),
             ("zorge", "Дом на Зорге"), ("scands", "Скандинавия Юг"))
 CONFIRMED_PROJECTS = {"bunino"}
