@@ -188,8 +188,8 @@ U.kpi_cards([
          foot=f"Целевое изменение: {sgm(rk_t)}/день"),
 ], big=True)
 st.markdown(f'<div class="dev"><span class="k">За неделю</span> '
-            f'Из просрочки вышло <b>{f(tot["left_n"])}</b> {pl(tot["left_n"])}, новых просрочек — <b>{f(tot["entered_n"])}</b>. '
-            f'<b>{lagging} из {len(projects)} ЖК</b> отстают от целевого темпа снижения дневной неустойки. <a href="#dynamics">Динамика по ЖК</a>.</div>', unsafe_allow_html=True)
+            f'Из просрочки вышло <b>{f(tot["left_n"])}</b> {pl(tot["left_n"])}, новые просрочки — <b>{f(tot["entered_n"])}</b> {pl(tot["entered_n"])}. '
+            f'От целевого темпа снижения дневной неустойки отстают <b>{lagging} из {len(projects)} ЖК</b>. <a href="#dynamics">Динамика по ЖК</a>.</div>', unsafe_allow_html=True)
 week_cards = []
 for decision in weekly:
     week_cards.append(
