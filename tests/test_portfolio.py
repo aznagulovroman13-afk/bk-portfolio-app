@@ -402,7 +402,7 @@ def test_jump_button_opens_selected_project_detail():
 
 def test_cache_keys_bumped_for_new_schema():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert src.count('schema: str = "v11"') == 1
+    assert src.count('schema: str = "v12"') == 1
 
 
 # ---------------------------------------------------------------- четыре вопроса гендиректора (v6)
