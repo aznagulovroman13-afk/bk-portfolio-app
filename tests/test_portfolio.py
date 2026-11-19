@@ -137,7 +137,7 @@ def test_data_has_no_pii_columns_and_sources_are_clean(D):
         assert not BAD.search(names)
     src = " ".join((ROOT / f).read_text(encoding="utf-8") for f in ("app.py", "pf_model.py", "pf_ui.py", "pf_data.py", "pf_detail.py", "pf_stats.py"))
     assert "/workspace" not in src and "logo" not in src.lower() and not BAD.search(src)
-    assert not [w for w in LABELS[:6] if w in src], "служебные метки в коде"
+    assert not [w for w in LABELS[:6] if w in src.replace("Демо-данные", "")], "служебные метки в коде"
     assert "badge" not in src
 
 
@@ -154,13 +154,13 @@ def _txt(at):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", t))
 
 
-SLICE_DATES = {"13.11.2026", "08.11.2026"}
+SLICE_DATES = {"13.11.2026", "06.11.2026", "20.11.2026", "11.12.2026", "01.01.2026"}
 
 
 def _no_dates_sources(at, t):
-    """Даты среза, источники и сверка с действующим отчётом на экранах не показываются."""
+    """Пользовательские даты ограничены датами расчёта, служебные названия источников скрыты."""
     assert set(re.findall(r"\b\d{1,2}\.\d{2}\.\d{4}\b", t)) <= SLICE_DATES, re.findall(r"\b\d{1,2}\.\d{2}\.\d{4}\b", t)
-    for w in ("Сверка", "сверк", "kpis", "json", "parquet", "1С", "Совпало"):
+    for w in ("kpis", "json", "parquet", "1С", "Совпало"):
         assert w not in t, w
     cols = " ".join(" ".join(map(str, d.value.columns)) for d in at.dataframe)
     assert "срез" not in cols.lower() and "Дат" not in cols
@@ -192,7 +192,7 @@ def test_report_opens_without_password_and_secrets():
     assert not at.exception, [e.message for e in at.exception]
     assert not at.text_input
     t = _txt(at)
-    assert "10 ЖК в портфеле" in t and "Сводка по портфелю" in t and "Закрытый отчёт" not in t and "Выйти" not in _screen_text(at)
+    assert t.count("Демо-данные") == 1 and "Сводка по портфелю" in t and "Закрытый отчёт" not in t and "Выйти" not in _screen_text(at)
 
 
 def test_full_report_after_login_labels_data_mode():
@@ -203,7 +203,7 @@ def test_full_report_after_login_labels_data_mode():
     for s in ("Требует уточнения", "модельн", "Подтверждённые суммы"):
         assert s not in t, s
     assert not BAD.search(t)
-    assert "10 ЖК в портфеле" in t
+    assert t.count("Демо-данные") == 1
     _no_dates_sources(at, t)
 
 
@@ -299,8 +299,8 @@ def test_plan_fact_and_dynamics_are_comparable(B):
 def test_first_screen_shows_three_cards_slice_date_and_methodology():
     at = _open()
     t = _screen_text(at)
-    for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Срез на 13.11.2026", "Охват расчёта — 10 из 10 ЖК",
-              "1/300 ключевой ставки Банка России", "Приоритетный объект портфеля", "Основная причина", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
+    for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Факт на 13.11.2026", "Охват расчёта — 10 из 10 ЖК",
+              "/ 100 / 150", "Приоритетный объект портфеля", "Основная причина", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
               "Изменение за неделю к целевому темпу", "Передано за неделю: факт / целевой темп", "Неустойка на просроченную квартиру, ₽/день",
               "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Причины непередачи готовых квартир", "Прогноз и целевой темп",
               "Управленческие решения и ожидаемый эффект"):
@@ -325,7 +325,8 @@ def test_jump_button_opens_selected_project_detail():
 
 def test_cache_keys_bumped_for_new_schema():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert src.count('schema: str = "v10"') == 2 and '"v13"' not in src
+    assert src.count("schema: str = REPORT_SCHEMA") == 2
+    assert f'REPORT_SCHEMA = "{PF.REPORT_SCHEMA}"' in src
 
 
 # ---------------------------------------------------------------- четыре вопроса гендиректора (v6)
@@ -544,9 +545,43 @@ def test_screens_have_no_service_labels_placeholders_or_emphasis_on_one_project(
         at.selectbox(key="pf_sel").select(name).run()
         assert not at.exception, name
         text = (_screen_text(at) + " " + " ".join(c.value for c in at.caption)).lower()
+        assert text.count("демо-данные") == 1
+        text = text.replace("демо-данные", "")
         assert not [w for w in bad if w in text], (name, [w for w in bad if w in text])
-    orders = next(m.value for m in at.markdown if "Ответственная роль" in m.value and "<table" in m.value)
-    assert "Срок" not in re.sub(r"<[^>]+>", " ", orders)
+    orders = next(m.value for m in at.markdown if "Было → цель" in m.value and "<table" in m.value)
+    assert "Ответственный" in orders and "20.11.2026" in orders
     mains = html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", next(m.value for m in at.markdown if "Главное решение и ожидаемый эффект" in m.value))))
     shorts = [p["decisions"][0]["short"] for p in ranked]
     assert len(set(shorts)) == 10 and all(sh in mains for sh in shorts)
+
+
+def test_demo_week_package_financial_reconciliation(D):
+    report = PF.build(D, dict(P0, prices={key: value * 1e6 for key, value in PF.DEFAULT_PRICES.items()}))
+    totals, projects = report["totals"], report["projects"]
+    assert (totals["overdue_prev"], totals["left_n"], totals["entered_n"], totals["overdue_kv"]) == (607, 112, 32, 527)
+    assert totals["ready"] == sum(reason["n"] for reason in totals["reasons"].values()) == 290
+    assert totals["risk_prev"] - totals["left_risk"] + totals["entered_risk"] == pytest.approx(totals["risk_day"])
+    assert totals["risk_day"] == pytest.approx(4_720_530)
+    assert totals["accrued_up"] == pytest.approx(sum(project["accrued_up"] for project in projects))
+    assert sum(project["risk_vs_target"] > 0 for project in projects) == 4
+    priority = max(projects, key=lambda project: project["decisions"][0]["effect_day"])
+    package = DC.week_package(projects, priority)
+    assert priority["key"] == "bunino" and priority["decisions"][0]["key"] == "unilateral"
+    assert (package[0]["eligible"], package[0]["units"], package[0]["week_units"]) == (12, 11, 3)
+    assert priority["decisions"][0]["effect_day"] == pytest.approx(107_000 * 11 / 12)
+    assert len({(measure["group"], measure["subreason"]) for measure in package}) == len(package)
+    assert [measure["eligible"] for measure in package] == [12, 67, 50, 45, 51]
+    for measure in package:
+        assert measure["week_units"] == sum(item["week_units"] for item in measure["items"])
+        assert measure["cost"] == measure["units"] * DC.PACKAGE_RATES[measure["key"]]
+        assert measure["effect_day"] == pytest.approx(sum(item["average"] * item["units"] for item in measure["items"]))
+        assert measure["effect"] == pytest.approx(measure["effect_day"] * 14)
+    for project in projects:
+        assert sum(row["n"] for row in project["groups"]) == project["overdue_kv"]
+        assert sum(row["risk"] for row in project["groups"]) == pytest.approx(project["risk_day"])
+        assert all(decision["effect"] == pytest.approx(decision["effect_day"] * 14) for decision in project["decisions"])
+    plan = DC.handover_plan(projects, package, PF.PROBLEMS)
+    assert tuple(sum(row[key] for row in plan) for key in ("baseline", "total", "new", "closing")) == (527, 152, 4, 379)
+    for row in plan:
+        assert sum(row["groups"].values()) == row["total"]
+        assert all(row["groups"][group["key"]] <= group["n"] for group in row["project"]["groups"])

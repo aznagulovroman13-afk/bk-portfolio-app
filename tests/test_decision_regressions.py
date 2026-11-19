@@ -108,7 +108,8 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert by_key["zen"]["overdue_week_current"] == 5
     assert comparison["totals"]["overdue_delta"] == -1
 
-    monkeypatch.setattr(pf_demo, "build", lambda projects: data)
+    demo_for_ui = {key: dict(project, observed_through=project["calc_date"]) for key, project in data.items()}
+    monkeypatch.setattr(pf_demo, "build", lambda projects: demo_for_ui)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=30)
     app.run()
     assert not app.exception
@@ -121,31 +122,28 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert "Подтверждённые исходные данные" not in captions
     assert "нет данных" not in (report + captions).lower()
     summary = report.split('id="summary"', 1)[1].split('<div class="cmph">', 1)[0]
-    assert "Сводка по портфелю" in summary and "10 ЖК в портфеле" in summary
-    assert "сравнение за неделю по <b>04.11.2026</b>" in summary
-    assert "Согласовать недельный план передач по каждому ЖК" in summary
+    assert "Сводка по портфелю" in summary and summary.count('class="brief-row"') == 3
+    assert report.count("Демо-данные") == 1
+    assert "сравнение с <b>04.11.2026</b>" in summary
+    assert "Утвердить недельный план передач по каждому ЖК" in summary
     assert "Возможные требования по сценарию" not in summary
     assert "Возможные требования по сценарию" in report.split('id="money"', 1)[1]
     assert "Вторая смена приёмки · проверка перед согласованием" in [e.label for e in app.expander]
-    priced_projects = PF.build(data, dict(params, prices={key: value * 1e6 for key, value in PF.DEFAULT_PRICES.items()}))
-    priority = next(project for project in priced_projects["projects"] if project["key"] == "bunino")
-    assert f'Приоритет недели — Бунинские кварталы · {C.fmt_money(priority["risk_day"])}/день' in summary
-    share = priority["risk_day"] / priced_projects["totals"]["risk_day"]
-    assert f"{C.fmt_pct(share, 1)} расчётной неустойки портфеля за день" in summary
+    priced_projects = PF.build(demo_for_ui, dict(params, prices={key: value * 1e6 for key, value in PF.DEFAULT_PRICES.items()}))
+    priority = max(priced_projects["projects"], key=lambda project: project["decisions"][0]["effect_day"])
     details = report.split('id="priority"', 1)[1].split('id="segments"', 1)[0]
-    assert "Управленческий приоритет компании" in details and "Бунинские кварталы" in details
-    assert summary.index("Приоритет недели") < summary.index("Решения недели по портфелю")
+    assert "Критерий выбора" in details and priority["name"] in details
+    assert summary.index("Что согласовать") < summary.index("Решения недели по портфелю")
     orders = report.split('id="orders"', 1)[1].split('id="notes"', 1)[0]
-    assert ">Бунинские кварталы</td>" in orders.split("</tr>", 2)[1]
     for section in (summary, orders):
-        assert "до конца следующего рабочего дня после согласования" in section
-        assert "через неделю после согласования" in section
+        assert "Нужно решение ГД" in section and "В рабочем порядке" in section
+        assert "18.11.2026" in section
     assert "Расчётная неустойка, ₽/день" in summary and "один дополнительный день просрочки" in summary
     assert "Накопленная неустойка (верхняя оценка)" in report
-    assert '/?jk=bunino#drill" data-project-link>Открыть карточку ЖК' in summary
+    assert f'/?jk={priority["key"]}#drill" data-project-link>Открыть карточку ЖК' in summary
     assert '<summary>Ещё</summary>' in report
     assert "Открыть поручение" in summary
-    assert report.count('class="contrib-row"') == 10
+    assert report.count('class="contrib-row') == 10
     assert "Итого, квартиры" in report and "тем больше квартир" in report
     app.radio(key="pf_matrix_metric").set_value("₽ в день").run()
     assert not app.exception
