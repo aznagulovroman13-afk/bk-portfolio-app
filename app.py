@@ -24,6 +24,9 @@ st.markdown(
     '.fin.ready-reasons td:first-child {width: 48%;} '
     '.ready-reasons .reason-track {display: block; height: 5px; margin-top: 6px; background: #E9EDF2; border-radius: 3px;} '
     '.ready-reasons .reason-fill {display: block; height: 100%; background: #5B7BA6; border-radius: inherit;}'
+    '.week-priority {padding: 13px 18px; margin: 4px 0 8px;}'
+    '.week-priority .h {font-size: 17px;}'
+    '.week-priority .deadlines {display: flex; gap: 4px 22px; flex-wrap: wrap; margin-top: 5px;}'
     '.weekly {scroll-margin-top: 58px; padding: clamp(14px, 2.2vw, 30px); background: var(--navy); border-radius: 6px; color: #E3EBF5;}'
     '.weekly h2, .weekly h3 {color: #fff; margin: 0; padding: 0;}'
     '.weekly h2 {font-size: clamp(22px, 2.4vw, 32px); line-height: 1.2;}'
@@ -167,6 +170,19 @@ plan_title = "Согласовать недельный план передач 
 plan_owner = "Директор по заселению"
 plan_output = "По каждому ЖК — плановое число передач на неделю по группам причин"
 weekly = weekly_decisions(projects)
+pri = PF.priority(projects)
+priority_measure = pri["decisions"][0] if pri and pri["decisions"] else None
+if priority_measure:
+    priority_owner = next(role for role in priority_measure["roles"] if role != "Генеральный директор")
+    priority_request = priority_measure["short"]
+    priority_deliverable = "План действий"
+    priority_metric = priority_measure["metric"]
+    if priority_measure["key"] == "batch":
+        priority_request = "Проверить свободные слоты и представить график ранних приёмок по секциям"
+        priority_deliverable = "График приёмок"
+        priority_metric = "Сколько визитов перенесено на более ранние даты и сколько квартир передано"
+    priority_due = "до конца следующего рабочего дня после согласования"
+    priority_review = "через неделю после согласования"
 U.section("Сводка по портфелю", f"{len(projects)} ЖК в портфеле", anchor="summary", num="1.")
 slice_text = dd(slice_dates[0]) if min(slice_dates) == max(slice_dates) else f"{dd(min(slice_dates))}–{dd(max(slice_dates))}"
 st.markdown(f'<div class="slice">Срез на <b>{slice_text}</b> · сравнение за неделю по <b>{dd(act_d)}</b></div>', unsafe_allow_html=True)
@@ -179,6 +195,20 @@ U.kpi_cards([
          delta=(f"{sgm(rk_d)}/день к прошлой неделе", "bad" if rk_d > rk_t else "good"),
          foot=f"Целевое изменение: {sgm(rk_t)}/день"),
 ], big=True)
+if pri and pri["risk_day"] > 0:
+    primary_action = ""
+    if priority_measure:
+        primary_action = (
+            f'<div class="t"><b>Решение на согласование</b> — {html.escape(priority_request)}.'
+            f' Ответственный — {html.escape(priority_owner)}.</div>'
+            f'<div class="t deadlines"><span><b>{priority_deliverable}</b> — {priority_due}.</span>'
+            f'<span><b>Первая проверка</b> — {priority_review}.</span></div>'
+            '<div class="t"><a href="#orders">Поручение и показатель проверки</a> · <a href="#priority">Подробнее о ЖК</a></div>')
+    st.markdown(
+        f'<div class="card risk week-priority"><div class="h">Приоритет недели — {html.escape(pri["name"])}'
+        f' · {fm(pri["risk_day"])}/день</div>'
+        f'<div class="t">{fr(pri["share"])} расчётной неустойки портфеля за день</div>'
+        f'{primary_action}</div>', unsafe_allow_html=True)
 st.markdown(f'<div class="dev"><span class="k">За неделю</span> '
             f'Из просрочки вышло <b>{f(tot["left_n"])}</b> {pl(tot["left_n"])}, новые просрочки — <b>{f(tot["entered_n"])}</b> {pl(tot["entered_n"])}. '
             f'От целевого темпа снижения дневной неустойки отстают <b>{lagging} из {len(projects)} ЖК</b>. <a href="#dynamics">Динамика по ЖК</a>.</div>', unsafe_allow_html=True)
@@ -218,7 +248,6 @@ with st.expander("Доля просроченных квартир по ЖК"):
                 unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- 2. Приоритетный объект портфеля
-pri = PF.priority(projects)
 U.section("Приоритетный объект портфеля", "ЖК с наибольшей расчётной неустойкой за день", anchor="priority", num="2.")
 if pri:
     drv = "".join(f"<li>{html.escape(x)}</li>" for x in pri["drivers"])
@@ -702,24 +731,29 @@ U.kpi_cards([
 U.fin_table(["ЖК", DAILY_PENALTY, "Накопленная неустойка, верхняя оценка", "Накопленная неустойка, нижняя оценка", "Стоимость устранения замечаний", "Потенциал претензий"],
             [[x["name"], f(round(x["risk_day"])), fm(x["accrued_up"]), fm(x["accrued_lo"]), fm(x["remarks_cost"]), fm(x["claim_potential"])]
              for x in projects] + [["Итого", f(round(tot["risk_day"])), fm(tot["accrued_up"]), fm(tot["accrued_lo"]), fm(tot["remarks_cost"]), fm(tot["claim_potential"])]], right=range(1, 6), total_last=True)
-U.fin_table(["Показатель", "Сумма по сценарию"],
-            [["Предъявленные требования", fm(LD["claimed"])], ["Ожидаемые выплаты", fm(LD["expected"])], ["Произведённые выплаты", fm(LD["paid"])]], right=(1,))
 with st.expander("Сценарий будущих выплат по ЖК"):
-    st.caption(f"По сценарию предъявляется {C.fmt_pct(K['claim'])} верхней оценки неустойки. "
-               f"Допущение по снижению требований — {C.fmt_pct(K['cut'])}.")
-    payout_rows = [[p_["name"], fm(p_["ladder"]["claimed"]), fm(p_["ladder"]["expected"]), fm(p_["ladder"]["paid"])] for p_ in projects]
-    payout_rows.append(["Итого по портфелю", fm(LD["claimed"]), fm(LD["expected"]), fm(LD["paid"])])
-    U.fin_table(["ЖК", "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Произведённые выплаты"], payout_rows, right=(1, 2, 3), total_last=True)
+    st.caption(f"Допущения сценария. Возможные требования составляют {C.fmt_pct(K['claim'])} верхней оценки неустойки. "
+               f"Ожидаемые выплаты рассчитаны с учётом снижения требований на {C.fmt_pct(K['cut'])}.")
+    payout_rows = [[p_["name"], fm(p_["ladder"]["claimed"]), fm(p_["ladder"]["expected"])] for p_ in projects]
+    payout_rows.append(["Итого по портфелю", fm(LD["claimed"]), fm(LD["expected"])])
+    U.fin_table(["ЖК", "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию"], payout_rows, right=(1, 2), total_last=True)
 
 # ---------------------------------------------------------------- 9. Поручения
-U.section("Поручения к согласованию", "Предложения для решения; ответственные роли и контрольные показатели подтверждаются на совещании", anchor="orders", num="13.")
-ro = [["Весь портфель", plan_title, plan_owner,
-       "Проверить квартиры без записи и официального вызова и квартиры с приёмкой без подписанного акта",
-       plan_output, "К согласованию"]]
+U.section("Поручения к согласованию", "Ответственные, сроки и показатели проверки утверждаются на совещании", anchor="orders", num="13.")
+ro = []
+if priority_measure:
+    priority_control = (f"<span>{priority_deliverable} — {priority_due}.<br>"
+                        f"Первая проверка — {priority_review}.<br>"
+                        f"{html.escape(priority_metric)}.</span>")
+    ro.append([pri["name"], priority_request, priority_owner, priority_control,
+               f"−{fm(priority_measure['effect_day'])}/день · −{fm(priority_measure['effect'])} за 4 недели", "Приоритет · к согласованию"])
+ro.append(["Весь портфель", plan_title, plan_owner,
+           "Проверить квартиры без записи и официального вызова и квартиры с приёмкой без подписанного акта",
+           plan_output, "К согласованию"])
 ro.extend(["Весь портфель", decision["ask"], decision["owner"],
            decision["check"], f"−{fm(decision['effect_day'])}/день · −{fm(decision['effect'])} за 4 недели", "К согласованию"] for decision in weekly)
 for p_ in ranked_d:
-    if not p_["decisions"]:
+    if not p_["decisions"] or (priority_measure and p_["key"] == pri["project"]["key"]):
         continue
     d_ = p_["decisions"][0]
     ro.append([p_["name"], d_["title"], ", ".join(d_["roles"]),
@@ -734,9 +768,9 @@ U.sources(
     "Цены квартир по ДДУ приняты допущением: "
     + ", ".join(f"{DA[key]['name']} — {pr_in[key]:.1f} млн ₽".replace(".", ",") for key in project_keys)
     + "; значения меняются в боковой панели, неустойка пересчитывается пропорционально. Коммерческие помещения не включены; машиноместа и кладовые учитываются отдельно по расчётным ценам. "
-    "<br><b>Накопленная неустойка.</b> Верхняя и нижняя оценки за период просрочки по ставкам, действовавшим в соответствующие периоды. Предъявленные требования и выплаты показаны в сценарии. "
+    "<br><b>Накопленная неустойка.</b> Верхняя и нижняя оценки за период просрочки по ставкам, действовавшим в соответствующие периоды. "
     f"<br><b>Сценарий выплат.</b> Возможные требования — {C.fmt_pct(K['claim'])} верхней границы. Предполагаемое снижение требований — {C.fmt_pct(K['cut'])}. "
-    f"Ожидаемые выплаты — требования за вычетом снижения судом; произведённые выплаты — {C.fmt_pct(DC.DEFAULT_K['paid'])} ожидаемых. "
+    "Ожидаемые будущие выплаты по сценарию — возможные требования за вычетом предполагаемого снижения. "
     "<br><b>Готовы к передаче</b> — квартира просрочена по ДДУ, не передана, готовность подтверждена (есть дата готовности, нет отмены готовности и мотивированного отказа), открытых замечаний нет; "
     "неустойка по этим квартирам входит в итог по ЖК. Причины непередачи определены по статусу и дате записи собственника и по реестру официальных вызовов; границы в 7 и 30 дней приняты допущением. "
     "<br><b>Темп и целевой темп.</b> Чистый темп — среднее за 4 последние недели по датам актов приёма-передачи (передано из просрочки за вычетом притока новых просрочек). "
