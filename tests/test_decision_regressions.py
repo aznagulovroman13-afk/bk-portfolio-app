@@ -6,6 +6,7 @@ import pytest
 import pf_core as C
 import pf_data
 import pf_decide as DC
+import pf_model as PF
 
 
 @pytest.mark.parametrize(("overdue", "pace", "weeks"), [(1008, 92, 1008 / 92), (25, 10, 2.5), (20, 10, 2), (0, 0, 0)])
@@ -22,6 +23,16 @@ def test_best_decision_can_repeat_across_projects():
     second = dict(key="notice", pool="silent", family="legal", effect=20)
     assert DC.pick([first, common]) == [common, first]
     assert DC.pick([common, second]) == [common, second]
+
+
+def test_ready_forecast_subtracts_new_overdue_from_gross_handover():
+    project = dict(overdue_kv=600, burn_pace=12, target_burn=16, risk_day=60_000, ready=272, inflow=6)
+    result = DC.forecast(project)
+    assert result["base"]["path"][1][1] == 588
+    assert result["scn"]["path"][1][1] == 538  # 600 − 68 передано + 6 новых просрочек
+    assert result["scn"]["path"][4][1] == 352
+    assert result["scn"]["path"][5][1] == 340  # после сценария снова чистый темп 12
+    assert DC.forecast(dict(project, ready=20))["saving"] == 0
 
 
 def test_missing_dates_and_missed_appointments_have_separate_groups():
@@ -55,7 +66,8 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
             "Готовность подтверждена": [True] * 4 + [False] * 4,
             "Просрочка ДДУ": [C.NT_OVERDUE] * 5 + [C.LATE] * 3,
             "Просрочка ДДУ факт, дн.": 40, "Срок по ДДУ": pd.Timestamp("2026-08-01"),
-            "Дата принятия собственником": pd.to_datetime([None] * 5 + ["2026-10-21", "2026-10-28", "2026-11-06"]),
+            "Дата принятия собственником": pd.to_datetime(
+                [None] * 5 + ["2026-10-21", "2026-10-28", "2026-11-04" if key == "zen" else "2026-11-06"]),
             "Коэф. неустойки на 1 ₽ цены (верх)": 0.04, "Коэф. неустойки на 1 ₽ цены (низ)": 0.03,
             "Ставка ЦБ на срок ДДУ, %": 15., "Мот. отказ / снятие готовности": False,
             "Плановая дата ключей в ОЗ": pd.NaT,
@@ -72,6 +84,14 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
         data[key] = dict(key=key, name=name, units=units, remarks=remarks, contractors=contractors,
                          calc_date=pd.Timestamp("2026-11-11"))
 
+    params = dict(price=C.ILLUSTR_PRICE, price_mm=C.MM_PRICE, price_nhp=C.NHP_PRICE)
+    comparison = PF.build(data, params)
+    by_key = {p["key"]: p for p in comparison["projects"]}
+    assert {p["act_date"] for p in by_key.values()} == {pd.Timestamp("2026-11-04")}
+    assert by_key["bunino"]["overdue_week_current"] == 6  # акт БК от 06.11 позже общей даты
+    assert by_key["zen"]["overdue_week_current"] == 5
+    assert comparison["totals"]["overdue_delta"] == -1
+
     monkeypatch.setattr(pf_data, "load", lambda allowed: data)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=30)
     app.secrets["SHOW_REAL_DATA"] = "yes"
@@ -85,9 +105,20 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert not app.exception
     report = " ".join(block.value for block in app.markdown)
     captions = " ".join(block.value for block in app.caption)
-    assert "о второй смене" in report and "Согласовать достижимый темп" in report
+    assert "стоимость второй смены" in report and "Поручения к согласованию" in report
     assert "Расчётная неустойка и сценарий выплат" in report and "При расчётном ориентире, недель" in report
-    assert "нет данных" in captions and "иллюстративные данные" in captions
+    assert "Подтверждённые исходные данные: 1 из 10 ЖК" in captions
+    assert "История закрытия замечаний: нет данных." in captions
+    assert "неделя сравнения для всех выбранных ЖК по 06.11.2026" in report
+    assert "Демонстрационная динамика замечаний" not in report and "Прокшино" not in report
+    assert app.selectbox(key="pf_goto").options == ["Бунинские кварталы"]
+    app.radio(key="pf_data_mode").set_value("Демонстрационный портфель").run()
+    assert not app.exception
+    demo_report = " ".join(block.value for block in app.markdown)
+    assert "неделя сравнения для всех выбранных ЖК по 04.11.2026" in demo_report
+    assert "Дзен-кварталы · иллюстративный сценарий" in demo_report
     assert len(app.selectbox(key="pf_goto").options) == 10
     app.selectbox(key="pf_goto").select("Дзен-кварталы").run()
     assert not app.exception and app.selectbox(key="pf_sel").value == "Дзен-кварталы"
+    app.radio(key="pf_data_mode").set_value("Только подтверждённые данные").run()
+    assert not app.exception and app.selectbox(key="pf_sel").value == "Бунинские кварталы"
