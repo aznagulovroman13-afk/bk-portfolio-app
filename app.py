@@ -66,6 +66,11 @@ st.markdown(
     .exec-approval-item {background: #F3F6FA; border-radius: 4px; padding: 9px 12px; font-size: 13px;}
     .exec-approval-item strong {display: block; color: var(--navy); margin-bottom: 3px;}
     .exec-approval-item span, .exec-control {color: var(--ink2);}
+    .exec-approval-item span {display: block;}
+    .exec-approval-item span + span {margin-top: 4px;}
+    .exec-plan-readiness {margin-top: 9px; font-size: 13px; color: var(--ink2);}
+    .exec-plan-readiness strong {color: var(--navy);}
+    .exec-plan-readiness .pending {color: #80550E; font-weight: 600;}
     .exec-control {margin-top: 9px; font-size: 13px;}
     .exec-control strong {color: var(--navy);}
     .exec-summary :focus-visible {outline: 2px solid #6799CE; outline-offset: 3px;}
@@ -242,16 +247,29 @@ if priority_package and (not priority_measure or priority_measure["key"] != "uni
     package.remove(priority_package)
     priority_package = None
 priority_owner = priority_package["owner"] if priority_package else next((role for role in pri["roles"] if role != "Генеральный директор"), "Директор по заселению")
-priority_request = "Утвердить оформление односторонних актов по квартирам после подтверждения оснований юристами" if priority_package else f"Утвердить проверку применимости меры «{priority_measure['short']}»" if priority_measure else "Принять к сведению статус портфеля"
+priority_request = "Утвердить оформление односторонних актов только по квартирам, по которым юрдепартамент подтвердит основания" if priority_package else f"Утвердить проверку применимости меры «{priority_measure['short']}»" if priority_measure else "Принять к сведению статус портфеля"
 priority_due = dd(review_date)
 pack_effect = sum(measure["effect"] for measure in package)
 pack_cost = sum(measure["cost"] for measure in package)
 pack_daily = sum(measure["effect_day"] for measure in package)
 plan = DC.handover_plan(projects, package, PF.PROBLEMS)
 plan_total, plan_new, plan_closing = (sum(row[key] for row in plan) for key in ("total", "new", "closing"))
+plan_ready = sum(row["groups"]["ready"] for row in plan)
+plan_pending = plan_total - plan_ready
+plan_by_project = {row["project"]["key"]: row for row in plan}
+plan_attention = sorted(
+    (row for row in plan if row["total"] > row["groups"]["ready"]),
+    key=lambda row: row["total"] - row["groups"]["ready"], reverse=True,
+)[:2]
+plan_attention_keys = {row["project"]["key"] for row in plan_attention}
+plan_history = f'{f(tot["left_n"])} факт → {f(plan_total)} цель'
 plan_title = "Утвердить недельный план передач по каждому ЖК"
 plan_owner = "Директор по заселению"
 risk_leader = projects[0]
+risk_leader_plan = plan_by_project[risk_leader["key"]]
+pack_budget = f'Бюджет пакета на {DC.MONTH_W} недели — {f(pack_cost)} ₽'
+if priority_package:
+    pack_budget += f' · в том числе {f(priority_package["cost"])} ₽ по ЖК «{focus["name"]}»'
 pack_status = "окупается по расчётной неустойке" if pack_effect >= pack_cost else "не окупается по расчётной неустойке"
 U.section("Сводка по портфелю", anchor="summary", num="1.")
 slice_text = dd(slice_dates[0]) if min(slice_dates) == max(slice_dates) else f"{dd(min(slice_dates))}–{dd(max(slice_dates))}"
@@ -261,7 +279,19 @@ risk_leader_name = html.escape(risk_leader["name"])
 risk_leader_context = f'{risk_leader_name} — {f(round(risk_leader["risk_day"]))} ₽/день'
 priority_check = (f"{f(priority_package['week_units'])} {C.plural(priority_package['week_units'], 'односторонний акт', 'односторонних акта', 'односторонних актов')}"
                   if priority_package else "проверить применимость меры")
-priority_approval = ("Утвердить одностороннюю передачу после правовой проверки" if priority_package else priority_request)
+priority_approval = "Оформить односторонние акты при подтверждённых основаниях" if priority_package else priority_request
+priority_check_detail = (f'В группе {f(priority_package["eligible"])} квартир с истёкшим сроком вызова. '
+                         "На контроле отдельно: основания подтверждены и акты оформлены." if priority_package else "")
+plan_attention_text = " · ".join(
+    f'{html.escape(row["project"]["name"])} — {f(row["groups"]["ready"])} из {f(row["total"])}'
+    for row in plan_attention
+)
+plan_readiness = (
+    f'<div class="exec-plan-readiness"><strong>{f(plan_ready)} уже готовы</strong>'
+    + (f' · <span class="pending">по {f(plan_pending)} нужно снять препятствия к передаче</span>'
+       f' · готовы из плана: {plan_attention_text}. До утверждения — подтвердить сроки и ресурсы.' if plan_pending else "")
+    + '</div>'
+)
 if not priority_package and priority_measure:
     priority_effect += ", потенциал вне пакета"
 priority_qualifier = ("к концу 4-й недели, до затрат" if priority_package
@@ -269,7 +299,6 @@ priority_qualifier = ("к концу 4-й недели, до затрат" if pr
                       else "Меры по ЖК рассчитаны по доступным группам квартир")
 priority_detail = priority_package["title"] if priority_package else priority_measure["short"] if priority_measure else ""
 priority_value = f'<span class="exec-value">{priority_amount}<em>/день</em></span>' if priority_amount else ""
-priority_cost_line = f' · {f(priority_package["cost"])} ₽ на меру' if priority_package else ""
 overdue_tone = "good" if d_over < 0 else "bad" if d_over > 0 else "flat"
 st.markdown(
     '<div class="exec-summary">'
@@ -287,7 +316,9 @@ st.markdown(
     '<span class="exec-label">Самая высокая дневная неустойка</span>'
     f'<h3 id="exec-risk-title">{project_link(risk_leader["key"], risk_leader["name"])}</h3>'
     f'<span class="exec-value">{f(round(risk_leader["risk_day"]))} <em>₽/день</em></span>'
-    f'<p>{f(risk_leader["overdue_kv"])} в просрочке · {f(risk_leader["ready"])} готовы к передаче</p></article>'
+    f'<p>{f(risk_leader["overdue_kv"])} в просрочке · {f(risk_leader["ready"])} готовы к передаче</p>'
+    f'<p>К {review_date:%d.%m}: <b>{f(risk_leader_plan["total"])} из просрочки</b> к передаче · '
+    f'ожидается {f(risk_leader_plan["new"])} {C.plural(risk_leader_plan["new"], "новая просрочка", "новые просрочки", "новых просрочек")}</p></article>'
     '<article class="exec-project is-action" aria-labelledby="exec-priority-title">'
     f'<span class="exec-label">{"Наибольший эффект главной меры" if priority_measure else "Приоритет недели"}</span>'
     f'<h3 id="exec-priority-title">{project_link(focus["key"], focus["name"])}</h3>'
@@ -298,11 +329,13 @@ st.markdown(
     f'<span class="exec-review">Контроль <time datetime="{review_date:%Y-%m-%d}">{priority_due}</time></span></div>'
     '<div class="exec-approval-grid">'
     f'<div class="exec-approval-item"><strong>{html.escape(priority_approval)}</strong>'
-    f'<span>{html.escape(priority_owner)} · {priority_check}{priority_cost_line}</span></div>'
-    '<div class="exec-approval-item"><strong>Утвердить недельный план и бюджет пакета</strong>'
-    f'<span>{plan_owner} · {f(plan_total)} {C.plural(plan_total, "передача", "передачи", "передач")} из просрочки · {f(pack_cost)} ₽</span></div>'
-    '</div>'
-    f'<div class="exec-control"><span>Цель по остатку просрочки <strong>{f(tot["overdue_kv"])} → {f(plan_closing)}</strong></span>'
+    f'<span>{html.escape(priority_owner)} · цель — {priority_check}</span>'
+    f'<span>{priority_check_detail}</span></div>'
+    '<div class="exec-approval-item"><strong>Согласовать недельный план и бюджет пакета</strong>'
+    f'<span>{plan_owner} · передано из просрочки: <b>{plan_history}</b></span>'
+    f'<span>{html.escape(pack_budget)}</span></div>'
+    '</div>' + plan_readiness +
+    f'<div class="exec-control"><span>Цель по остатку просрочки <strong>{f(tot["overdue_kv"])} → {f(plan_closing)}</strong> · ожидается {f(plan_new)} новых</span>'
     '<a href="#orders">Поручения и план по ЖК</a></div></section></div>',
     unsafe_allow_html=True)
 with st.expander("Показатели портфеля и динамика за неделю"):
@@ -315,15 +348,17 @@ with st.expander("Показатели портфеля и динамика за
 week_cards = []
 for measure in package:
     status = "Утвердить" if measure is priority_package else "Принять к сведению"
+    measure_control = priority_check_detail if measure is priority_package else ""
+    cost_label = "В составе бюджета пакета" if measure is priority_package else "Затраты"
     week_cards.append(
         f'<article class="item"><h3>{html.escape(measure["title"])}</h3><div class="fields">'
         f'<div><span class="label">Группа квартир</span>{html.escape(scope_label(measure))} · {f(measure["eligible"])} квартир'
         f'<span class="subline">{measure_links(measure)}</span></div>'
         f'<div><span class="label">Расчёт, до затрат</span><strong class="amount">−{fm(measure["effect_day"])}/день</strong>'
         f'<span class="subline">к концу 4-й недели · −{fm(measure["effect"])} за 4 недели</span></div>'
-        f'<div><span class="label">Затраты</span>{fm(measure["cost"])}. План за 4 недели — {f(measure["units"])} квартир.</div>'
+        f'<div><span class="label">{cost_label}</span>{fm(measure["cost"])}. План за 4 недели — {f(measure["units"])} квартир.</div>'
         f'<div class="approval"><span class="label">{status}</span><strong>{html.escape(measure["owner"])}</strong>'
-        f'<span class="subline">Контроль {priority_due} · {result_text(measure)}.</span></div></div></article>')
+        f'<span class="subline">Контроль {priority_due} · {result_text(measure)}. {measure_control}</span></div></div></article>')
 n_direct = 1 if priority_package else 0
 priority_card = "".join(week_cards[:n_direct])
 if not priority_package and priority_measure:
@@ -331,9 +366,11 @@ if not priority_package and priority_measure:
                      f'<div>{project_link(focus["key"], focus["name"])}</div><div>{priority_effect}</div>'
                      f'<div>{html.escape(priority_owner)}</div><div class="approval">Контроль {priority_due} · '
                      f'{priority_check}</div></div></article>')
-portal_plan = (f'<article class="item"><h3>{plan_title}</h3><div class="fields"><div>Утвердить бюджет пакета</div>'
-               f'<div>{fm(pack_cost)}</div><div>{plan_owner}</div><div class="approval">Контроль {priority_due} · '
-               f'передано 0 → {f(plan_total)} квартир из текущей просрочки</div></div></article>')
+portal_plan = (f'<article class="item"><h3>{plan_title}</h3><div class="fields">'
+               f'<div>{html.escape(pack_budget)}</div>'
+               f'<div>{f(plan_ready)} уже готовы · по {f(plan_pending)} нужно снять препятствия к передаче</div>'
+               f'<div>{plan_owner}</div><div class="approval">Контроль {priority_due} · '
+               f'передано из просрочки {plan_history}</div></div></article>')
 st.markdown('<section class="weekly" id="weekly-decisions"><h2>Решения недели по портфелю · расчёт до учёта затрат</h2>'
             '<h3>Нужно решение ГД</h3>' + priority_card + portal_plan
             + '<h3>В рабочем порядке</h3>' + "".join(week_cards[n_direct:])
@@ -921,33 +958,39 @@ st.caption("Обе суммы — сценарий. База = накоплен�
 
 # ---------------------------------------------------------------- 9. Поручения
 U.section("Поручения к согласованию", f"Единая контрольная дата — {priority_due}. Плановые показатели за новый цикл начинаются с нуля.", anchor="orders", num="13.")
-order_head = ["Действие", "Поручение и ЖК", "Ответственный", "Проверка", "Было → цель", "Расчёт за 4 недели", "Затраты"]
+order_head = ["Действие", "Поручение и ЖК", "Ответственный", "Проверка", "Было → цель", "Расчёт за 4 недели", "Затраты за 4 недели"]
 def order_row(measure, requires_approval):
     instruction = priority_request if requires_approval else measure["title"]
     scope = f'<span>{html.escape(instruction)}<br>{measure_links(measure)}</span>'
+    check = f'{result_text(measure)}. {priority_check_detail}' if requires_approval else result_text(measure)
+    cost = f'{f(measure["cost"])} ₽ в составе пакета' if requires_approval else fm(measure["cost"])
     return ["Утвердить" if requires_approval else "Принять к сведению", scope, measure["owner"], priority_due,
-            result_text(measure), f"−{fm(measure['effect'])}", fm(measure["cost"])]
+            check, f"−{fm(measure['effect'])}", cost]
 
 st.markdown("**Нужно решение ГД**")
 approval_rows = [order_row(priority_package, True)] if priority_package else []
 if not priority_package and priority_measure:
     approval_rows.append(["Утвердить", f'{html.escape(priority_request)}<br>{project_link(focus["key"], focus["name"])}',
                           priority_owner, priority_due, "Проверка применимости 0 → 1", "Вне пакета", "Без отдельного бюджета"])
-approval_rows.append(["Утвердить", plan_title + " и бюджет пакета", plan_owner, priority_due,
-                      f"Передано 0 → {f(plan_total)}; просрочка {f(tot['overdue_kv'])} → {f(plan_closing)}",
-                      f"−{fm(pack_effect)}", fm(pack_cost)])
+approval_rows.append(["Утвердить", plan_title + f" и бюджет пакета на {DC.MONTH_W} недели", plan_owner, priority_due,
+                      f"Передано из просрочки {plan_history}. Остаток {f(tot['overdue_kv'])} → {f(plan_closing)}",
+                      f"−{fm(pack_effect)}", f"{f(pack_cost)} ₽"])
 U.fin_table(order_head, approval_rows, right=(5, 6))
 st.markdown("**В рабочем порядке**")
 U.fin_table(order_head, [order_row(measure, False) for measure in package if measure is not priority_package], right=(5, 6))
 st.caption("«Утвердить» — требуется решение генерального директора. «Принять к сведению» — за выполнение отвечает руководитель подразделения.")
 st.markdown(f"**Недельный план передач из текущей просрочки по ЖК · контроль {priority_due}**")
-plan_rows = [[project_link(row["project"]["key"], row["project"]["name"]), f(row["baseline"]),
+st.markdown(plan_readiness, unsafe_allow_html=True)
+plan_rows = [[project_link(row["project"]["key"], row["project"]["name"])
+              + ('<span class="sub wr">Подтвердить сроки и ресурсы</span>' if row["project"]["key"] in plan_attention_keys else ""),
+              f(row["baseline"]), f(row["project"]["left_n"]),
               *[f(row["groups"][key]) for key in PF.PROBLEMS], f(row["total"]), f(row["new"]), f(row["closing"]), priority_due]
              for row in plan]
-plan_rows.append(["Итого", f(tot["overdue_kv"]), *[f(sum(row["groups"][key] for row in plan)) for key in PF.PROBLEMS],
+plan_rows.append(["Итого", f(tot["overdue_kv"]), f(tot["left_n"]), *[f(sum(row["groups"][key] for row in plan)) for key in PF.PROBLEMS],
                   f(plan_total), f(plan_new), f(plan_closing), priority_due])
-U.fin_table(["ЖК", "Было в просрочке", "Готовы", "Ключи в ОЗ", "Отказ", "Готовность не открыта", "Есть замечания",
-             "План передач", "Новые просрочки", "Целевой остаток", "Дата"], plan_rows, right=range(1, 10), total_last=True)
+U.fin_table(["ЖК", "Было в просрочке", "Передано из просрочки за прошлую неделю", "Готовы", "Ключи в ОЗ", "Отказ",
+             "Готовность не открыта", "Есть замечания", "План передач", "Новые просрочки", "Целевой остаток", "Дата"],
+            plan_rows, right=range(1, 11), total_last=True)
 st.caption(f"Целевой остаток: {f(tot['overdue_kv'])} − {f(plan_total)} + {f(plan_new)} = {f(plan_closing)} квартир. "
            "Квартиры из мер уже входят в план. Новые просрочки рассчитаны по наступающим датам ДДУ в реестре, если эти квартиры останутся непереданными.")
 
