@@ -2,19 +2,20 @@
 from __future__ import annotations
 
 import html
+import json
 
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
 
-NAVY, INK, INK2, INK3 = "#0B1F3A", "#14213D", "#4A5568", "#7A8494"
+NAVY, INK, INK2, INK3 = "#0B1F3A", "#14213D", "#4A5568", "#596577"
 LINE, GOLD, RISK, GOOD = "#D5DBE3", "#A67C00", "#B3261E", "#2E7D32"
 SILVER, GRAPH = "#9AA5B4", "#3F4A5A"
 
 CSS = """
 <style>
-:root { --navy: #0B1F3A; --ink: #14213D; --ink2: #4A5568; --ink3: #7A8494; --line: #D5DBE3; --gold: #A67C00; --risk: #B3261E;
+:root { --navy: #0B1F3A; --ink: #14213D; --ink2: #4A5568; --ink3: #596577; --line: #D5DBE3; --gold: #A67C00; --risk: #B3261E;
   --paper: #FFFFFF; --bg: #E9EDF2; --bk-pad: clamp(16px, 3vw, 48px); color-scheme: light; }
 html, body, .stApp, button, input, textarea, select, [class*="css"] {
   font-family: Inter, system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif !important; -webkit-font-smoothing: antialiased; }
@@ -30,11 +31,19 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
 [data-testid="stCaptionContainer"] { color: var(--ink3) !important; }
 .num, .kcard .val, .fin td, .fin th.r { font-variant-numeric: tabular-nums; }
 /* верхняя полоса */
-.pfnav { position: fixed; top: 0; left: 0; right: 0; z-index: 999980; height: 44px; display: flex; align-items: center; gap: 22px;
-  padding: 0 var(--bk-pad); background: var(--navy); font-size: 13px; overflow-x: auto; white-space: nowrap; }
-.pfnav b { color: #fff; font-size: 14px; letter-spacing: .02em; margin-right: 10px; font-weight: 600; }
-.pfnav a { color: #C5CEDA !important; text-decoration: none !important; } .pfnav a:hover { color: #fff !important; }
-.pfnav .pfr { margin-left: auto; font-size: 11.5px; color: #97A4B6; }
+.pfnav { position: fixed; top: 0; left: 0; right: 0; z-index: 999980; height: 44px; display: flex; align-items: center; gap: 8px;
+  padding: 0 var(--bk-pad); background: var(--navy); font-size: 13px; white-space: nowrap; }
+.pfnav b { color: #fff; font-size: 14px; letter-spacing: .02em; margin-right: 18px; font-weight: 600; }
+.pfnav a, .pfnav summary { color: #C5CEDA !important; text-decoration: none !important; display: block; padding: 6px 9px; border-radius: 4px; }
+.pfnav a:hover, .pfnav summary:hover, .pfnav [aria-current="location"], .pfnav .more.is-current > summary {
+  color: #fff !important; background: #263F5D; }
+.pfnav :focus-visible { outline: 2px solid #B8E4FF; outline-offset: 1px; }
+.pfnav .more { position: relative; }
+.pfnav summary { cursor: pointer; list-style: none; }
+.pfnav summary::-webkit-details-marker { display: none; }
+.pfnav summary::after { content: " ▾"; }
+.pfnav .more-links { position: absolute; top: calc(100% + 6px); right: 0; min-width: 170px; padding: 5px; border-radius: 6px;
+  background: var(--navy); box-shadow: 0 5px 20px #14213D33; max-height: calc(100dvh - 53px); overflow-y: auto; }
 /* шапка отчёта */
 .rh { background: var(--navy); color: #fff; border-radius: 6px; padding: 26px 30px 20px; margin: 4px 0 18px; border-bottom: 3px solid var(--gold); }
 .rh .kick { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #C5CEDA; font-weight: 600; }
@@ -67,7 +76,7 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
 .dec > div { padding: 14px 16px; border-right: 1px solid var(--line); } .dec > div:last-child { border-right: none; }
 .dec .k { font-size: 10.5px; font-weight: 700; color: var(--ink3); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
 .dec .v { font-size: 13px; color: var(--ink); line-height: 1.5; }
-.dec .big { font-size: 22px; font-weight: 700; color: var(--risk); display: block; font-variant-numeric: tabular-nums; }
+.dec .big { font-size: 22px; font-weight: 700; color: var(--navy); display: block; font-variant-numeric: tabular-nums; }
 .kgrid.big { grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .kgrid.big .kcard { padding: 20px 26px 16px; } .kgrid.big .kcard .val { font-size: clamp(40px, 4.2vw, 64px); margin: 10px 0 8px; } .kgrid.big .kcard .val.sm { font-size: clamp(34px, 3.4vw, 52px); }
 .kgrid.big .kcard .dl { font-size: 15px; } .kgrid.big .kcard .foot { font-size: 12.5px; }
@@ -82,9 +91,9 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
 .cmp .rdy { position: absolute; left: 0; top: 3px; bottom: 3px; background: #9FB1C8; z-index: 2; border-radius: 2px; }
 .cmp .prv { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--risk); z-index: 3; }
 .cmp .vl { font-variant-numeric: tabular-nums; } .cmp .vl span { color: var(--ink3); font-size: 12px; font-weight: 400; }
-.prio { border: 1px solid var(--line); border-left: 5px solid var(--risk); border-radius: 4px; background: var(--paper); padding: 20px 26px; display: grid; grid-template-columns: .9fr 1.4fr 1.5fr; gap: 28px; }
+.prio { border: 1px solid var(--line); border-left: 5px solid var(--navy); border-radius: 4px; background: var(--paper); padding: 20px 26px; display: grid; grid-template-columns: .9fr 1.4fr 1.5fr; gap: 28px; }
 .prio .pn { font-size: 24px; font-weight: 700; color: var(--ink); line-height: 1.15; } .prio .pm { font-size: 15px; color: var(--ink2); margin-top: 10px; line-height: 1.5; }
-.prio .pm b { font-size: 30px; color: var(--risk); display: block; letter-spacing: -.01em; } .prio .pm span { color: var(--ink2); }
+.prio .pm b { font-size: 30px; color: var(--navy); display: block; letter-spacing: -.01em; } .prio .pm span { color: var(--ink2); }
 .prio .pl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; color: var(--ink3); margin-bottom: 6px; }
 .prio .pt { font-size: 14px; color: var(--ink); line-height: 1.5; } .prio ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink2); line-height: 1.5; }
 .ladder { display: grid; grid-template-columns: 1fr 22px 1fr 22px 1fr 22px 1fr; align-items: stretch; gap: 0; margin: 4px 0 6px; }
@@ -94,7 +103,7 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
 .ladder .v { font-size: 26px; font-weight: 700; color: var(--navy); margin: 4px 0; letter-spacing: -.01em; } .ladder .st.top .v { color: var(--risk); }
 .ladder .s { font-size: 11.5px; color: var(--ink3); line-height: 1.35; }
 .prio .dc { border-top: 1px solid var(--line); padding: 8px 0; } .prio .dc:first-of-type { border-top: 0; padding-top: 0; }
-.prio .dt { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.4; } .prio .de { font-size: 13px; font-weight: 700; color: var(--risk); margin-top: 2px; }
+.prio .dt { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.4; } .prio .de { font-size: 13px; font-weight: 700; color: var(--navy); margin-top: 2px; }
 .prio .dr { font-size: 12px; color: var(--ink2); margin-top: 2px; }
 .prio .pr { font-size: 13px; color: var(--ink2); margin-top: 8px; }
 table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px; }
@@ -102,14 +111,31 @@ table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px
 .tw table.fin th:first-child, .tw table.fin td:first-child { position: sticky; left: 0; background: var(--paper); z-index: 1; box-shadow: 1px 0 0 var(--line); }
 .tw table.fin th:first-child { background: #F3F5F8; } .tw table.fin tr.tot td:first-child { background: #F3F5F8; }
 .fin td.r { white-space: nowrap; } .fin td .sub { display: block; white-space: nowrap; font-size: 11px; color: var(--ink3); font-weight: 400; } .fin td .wr { color: var(--risk); font-weight: 600; }
+.fin td .improved { color: #2E7D32; font-weight: 600; }
+a[data-project-link] { color: #234F7A !important; text-decoration: underline; text-underline-offset: 3px; }
+.contrib-bars { border: 1px solid var(--line); background: var(--paper); border-radius: 4px; padding: 12px 14px; container-type: inline-size; }
+.contrib-row { display: grid; grid-template-columns: minmax(110px, 1.05fr) minmax(48px, .95fr) max-content; align-items: center;
+  padding: 7px 0; gap: 10px; font-size: 13px; border-bottom: 1px solid #E6EAF0; }
+.contrib-row:last-child { border-bottom: 0; }
+.contrib-track { display: block; height: 9px; background: #E9EDF2; border-radius: 3px; overflow: hidden; }
+.contrib-track i { display: block; height: 100%; background: #31577D; border-radius: inherit; }
+.contrib-value { text-align: right; font-variant-numeric: tabular-nums; }
+.contrib-value span { color: var(--ink3); }
+@container (max-width: 370px) {
+  .contrib-row { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
+  .contrib-track { order: 1; grid-column: 1 / -1; }
+}
 .fin td .sp { vertical-align: middle; } .fin td.nw { white-space: nowrap; }
 .concl.one { border-left-color: var(--navy); padding: 16px 22px; } .concl.one .t { font-size: clamp(17px, 1.7vw, 22px); font-weight: 600; line-height: 1.35; }
 @media (max-width: 640px) {
   .hm { display: none; } .fin { font-size: 12px; } .fin td, .fin th { padding: 7px 8px; }
   .kgrid.big { grid-template-columns: 1fr; } .ladder { grid-template-columns: 1fr; } .ladder .ar { display: none; } .ladder .st { margin-bottom: 8px; }
-  .prio { grid-template-columns: 1fr; gap: 16px; } .cmp { grid-template-columns: 1fr; } .pfnav { overflow-x: auto; gap: 14px; }
+  .prio { grid-template-columns: 1fr; gap: 16px; } .cmp { grid-template-columns: 1fr; }
+  .pfnav { padding: 0 6px; gap: 1px; justify-content: space-between; font-size: 12px; }
+  .pfnav b { display: none; }
+  .pfnav a, .pfnav summary { padding: 6px 4px; }
 }
-.note { font-size: 12px; color: var(--ink3); line-height: 1.5; margin: 6px 0 10px; }
+.note { font-size: 13px; color: var(--ink3); line-height: 1.5; margin: 6px 0 10px; }
 .pf-role { display: inline-block; font-size: 12px; color: var(--navy); background: #EEF2F7; border: 1px solid #C9D2DE; border-radius: 3px; padding: 1px 8px; margin: 2px 4px 2px 0; }
 /* финансовые таблицы */
 .fin { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); font-size: 13px; }
@@ -118,7 +144,7 @@ table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px
 .fin td { padding: 8px 12px; border-bottom: 1px solid #E6EAF0; color: var(--ink); } .fin tr.tot td { font-weight: 700; background: #F3F5F8; border-top: 2px solid var(--navy); }
 .fin td.risk { color: var(--risk); font-weight: 600; } .fin td.nd { color: var(--ink3); font-style: italic; }
 .ok { color: #2E7D32; font-weight: 700; } .bad { color: var(--risk); font-weight: 700; }
-.src { font-size: 11px; color: var(--ink3); line-height: 1.55; border-top: 1px solid var(--line); margin-top: 36px; padding-top: 12px; }
+.src { font-size: 13px; color: var(--ink3); line-height: 1.55; border-top: 1px solid var(--line); margin-top: 36px; padding-top: 12px; }
 .src b { color: var(--ink2); }
 .st-key-pf_bar { align-items: center; gap: 14px !important; justify-content: flex-start; margin: 0 0 6px; }
 div[data-testid="stPlotlyChart"] { background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px 2px; }
@@ -128,6 +154,111 @@ div[data-testid="stExpander"] details { background: var(--paper); border: 1px so
 @media (max-width: 900px) { .dec { grid-template-columns: 1fr; } .dec > div { border-right: none; border-bottom: 1px solid var(--line); } }
 </style>
 """
+
+
+NAVIGATION = """
+<nav class="pfnav" aria-label="Разделы отчёта"><b>ПОРТФЕЛЬ ЖК</b>
+<a href="#summary">Сводка</a><a href="#weekly-decisions">Решения</a><a href="#segments">ЖК</a>
+<a href="#orders">Поручения</a><a href="#money">Финансы</a>
+<details class="more"><summary>Ещё</summary><div class="more-links">
+<a href="#priority">Приоритет</a><a href="#reasons">Причины</a><a href="#forecast">Прогноз</a>
+<a href="#decisions">Меры по ЖК</a><a href="#contribution">Концентрация</a><a href="#dynamics">Динамика</a>
+<a href="#matrix">Матрица</a><a href="#remarks">Замечания</a><a href="#drill">Детализация</a><a href="#notes">Методология</a>
+</div></details></nav>
+"""
+
+
+def navigation_script(project_key: str | None, jump: int | None) -> str:
+    route = json.dumps(project_key)
+    return """<script>
+(() => {
+    function syncProjectAddress(key) {
+        for (const view of new Set([window, window.parent])) {
+            try {
+                const address = new URL(view.location.href);
+                address.searchParams.set('jk', key);
+                address.hash = 'drill';
+                if (address.href !== view.location.href) {
+                    view.history.replaceState(view.history.state, '', address);
+                }
+            } catch {
+                // An embedding page on a different origin owns its address.
+            }
+        }
+    }
+
+    if (!window.portfolioNavRefresh) {
+        let scheduled = false;
+        window.portfolioNavRefresh = function () {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(() => {
+                scheduled = false;
+                const nav = document.querySelector('.pfnav');
+                if (!nav) return;
+                const links = [...nav.querySelectorAll('a[href^="#"]')];
+                let active = links[0];
+                let closest = -Infinity;
+                for (const link of links) {
+                    const section = document.getElementById(link.hash.slice(1));
+                    if (!section) continue;
+                    const top = section.getBoundingClientRect().top;
+                    if (top <= 112 && top > closest) {
+                        closest = top;
+                        active = link;
+                    }
+                }
+                for (const link of links) {
+                    if (link === active) link.setAttribute('aria-current', 'location');
+                    else link.removeAttribute('aria-current');
+                }
+                nav.querySelector('.more').classList.toggle('is-current', !!active.closest('.more'));
+            });
+        };
+
+        document.addEventListener('scroll', window.portfolioNavRefresh, {capture: true, passive: true});
+        window.addEventListener('hashchange', window.portfolioNavRefresh);
+        window.addEventListener('resize', window.portfolioNavRefresh);
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                const menu = document.querySelector('.pfnav .more[open]');
+                if (menu) {
+                    menu.open = false;
+                    menu.querySelector('summary').focus();
+                }
+            }
+        });
+        document.addEventListener('click', event => {
+            const link = event.target.closest('a');
+            const menu = document.querySelector('.pfnav .more[open]');
+            if (menu && (link || !menu.contains(event.target))) menu.open = false;
+            if (!link?.matches('[data-project-link]') || event.defaultPrevented ||
+                event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+            const target = new URL(link.href);
+            const current = new URL(window.location.href);
+            const key = target.searchParams.get('jk');
+            event.preventDefault();
+            if (current.searchParams.get('jk') === key) {
+                syncProjectAddress(key);
+                document.getElementById('drill')?.scrollIntoView({block: 'start'});
+                return;
+            }
+            // Keep navigation in the Streamlit frame. The link itself points to the public URL.
+            current.searchParams.set('jk', key);
+            current.hash = 'drill';
+            window.location.assign(current);
+        });
+    }
+    const selectedProject = """ + route + """;
+    if (selectedProject) syncProjectAddress(selectedProject);
+    const jump = """ + json.dumps(jump) + """;
+    if (jump) requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.getElementById('drill')?.scrollIntoView({block: 'start'});
+    }));
+    window.portfolioNavRefresh();
+})();
+</script>"""
 
 
 def _template():

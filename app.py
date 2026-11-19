@@ -1,6 +1,7 @@
 """Портфель ЖК — отчёт для генерального директора с доступом по паролю."""
 import html
 from math import ceil
+from urllib.parse import urlencode
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -24,7 +25,7 @@ st.markdown(
     '.fin.ready-reasons td:first-child {width: 48%;} '
     '.ready-reasons .reason-track {display: block; height: 5px; margin-top: 6px; background: #E9EDF2; border-radius: 3px;} '
     '.ready-reasons .reason-fill {display: block; height: 100%; background: #5B7BA6; border-radius: inherit;}'
-    '.week-priority {padding: 13px 18px; margin: 4px 0 8px;}'
+    '.week-priority {padding: 13px 18px; margin: 4px 0 8px; border-left: 4px solid var(--navy);}'
     '.week-priority .h {font-size: 17px;}'
     '.week-priority .deadlines {display: flex; gap: 4px 22px; flex-wrap: wrap; margin-top: 5px;}'
     '.weekly {scroll-margin-top: 58px; padding: clamp(14px, 2.2vw, 30px); background: var(--navy); border-radius: 6px; color: #E3EBF5;}'
@@ -38,6 +39,9 @@ st.markdown(
     '.weekly .fields > div + div {border-left: 1px solid #38506A;}'
     '.weekly .label, .weekly .subline {display: block; color: #C2D0E2;}'
     '.weekly .label {font-size: 11px; font-weight: 700; margin-bottom: 5px;}'
+    '.weekly .fields .approval {background: #1D3958;}'
+    '.weekly .approval .label {color: #B8E4FF; font-size: 12px;}'
+    '.weekly .approval strong {color: #FFF; font-weight: 600;}'
     '.weekly .subline {font-size: 12px; margin-top: 4px;}'
     '.weekly .amount {display: block; color: #B8E4FF; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums;}'
     '.weekly a {color: #B8E4FF !important; text-underline-offset: 3px;}'
@@ -47,10 +51,7 @@ st.markdown(
     '.weekly .fields > div:nth-child(n+3) {border-top: 1px solid #38506A;}}'
     '@media (max-width: 490px) {.weekly .fields {grid-template-columns: 1fr;}'
     '.weekly .fields > div + div {border-left: 0; border-top: 1px solid #38506A;}}</style>'
-    '<div class="pfnav"><b>ПОРТФЕЛЬ ЖК</b><a href="#summary">Показатели</a><a href="#priority">Приоритет</a><a href="#segments">Структура</a>'
-    '<a href="#reasons">Причины</a><a href="#forecast">Прогноз</a><a href="#weekly-decisions">Решения</a><a href="#contribution">Концентрация</a>'
-    '<a href="#dynamics">Динамика</a><a href="#matrix">Матрица</a><a href="#remarks">Замечания</a><a href="#drill">Детализация</a><a href="#money">Финансы</a>'
-    '<a href="#orders">Поручения</a><a href="#notes">Методология</a></div>', unsafe_allow_html=True)
+    + U.NAVIGATION, unsafe_allow_html=True)
 
 
 @st.cache_data(show_spinner="Загрузка данных…")
@@ -74,6 +75,7 @@ K = dict(claim=k_claim / 100, cut=k_cut / 100)
 f, fm = C.fmt_int, C.fmt_money
 DAILY_PENALTY = "Расчётная неустойка, ₽/день"
 WEEK_PRIORITY_KEY = "bunino"
+MATERIAL_RISK_GAP = 1_000
 pl = lambda n: C.plural(n, "квартира", "квартиры", "квартир")
 fr = lambda x: C.fmt_pct(x, 1)
 
@@ -84,6 +86,17 @@ def weeks_text(weeks):
 
 def pace_text(weekly_average):
     return f"{weekly_average:.2f}".rstrip("0").rstrip(".").replace(".", ",").replace("-", "−")
+
+
+def project_link(key, label):
+    url = f'/?{urlencode({"jk": key})}#drill'
+    return f'<a href="{html.escape(url)}" data-project-link>{html.escape(label)}</a>'
+
+
+def signed_money(value):
+    sign = "+" if value > 0 else "−" if value < 0 else ""
+    amount = f"{f(round(abs(value)))} ₽" if abs(value) < MATERIAL_RISK_GAP else C.fmt_k(abs(value))
+    return sign + amount
 
 
 def weekly_decisions(projects):
@@ -149,6 +162,29 @@ def _build(prices: tuple, coefs: tuple, keys: tuple, schema: str = "v10"):
 B = _build(tuple(sorted(P["prices"].items())), (K["claim"], K["cut"]), project_keys)
 projects, tot = PF.by_risk(B["projects"]), B["totals"]
 names = [p["name"] for p in projects]
+projects_by_key = {p["key"]: p for p in projects}
+keys_by_name = {p["name"]: p["key"] for p in projects}
+
+
+def request_drill_scroll():
+    jump = st.session_state.get("_pf_jump_count", 0) + 1
+    st.session_state["_pf_jump_count"] = jump
+    st.session_state["_pf_scroll"] = jump
+
+
+route_key = st.query_params.get("jk")
+if route_key in projects_by_key and route_key != st.session_state.get("_pf_applied_jk"):
+    st.session_state["pf_sel"] = st.session_state["pf_goto"] = projects_by_key[route_key]["name"]
+    st.session_state["_pf_applied_jk"] = st.session_state["_pf_sync_route"] = route_key
+    request_drill_scroll()
+
+
+def update_project_route(name):
+    key = keys_by_name[name]
+    st.session_state["_pf_applied_jk"] = st.session_state["_pf_sync_route"] = key
+    st.query_params["jk"] = key
+
+
 sg = lambda v: ("+" if v > 0 else "−" if v < 0 else "") + f(abs(v))
 tr_, to_ = max(tot["risk_day"], 1), max(tot["overdue_kv"], 1)
 _ranked_names = [p_["name"] for p_ in PF.by_risk(projects)]
@@ -162,8 +198,9 @@ has = [p_ for p_ in projects if p_.get("has_risk", True)]
 d_over = tot["overdue_delta"]
 n_cov = len(has)
 rk_d, rk_t = tot["risk_delta"], tot["risk_target"]
-sgm = lambda x: ("+" if x > 0 else "−" if x < 0 else "") + C.fmt_k(x)
-RS = f"color:{U.RISK};font-weight:600"
+sgm = signed_money
+RS = f"color:{U.NAVY};font-weight:600"
+portfolio_lag = rk_d > 0 or rk_d - rk_t >= MATERIAL_RISK_GAP
 LD = tot["ladder"]
 RSN = tot["reasons"]
 lagging = sum(p_["risk_vs_target"] > 0 for p_ in projects)
@@ -192,12 +229,12 @@ U.section("Сводка по портфелю", f"{len(projects)} ЖК в пор
 slice_text = dd(slice_dates[0]) if min(slice_dates) == max(slice_dates) else f"{dd(min(slice_dates))}–{dd(max(slice_dates))}"
 st.markdown(f'<div class="slice">Срез на <b>{slice_text}</b> · сравнение за неделю по <b>{dd(act_d)}</b></div>', unsafe_allow_html=True)
 U.kpi_cards([
-    dict(label="Просрочка по ДДУ", value=f(tot["overdue_kv"]), risk=True, delta=(f"{sg(d_over)} {pl(abs(d_over))} за неделю", "bad" if d_over > 0 else "good" if d_over < 0 else "flat"),
+    dict(label="Просрочка по ДДУ", value=f(tot["overdue_kv"]), delta=(f"{sg(d_over)} {pl(abs(d_over))} за неделю", "bad" if d_over > 0 else "good" if d_over < 0 else "flat"),
          foot=f"{fr(tot['overdue_kv'] / max(tot['units_kv'], 1))} от всех квартир по ДДУ в портфеле"),
     dict(label="Из них готовы к передаче", value=f(tot["ready"]), delta=("", "flat"),
          foot=f"{fr(tot['ready'] / to_)} просрочки · не переданы, готовность подтверждена, открытых замечаний нет"),
-    dict(label=DAILY_PENALTY, value=fm(tot["risk_day"]), risk=True,
-         delta=(f"{sgm(rk_d)}/день к прошлой неделе", "bad" if rk_d > rk_t else "good"),
+    dict(label=DAILY_PENALTY, value=fm(tot["risk_day"]),
+         delta=(f"{sgm(rk_d)}/день к прошлой неделе", "bad" if portfolio_lag else "good" if rk_d < 0 else "flat"),
          foot=f"Целевое изменение: {sgm(rk_t)}/день"),
 ], big=True)
 if pri and pri["risk_day"] > 0:
@@ -208,12 +245,13 @@ if pri and pri["risk_day"] > 0:
             f' Ответственный — {html.escape(priority_owner)}.</div>'
             f'<div class="t deadlines"><span><b>{priority_deliverable}</b> — {priority_due}.</span>'
             f'<span><b>Первая проверка</b> — {priority_review}.</span></div>'
-            '<div class="t"><a href="#orders">Поручение и показатель проверки</a> · <a href="#priority">Подробнее о ЖК</a></div>')
+        )
     st.markdown(
-        f'<div class="card risk week-priority"><div class="h">Приоритет недели — {html.escape(pri["name"])}'
+        f'<div class="card week-priority"><div class="h">Приоритет недели — {html.escape(pri["name"])}'
         f' · {fm(pri["risk_day"])}/день</div>'
         f'<div class="t">{fr(pri["share"])} расчётной неустойки портфеля за день</div>'
-        f'{primary_action}</div>', unsafe_allow_html=True)
+        f'{primary_action}<div class="t"><a href="#orders">Открыть поручение</a> · '
+        f'{project_link(pri["project"]["key"], "Открыть карточку ЖК")}</div></div>', unsafe_allow_html=True)
 st.markdown(f'<div class="dev"><span class="k">За неделю</span> '
             f'Из просрочки вышло <b>{f(tot["left_n"])}</b> {pl(tot["left_n"])}, новые просрочки — <b>{f(tot["entered_n"])}</b> {pl(tot["entered_n"])}. '
             f'От целевого темпа снижения дневной неустойки отстают <b>{lagging} из {len(projects)} ЖК</b>. <a href="#dynamics">Динамика по ЖК</a>.</div>', unsafe_allow_html=True)
@@ -227,7 +265,7 @@ for decision in weekly:
         f'<div><span class="label">Расчётное снижение неустойки</span><strong class="amount">−{fm(decision["effect_day"])}/день</strong>'
         f'<span class="subline">к концу 4-й недели · −{fm(decision["effect"])} за 4 недели</span></div>'
         f'<div><span class="label">Предлагаемое решение</span>{html.escape(decision["action"])}</div>'
-        f'<div><span class="label">Что нужно от ГД</span>{html.escape(decision["ask"])}'
+        f'<div class="approval"><span class="label">Что нужно от ГД</span><strong>{html.escape(decision["ask"])}</strong>'
         f'<span class="subline">Ответственный — {html.escape(decision["owner"])}. '
         f'Контроль: {html.escape(decision["check"].lower())}.</span></div></div></article>')
 st.markdown('<section class="weekly" id="weekly-decisions"><h2>Решения недели по портфелю</h2>'
@@ -278,37 +316,39 @@ if attention:
                   f"{sgm(p['risk_delta'])} в день", f"{sgm(p['risk_vs_target'])} в день"] for p in attention], right=(2, 3))
 
 # ---------------------------------------------------------------- 3. Таблица по ЖК
-U.section("Структура портфеля по ЖК", "По убыванию расчётной неустойки за день; красным выделены только ЖК с отставанием от целевой динамики", anchor="segments", num="3.")
+U.section("Структура портфеля по ЖК", "По убыванию расчётной неустойки за день. Нажмите на ЖК, чтобы открыть его карточку.", anchor="segments", num="3.")
 srows = PF.screen_rows(projects)
 arrow = lambda d_: "▲" if d_ > 0 else "▼" if d_ < 0 else "•"
 tb = []
 for r_ in srows:
     bad_ = r_["worse"]
-    wk_cls = ' class="wr"' if bad_ else ""
+    material_lag = projects_by_key[r_["key"]]["risk_vs_target"] >= MATERIAL_RISK_GAP
+    wk_cls = ' class="wr"' if material_lag else ""
+    change_cls = " wr" if r_["d_over"] > 0 else " improved" if r_["d_over"] < 0 else ""
     tb.append([
-        f'<b>{html.escape(r_["name"])}</b>',
-        f'{f(r_["over"])}<span class="sub{" wr" if r_["d_over"] > 0 else ""}">{arrow(r_["d_over"])} {sg(r_["d_over"])} за неделю</span>',
+        f'<b>{project_link(r_["key"], r_["name"])}</b>',
+        f'{f(r_["over"])}<span class="sub{change_cls}">{arrow(r_["d_over"])} {sg(r_["d_over"])} за неделю</span>',
         f(r_["ready"]), f(round(r_["risk"])), fr(r_["share"]),
-        f'<span class="nw">{U.spark(r_["trend"], bad_)}</span><span class="sub"><span{wk_cls}>{"ниже целевого темпа" if bad_ else "в рамках целевого темпа"}</span></span>',
+        f'<span class="nw">{U.spark(r_["trend"], material_lag)}</span><span class="sub"><span{wk_cls}>{"ниже целевого темпа" if bad_ else "в рамках целевого темпа"}</span></span>',
         f(r_["left"]),
         f'{html.escape(r_["decision"])}<span class="sub">−{fm(r_["dec_day"])} в день · −{fm(r_["dec_4w"])} за 4 недели</span>' if r_["dec_day"] else html.escape(r_["decision"])])
 tot_dec_txt = ""
 tb.append(["Итого по портфелю", f'{f(tot["overdue_kv"])}<span class="sub">{arrow(d_over)} {sg(d_over)} за неделю</span>', f(tot["ready"]), f(round(tot["risk_day"])), "100%",
-           f'<span class="nw">{U.spark([sum(p_["trend"][i] for p_ in projects) for i in range(len(projects[0]["trend"]))], rk_d > rk_t)}</span>',
+           f'<span class="nw">{U.spark([sum(p_["trend"][i] for p_ in projects) for i in range(len(projects[0]["trend"]))], portfolio_lag)}</span>',
            f(tot["rem"]["left_cum"]), ""])
 U.fin_table(["ЖК", "Просрочка по ДДУ", "Готовы к передаче", DAILY_PENALTY, "Доля в дневной неустойке", "Динамика просрочки за 12 недель", "Остаток замечаний", "Главное решение и ожидаемый эффект"],
             tb, right=(1, 2, 3, 4, 6), total_last=True, cls="pt3", hide=(2, 4, 6, 7))
 st.markdown('<div class="note">Мини-график — число просроченных квартир на конец каждой из 12 недель. «Ниже целевого темпа» — отставание от целевой динамики: дневная неустойка за неделю снижается медленнее, чем целевой темп снижения '
-            '(средняя динамика четырёх предыдущих недель × 1,10). Ожидаемый эффект — снижение расчётной неустойки за день к концу 4-й недели.</div>', unsafe_allow_html=True)
+            '(средняя динамика четырёх предыдущих недель × 1,10). Красный цвет показывает рост просрочки или отставание по неустойке от 1 тыс. ₽/день.'
+            ' Ожидаемый эффект — снижение расчётной неустойки за день к концу 4-й недели.</div>', unsafe_allow_html=True)
 
 
 def _go():
     selected = st.session_state["pf_goto"]
     if selected is not None:
         st.session_state["pf_sel"] = selected
-        jump = st.session_state.get("_pf_jump_count", 0) + 1
-        st.session_state["_pf_jump_count"] = jump
-        st.session_state["_pf_scroll"] = jump
+        update_project_route(selected)
+        request_drill_scroll()
 
 
 if st.session_state.get("pf_goto") not in names:
@@ -316,7 +356,7 @@ if st.session_state.get("pf_goto") not in names:
 goto = st.selectbox("Перейти к детализации ЖК (шахматка, замечания, подрядчики, финансы, динамика)", names,
                     index=None, placeholder="Выберите ЖК", key="pf_goto", on_change=_go)
 if goto:
-    st.markdown(f'<a href="#drill">Открыть карточку ЖК «{html.escape(goto)}»</a>', unsafe_allow_html=True)
+    st.markdown(project_link(keys_by_name[goto], f"Открыть карточку ЖК «{goto}»"), unsafe_allow_html=True)
 with st.expander("Расширенные показатели по ЖК: неустойка, темп и сроки"):
     fall = []
     for p_ in PF.by_risk(projects):
@@ -386,7 +426,7 @@ U.fin_table(["ЖК", "Просрочка на дату среза", "Чисты�
              "Будущая расчётная неустойка до закрытия", f"Срок закрытия при передаче всех готовых за {rw} {rw_w}", "Снижение расчётной неустойки за весь прогноз"], frows, right=range(1, 8), total_last=True)
 cut_ = min(max(len(PFC["base"]["path"]), len(PFC["scn"]["path"]), len(PFC["target"]["path"])), 60)
 fg = go.Figure()
-for key_, lab_, col_, dash_ in (("base", "Текущий темп", U.RISK, "solid"), ("target", "Целевой темп", U.GOLD, "dash"), ("scn", f"Все готовые за {rw} {rw_w}", U.NAVY, "solid")):
+for key_, lab_, col_, dash_ in (("base", "Текущий темп", U.NAVY, "solid"), ("target", "Целевой темп", U.GRAPH, "dash"), ("scn", f"Все готовые за {rw} {rw_w}", U.GOOD, "solid")):
     pth = PFC[key_]["path"][:cut_]
     fg.add_scatter(x=[x_[0] for x_ in pth], y=[x_[2] / 1e9 for x_ in pth], mode="lines", name=lab_, line=dict(color=col_, width=2.5, dash=dash_))
 fg.update_layout(title="Накопленная расчётная неустойка портфеля по неделям, млрд ₽", margin=dict(l=8, r=8, t=34, b=8), legend=dict(orientation="h", y=-0.18), hovermode="x unified")
@@ -444,18 +484,16 @@ for p in srt:
     cum += p["risk_day"] / tr_
     rows_h.append([p["name"], f(p["overdue_kv"]), fr(p["overdue_kv"] / to_), f(round(p["risk_day"])), fr(p["risk_day"] / tr_), fr(cum), fm(p["accrued_up"])])
 rows_h.append(["Итого", f(tot["overdue_kv"]), "100,0%", f(round(tot["risk_day"])), "100,0%", "", fm(tot["accrued_up"])])
-c1, c2 = st.columns([1, 1.4], gap="large")
+c1, c2 = st.columns([1, 1.25], gap="large")
 with c1:
-    mln = lambda x: x / 1e6
-    fig = go.Figure(go.Waterfall(
-        x=[p["name"] for p in srt] + ["Портфель"], measure=["relative"] * len(srt) + ["total"], y=[mln(p["risk_day"]) for p in srt] + [0],
-        text=[f"{mln(p['risk_day']):.1f}".replace(".", ",") for p in srt] + [f"{mln(tot['risk_day']):.1f}".replace(".", ",")],
-        textposition="outside", connector=dict(line=dict(color=U.LINE, width=1)),
-        increasing=dict(marker=dict(color=U.NAVY)), totals=dict(marker=dict(color=U.RISK))))
-    fig.update_layout(title="Расчётная неустойка, млн ₽/день: вклад ЖК в итог", margin=dict(l=8, r=8, t=34, b=8))
-    fig.update_yaxes(showticklabels=False, range=[0, mln(tot["risk_day"]) * 1.18])
-    fig.update_xaxes(tickfont=dict(size=11))
-    U.chart(fig, key="pf_contrib", height=300)
+    max_risk = srt[0]["risk_day"] or 1
+    contribution_bars = "".join(
+        f'<div class="contrib-row">{project_link(project["key"], project["name"])}'
+        f'<span class="contrib-track" aria-hidden="true"><i style="width:{project["risk_day"] / max_risk:.2%}"></i></span>'
+        f'<div class="contrib-value"><strong>{fm(project["risk_day"])}/день</strong> '
+        f'<span>· {fr(project["risk_day"] / tr_)}</span></div></div>'
+        for project in srt)
+    st.markdown(f'<div class="contrib-bars">{contribution_bars}</div>', unsafe_allow_html=True)
 with c2:
     U.fin_table(["ЖК", "Просрочка, квартир", "Доля", DAILY_PENALTY, "Доля в дневной неустойке", "Накопленная доля", "Накопленная неустойка"], rows_h, right=range(1, 7), total_last=True)
 hhi = sum((p["risk_day"] / tr_) ** 2 for p in projects) * 10000
@@ -471,9 +509,9 @@ with v1:
         x=[p["name"] for p in projects] + ["Портфель"], measure=["relative"] * len(projects) + ["total"],
         y=[p["overdue_delta"] for p in projects] + [0], text=[sg(p["overdue_delta"]) for p in projects] + [sg(d_over)],
         textposition="outside", connector=dict(line=dict(color=U.LINE, width=1)),
-        increasing=dict(marker=dict(color=U.RISK)), decreasing=dict(marker=dict(color=U.NAVY)), totals=dict(marker=dict(color=U.SILVER))))
+        increasing=dict(marker=dict(color=U.RISK)), decreasing=dict(marker=dict(color=U.GOOD)), totals=dict(marker=dict(color=U.NAVY))))
     lo_, hi_ = min(0, d_over, *[p["overdue_delta"] for p in projects]), max(0, *[p["overdue_delta"] for p in projects])
-    wf.update_layout(title="Изменение просрочки по ДДУ за 7 дней, квартир", margin=dict(l=8, r=8, t=34, b=8))
+    wf.update_layout(title="Изменение просрочки по ДДУ за 7 дней, квартир", margin=dict(l=8, r=8, t=34, b=72))
     wf.update_yaxes(showticklabels=False, range=[lo_ * 1.35 - 4, hi_ * 1.35 + 6], zeroline=True, zerolinecolor=U.LINE)
     wf.update_xaxes(tickfont=dict(size=10), tickangle=-35)
     U.chart(wf, key="pf_wf", height=360)
@@ -496,24 +534,25 @@ U.chart(lf, key="pf_line", height=300)
 st.markdown('<div class="note">Показатели предыдущей недели восстановлены по датам актов приёма-передачи.</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- 6. Матрица рисков
-U.section("Неустойка по причинам просрочки", "Квартиры по причинам просрочки в каждом ЖК; насыщенность цвета — доля дневной неустойки портфеля", anchor="matrix", num="9.")
-kinds = [k for k in PF.PROBLEMS if any(g["key"] == k for p in projects for g in p["groups"])]
+U.section("Просрочка и неустойка по причинам", "Сравнение причин просрочки по ЖК", anchor="matrix", num="9.")
+matrix_mode = st.radio("Показатель матрицы", ("Квартиры", "₽ в день"), horizontal=True, key="pf_matrix_metric")
+matrix_value = "n" if matrix_mode == "Квартиры" else "risk"
+project_groups = [{group["key"]: group for group in project["groups"]} for project in projects]
+kinds = [key for key in PF.PROBLEMS if any(key in groups for groups in project_groups)]
+matrix_max = max((group[matrix_value] for groups in project_groups for group in groups.values()), default=0) or 1
 mx = []
 for k in kinds:
     row = [PF.PROBLEMS[k]["title"]]
-    tot_n = 0
-    for p in projects:
-        g = next((g for g in p["groups"] if g["key"] == k), None)
-        if g is None:
-            row.append("—")
-            continue
-        a = min(.5, g["risk"] / tr_ * 1.6)
-        row.append((f(g["n"]), f"background:rgba(179,38,30,{a:.2f});font-weight:600"))
-        tot_n += g["n"]
-    row.append(f(tot_n))
+    values = [groups[k][matrix_value] if k in groups else 0 for groups in project_groups]
+    for value in values:
+        alpha = 0.06 + 0.28 * value / matrix_max if value else 0
+        row.append((f(round(value)), f"background:rgba(49,87,125,{alpha:.2f});font-weight:600"))
+    row.append(f(round(sum(values))))
     mx.append(row)
-U.fin_table(["Причина просрочки"] + names + ["Итого"], mx, right=range(1, len(projects) + 2))
-st.markdown('<div class="note">Каждая квартира учтена в одной причине. Чем темнее ячейка, тем выше её доля в дневной неустойке портфеля.</div>', unsafe_allow_html=True)
+U.fin_table(["Причина просрочки"] + names + [f"Итого, {matrix_mode.lower()}"], mx,
+            right=range(1, len(projects) + 2), cls="risk-matrix")
+matrix_legend = "тем больше квартир" if matrix_mode == "Квартиры" else "тем выше расчётная неустойка в ₽/день"
+st.markdown(f'<div class="note">Чем темнее ячейка, {matrix_legend}. Каждая квартира учтена в одной причине.</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- 10. Замечания портфеля
 RM = tot["rem"]
@@ -534,7 +573,7 @@ with st.expander("История замечаний"):
     qf = make_subplots(specs=[[{"secondary_y": True}]])
     qf.add_bar(x=Q["Квартал"], y=Q["Поступило"], name="Поступило", marker_color="#9DB0CA", secondary_y=False)
     qf.add_bar(x=Q["Квартал"], y=Q["Устранено"], name="Устранено", marker_color=U.NAVY, secondary_y=False)
-    qf.add_scatter(x=Q["Квартал"], y=Q["Остаток на конец"], name="Остаток на конец квартала (правая шкала)", mode="lines+markers+text", line=dict(color=U.RISK, width=2.2),
+    qf.add_scatter(x=Q["Квартал"], y=Q["Остаток на конец"], name="Остаток на конец квартала (правая шкала)", mode="lines+markers+text", line=dict(color=U.NAVY, width=2.2),
                    marker=dict(size=6), text=[f(v_) for v_ in Q["Остаток на конец"]], textposition="top center", textfont=dict(size=10), secondary_y=True)
     qf.update_layout(barmode="group", margin=dict(l=8, r=8, t=30, b=8), legend=dict(orientation="h", y=-0.15), title=f"Динамика замечаний: {sel_q}", hovermode="x unified")
     qf.update_yaxes(title_text="Поступило / устранено, замечаний", gridcolor=U.LINE, secondary_y=False, rangemode="tozero")
@@ -562,6 +601,7 @@ if st.session_state.get("pf_sel") not in names:
 
 def _sync_project():
     st.session_state["pf_goto"] = st.session_state["pf_sel"]
+    update_project_route(st.session_state["pf_sel"])
 
 
 sel = st.selectbox("ЖК для детализации", names, key="pf_sel", on_change=_sync_project)
@@ -573,11 +613,11 @@ tabs = st.tabs(["Обзор", "Шахматка", "Замечания", "Под�
 
 with tabs[0]:
     U.kpi_cards([
-        dict(label="Просрочка по ДДУ, квартир", value=f(p["overdue_kv"]), risk=True, delta=C.fmt_delta(p["overdue_delta"]),
+        dict(label="Просрочка по ДДУ, квартир", value=f(p["overdue_kv"]), delta=C.fmt_delta(p["overdue_delta"]),
              foot=f"{fr(p['overdue_kv'] / to_)} просрочки портфеля"),
         dict(label="Из них готовы к передаче без замечаний", value=f(p["ready"]), delta=("", "flat"),
              foot=f"{fr(p['ready'] / p['overdue_kv']) if p['overdue_kv'] else '—'} просрочки ЖК · неустойка {fm(p['ready_risk'])}/день"),
-        dict(label=DAILY_PENALTY, value=fm(p["risk_day"]), risk=True, delta=("", "flat"), foot=f"{fr(p['risk_day'] / tr_)} дневной неустойки портфеля"),
+        dict(label=DAILY_PENALTY, value=fm(p["risk_day"]), delta=("", "flat"), foot=f"{fr(p['risk_day'] / tr_)} дневной неустойки портфеля"),
         dict(label="Передано за неделю, квартир", value=f(p["week_fact"]),
              delta=C.fmt_delta(p["week_fact"] - p["week_prev"], good_when_down=False) if p["week_prev"] is not None else ("", "flat"),
              foot="Изменение к предыдущей неделе"),
@@ -698,8 +738,8 @@ with tabs[3]:
 with tabs[4]:
     pen = p["penalty"]
     U.kpi_cards([
-        dict(label=DAILY_PENALTY, value=fm(p["risk_day"]), risk=True, delta=("", "flat"), foot=f"по готовым квартирам: {fm(p['ready_risk'])}/день"),
-        dict(label="Накопленная неустойка, верхняя оценка", value=fm(p["accrued_up"]), risk=True, delta=("", "flat"), foot=f"нижняя оценка {fm(p['accrued_lo'])}"),
+        dict(label=DAILY_PENALTY, value=fm(p["risk_day"]), delta=("", "flat"), foot=f"по готовым квартирам: {fm(p['ready_risk'])}/день"),
+        dict(label="Накопленная неустойка, верхняя оценка", value=fm(p["accrued_up"]), delta=("", "flat"), foot=f"нижняя оценка {fm(p['accrued_lo'])}"),
         dict(label="Стоимость устранения замечаний", value=fm(p["remarks_cost"]), delta=("", "flat"), foot=f"{f(p['remarks'])} замечаний"),
         dict(label="Потенциал претензий к подрядчикам", value=fm(p["claim_potential"]), delta=("", "flat"), foot="по просроченным замечаниям, оценка"),
     ])
@@ -719,7 +759,7 @@ with tabs[5]:
         fw.update_xaxes(tickangle=-45, tickfont=dict(size=10))
         U.chart(fw, key=f"pf_wt_{p['key']}", height=300)
     with z2:
-        fo = go.Figure(go.Scatter(x=w["Неделя"], y=w["Просрочка на конец недели, квартир"], mode="lines+markers", line=dict(color=U.RISK, width=2.5)))
+        fo = go.Figure(go.Scatter(x=w["Неделя"], y=w["Просрочка на конец недели, квартир"], mode="lines+markers", line=dict(color=U.NAVY, width=2.5)))
         fo.update_layout(title="Просрочка по ДДУ на конец недели, квартир", margin=dict(l=8, r=8, t=34, b=8))
         fo.update_yaxes(rangemode="tozero", gridcolor=U.LINE, showgrid=True)
         fo.update_xaxes(tickangle=-45, tickfont=dict(size=10))
@@ -731,7 +771,7 @@ with tabs[5]:
 # ---------------------------------------------------------------- 8. Деньги по портфелю
 U.section("Финансы: неустойка и стоимость устранения", "", anchor="money", num="12.")
 U.kpi_cards([
-    dict(label="Накопленная неустойка (верхняя оценка)", value=fm(tot["accrued_up"]), risk=True, delta=("", "flat"),
+    dict(label="Накопленная неустойка (верхняя оценка)", value=fm(tot["accrued_up"]), delta=("", "flat"),
          foot=f"нижняя оценка {fm(tot['accrued_lo'])} · в день ≈{fm(tot['risk_day'])}"),
     dict(label="Стоимость устранения замечаний", value=fm(tot["remarks_cost"]), delta=("", "flat"), foot=f"{f(tot['remarks'])} замечаний"),
 ])
@@ -791,11 +831,5 @@ U.sources(
     "остаток на конец квартала = перенос + поступило нарастающим итогом − закрыто. Неустойка по квартирам с замечаниями включает сумму за день по просроченным квартирам с открытыми замечаниями. "
     "<br>Персональных данных в отчёте нет: объекты обозначены номерами, подрядчики — наименованиями организаций. Стоимость второй смены определяется допущением о цене одной дополнительной приёмки.")
 
-if jump := st.session_state.pop("_pf_scroll", None):
-    # Run after Streamlit updates the report layout. A new sequence replays repeated jumps.
-    st.html(f"""<script>
-    requestAnimationFrame(() => requestAnimationFrame(() => {{
-        document.getElementById('drill')?.scrollIntoView({{block: 'start'}});
-    }}));
-    // Navigation {jump}
-    </script>""", unsafe_allow_javascript=True)
+st.html(U.navigation_script(st.session_state.pop("_pf_sync_route", None), st.session_state.pop("_pf_scroll", None)),
+        unsafe_allow_javascript=True)
