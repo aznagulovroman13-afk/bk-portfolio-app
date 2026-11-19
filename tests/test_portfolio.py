@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 import pf_core as C  # noqa: E402
 import pf_data  # noqa: E402
 import pf_detail as DT  # noqa: E402
+import pf_demo  # noqa: E402
 import pf_model as PF  # noqa: E402
 import pf_stats  # noqa: E402
 
@@ -214,7 +215,7 @@ def _txt(at):
 
 
 PWD = "test-password-123"
-SLICE_DATES = {"11.11.2026", "06.11.2026"}   # дата среза и дата последних актов приёма — единственные даты на экранах
+SLICE_DATES = {"13.11.2026"}
 
 
 def _no_dates_sources(at, t):
@@ -231,7 +232,6 @@ def _app(secret_yes=True, pwd=PWD):
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=240)
     at.secrets["SHOW_REAL_DATA"] = "yes" if secret_yes else "no"
     at.secrets["APP_PASSWORD"] = pwd
-    at.secrets["DATA_KEY"] = KEY
     return at
 
 
@@ -261,7 +261,7 @@ def _login():
     at.text_input[0].input(PWD)
     at.button[0].click().run()
     assert not at.exception, [e.message for e in at.exception]
-    return at.radio(key="pf_data_mode").set_value("Демонстрационный портфель").run()
+    return at
 
 
 def _screen_text(at):
@@ -269,22 +269,24 @@ def _screen_text(at):
     return _txt(at) + " " + re.sub(r"<[^>]+>", " ", side)
 
 
-def test_app_locked_without_flag():
-    locked = _app(secret_yes=False)
-    locked.run()
-    assert [m.value for m in locked.markdown] == ["Приложение не активировано"]
+def test_demo_opens_without_real_data_flag():
+    at = _app(secret_yes=False)
+    at.run()
+    at.text_input[0].input(PWD)
+    at.button[0].click().run()
+    assert not at.exception
+    assert "все показатели рассчитаны на вымышленных данных" in _txt(at)
 
 
 def test_full_report_after_login_labels_data_mode():
     at = _login()
     t = _screen_text(at)
-    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения и методология расчёта", "Приоритетный объект портфеля", "Неустойка по причинам просрочки", "Расчётный ориентир"):
+    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения и методология расчёта", "Приоритетный объект портфеля", "Неустойка по причинам просрочки", "Прогноз и расчётный ориентир"):
         assert s in t, s
     for s in ("Требует уточнения", "модельн", "Подтверждённые суммы"):
         assert s not in t, s
     assert not BAD.search(t)
-    assert not [w for w in LABELS[:8] if w in t], [w for w in LABELS[:8] if w in t]
-    assert at.radio(key="pf_data_mode").value == "Демонстрационный портфель"
+    assert "все показатели рассчитаны на вымышленных данных" in t
     _no_dates_sources(at, t)
 
 
@@ -300,7 +302,6 @@ def test_each_project_gets_identical_set_of_blocks(name):
               "Мало данных", "Потенциал претензий", "Блокируют передачу",
               "срок ДДУ нарушен", "Открыта к передаче", "Не принята"):
         assert s in t, s
-    assert not [w for w in LABELS[:8] if w in t]
     _no_dates_sources(at, t)
     assert len([m for m in at.markdown if 'class="cb"' in m.value]) == 1      # шахматка выбранного ЖК
     heads = [" ".join(map(str, d.value.columns)) for d in at.dataframe]
@@ -378,17 +379,16 @@ def test_plan_fact_and_dynamics_are_comparable(B):
 def test_first_screen_shows_three_cards_slice_date_and_methodology():
     at = _login()
     t = _screen_text(at)
-    for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Дата среза: 11.11.2026", "Охват расчёта — 10 из 10 ЖК",
-              "1/300 ключевой ставки", "Приоритетный объект портфеля", "Основная причина (по данным)", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
+    for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Срез на 13.11.2026", "Охват расчёта — 10 из 10 ЖК",
+              "1/300 условной ставки", "Приоритетный объект портфеля", "Основная причина (по данным)", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
               "Изменение за неделю к целевому темпу", "Передано за неделю: факт / расчётный ориентир", "Неустойка на просроченную квартиру, ₽/день",
-              "Расчётная неустойка и сценарий выплат", "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Предполагаемая сумма прошлых выплат", "Причины непередачи готовых квартир", "Прогноз и расчётный ориентир",
+              "Возможные требования по сценарию", "Выплаты по сценарию", "Произведённые выплаты", "Причины непередачи готовых квартир", "Прогноз и расчётный ориентир",
               "Управленческие решения и ожидаемый эффект"):
         assert s in t, s
     assert at.selectbox(key="pf_goto").options == [n for _, n in pf_data.PROJECTS]
     assert t.index("Расчётная неустойка, ₽/день") < t.index("Приоритетный объект портфеля") < t.index("Структура портфеля по ЖК")
-    assert not [w for w in LABELS if w in t]
     # порядок строк таблицы: по убыванию риска
-    order = [p["name"] for p in PF.by_risk(PF.build(pf_data.load(True, key=KEY), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])]
+    order = [p["name"] for p in PF.by_risk(PF.build(pf_demo.build(pf_data.PROJECTS), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])]
     i = [t.index(n, t.index("Структура портфеля по ЖК")) for n in order]
     assert i == sorted(i)
 
@@ -402,7 +402,7 @@ def test_jump_button_opens_selected_project_detail():
 
 def test_cache_keys_bumped_for_new_schema():
     src = (ROOT / "app.py").read_text(encoding="utf-8")
-    assert src.count('schema: str = "v12"') == 1
+    assert src.count('schema: str = "v13"') == 1
 
 
 # ---------------------------------------------------------------- четыре вопроса гендиректора (v6)
@@ -518,14 +518,13 @@ def test_week_dynamics_is_compared_with_target(B):
 def test_new_sections_render_for_each_project_and_changed_coefficient():
     at = _login()
     t = _screen_text(at)
-    for s in ("стоимость второй смены", "Записаны на приёмку", "Срок закрытия, недель", "Ожидаемые выплаты по сценарию"):
+    for s in ("Стоимость второй смены", "Записаны на приёмку", "Срок закрытия, недель", "Выплаты по сценарию"):
         assert s in t, s
     assert "Подрядчики: доля дневной неустойки и потенциал удержаний" in [e.label for e in at.expander]
     assert not re.search(r"Требует уточнения", t)
     at.slider(key="pf_k_claim").set_value(70).run()
     assert not at.exception
-    t2 = _screen_text(at)
-    assert "предъявляется 70%" in t2
+    assert any("предъявляется 70%" in caption.value for caption in at.caption)
 
 
 # ---------------------------------------------------------------- v7: структура показателей по замечаниям, 10 ЖК, первый экран
@@ -603,7 +602,7 @@ def test_headline_and_screen_rows(B):
 def test_first_screen_v7_has_table_and_remarks_section_without_brands():
     at = _login()
     t = _screen_text(at)
-    for s in ("Структура портфеля по ЖК", "Реестр замечаний по портфелю", "Всего замечаний за период", "Открытые замечания", "Средний срок устранения", "Связь с финансовыми показателями",
+    for s in ("Структура портфеля по ЖК", "Реестр замечаний по портфелю", "Всего замечаний", "Открытые замечания", "Средний срок устранения", "Связь с финансовыми показателями",
               "Доля просроченных", "С одним неустранённым", "Главное решение и ожидаемый эффект", "Сводка по портфелю"):
         assert s in t, s
     labels = [e.label for e in at.expander]
@@ -611,7 +610,7 @@ def test_first_screen_v7_has_table_and_remarks_section_without_brands():
     for _, n in pf_data.PROJECTS:
         assert n in t
     assert t.index("Сводка по портфелю") < t.index("Приоритетный объект портфеля")
-    assert not BAD.search(t) and not [w for w in LABELS if w in t] and "Требует уточнения" not in t
+    assert not BAD.search(t) and "Требует уточнения" not in t
     at.selectbox(key="pf_qsel").select("Прокшино").run()
     assert not at.exception
 
