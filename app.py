@@ -35,6 +35,8 @@ import pf_model as PF  # noqa: E402
 
 st.markdown(U.CSS, unsafe_allow_html=True)
 st.markdown(
+    '<style>header[data-testid="stHeader"] {pointer-events: none;} '
+    'header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {pointer-events: auto;}</style>'
     '<div class="pfnav"><b>ПОРТФЕЛЬ ЖК</b><a href="#summary">Показатели</a><a href="#priority">Приоритет</a><a href="#segments">Структура</a>'
     '<a href="#reasons">Причины</a><a href="#forecast">Прогноз</a><a href="#decisions">Решения</a><a href="#contribution">Концентрация</a>'
     '<a href="#dynamics">Динамика</a><a href="#matrix">Матрица</a><a href="#remarks">Замечания</a><a href="#drill">Детализация</a><a href="#money">Финансы</a>'
@@ -227,13 +229,20 @@ st.markdown('<div class="note">Мини-график — число просро
 
 
 def _go():
-    st.session_state["pf_sel"] = st.session_state["pf_goto"]
-    st.session_state["_pf_scroll"] = True
+    selected = st.session_state["pf_goto"]
+    if selected is not None:
+        st.session_state["pf_sel"] = selected
+        jump = st.session_state.get("_pf_jump_count", 0) + 1
+        st.session_state["_pf_jump_count"] = jump
+        st.session_state["_pf_scroll"] = jump
 
 
 if st.session_state.get("pf_goto") not in names:
     st.session_state.pop("pf_goto", None)
-st.selectbox("Перейти к детализации ЖК (шахматка, замечания, подрядчики, финансы, динамика)", names, index=None, placeholder="Выберите ЖК", key="pf_goto", on_change=_go)
+goto = st.selectbox("Перейти к детализации ЖК (шахматка, замечания, подрядчики, финансы, динамика)", names,
+                    index=None, placeholder="Выберите ЖК", key="pf_goto", on_change=_go)
+if goto:
+    st.markdown(f'<a href="#drill">Открыть карточку ЖК «{html.escape(goto)}»</a>', unsafe_allow_html=True)
 with st.expander("Расширенные показатели по ЖК: экспозиция, темп и сроки"):
     fall = []
     for p_ in PF.by_risk(projects):
@@ -462,9 +471,13 @@ if demo_mode:
 U.section("Детализация по ЖК", "Единый набор показателей для каждого ЖК: обзор и ключевые проблемы, шахматка, замечания, подрядчики, финансы, динамика", anchor="drill", num="11.")
 if st.session_state.get("pf_sel") not in names:
     st.session_state["pf_sel"] = names[0]
-sel = st.selectbox("ЖК для детализации", names, key="pf_sel")
-if st.session_state.pop("_pf_scroll", False):
-    st.html("<script>document.getElementById('drill')?.scrollIntoView({block:'start'});</script>", unsafe_allow_javascript=True)
+
+
+def _sync_project():
+    st.session_state["pf_goto"] = st.session_state["pf_sel"]
+
+
+sel = st.selectbox("ЖК для детализации", names, key="pf_sel", on_change=_sync_project)
 p = next(x for x in projects if x["name"] == sel)
 d = DA[p["key"]]
 A_, REM, CT = d["units"], d["remarks"], d["contractors"]
@@ -679,3 +692,12 @@ U.sources(
     "поквартальный ход и доля квартир, где устранены все замечания, — оценка по профилю ЖК (закрытых замечаний в выгрузке нет). Соблюдаются тождества: всего = устранено + отменено + приостановлено + остаток; "
     "остаток на конец квартала = перенос + поступило нарастающим итогом − закрыто. «Экспозиция под неустранёнными замечаниями» — дневная экспозиция просроченных квартир, передача которых невозможна из-за открытых замечаний. "
     "<br>Персональные данные в отчёт не входят.")
+
+if jump := st.session_state.pop("_pf_scroll", None):
+    # Run after Streamlit updates the report layout. A new sequence replays repeated jumps.
+    st.html(f"""<script>
+    requestAnimationFrame(() => requestAnimationFrame(() => {{
+        document.getElementById('drill')?.scrollIntoView({{block: 'start'}});
+    }}));
+    // Navigation {jump}
+    </script>""", unsafe_allow_javascript=True)
