@@ -28,9 +28,29 @@ st.markdown(
     'header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {pointer-events: auto !important;}'
     '.fin.ready-reasons td:first-child {width: 48%;} '
     '.ready-reasons .reason-track {display: block; height: 5px; margin-top: 6px; background: #E9EDF2; border-radius: 3px;} '
-    '.ready-reasons .reason-fill {display: block; height: 100%; background: #5B7BA6; border-radius: inherit;}</style>'
+    '.ready-reasons .reason-fill {display: block; height: 100%; background: #5B7BA6; border-radius: inherit;}'
+    '.weekly {scroll-margin-top: 58px; padding: clamp(14px, 2.2vw, 30px); background: var(--navy); border-radius: 6px; color: #E3EBF5;}'
+    '.weekly h2, .weekly h3 {color: #fff; margin: 0; padding: 0;}'
+    '.weekly h2 {font-size: clamp(22px, 2.4vw, 32px); line-height: 1.2;}'
+    '.weekly h3 {font-size: 16px; line-height: 1.35; padding: 11px 14px; border-bottom: 1px solid #38506A;}'
+    '.weekly .intro, .weekly .links {font-size: 13px; margin-top: 8px;}'
+    '.weekly .item {margin: 12px 0; border: 1px solid #38506A; border-radius: 6px; background: #142B46;}'
+    '.weekly .fields {display: grid; grid-template-columns: 1fr .85fr 1.1fr 1.25fr;}'
+    '.weekly .fields > div {min-width: 0; padding: 10px 14px 12px; font-size: 13px; line-height: 1.45;}'
+    '.weekly .fields > div + div {border-left: 1px solid #38506A;}'
+    '.weekly .label, .weekly .subline {display: block; color: #C2D0E2;}'
+    '.weekly .label {font-size: 11px; font-weight: 700; margin-bottom: 5px;}'
+    '.weekly .subline {font-size: 12px; margin-top: 4px;}'
+    '.weekly .amount {display: block; color: #B8E4FF; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums;}'
+    '.weekly a {color: #B8E4FF !important; text-underline-offset: 3px;}'
+    '.weekly .links {display: flex; gap: 6px 20px; flex-wrap: wrap;}'
+    '@media (max-width: 930px) {.weekly .fields {grid-template-columns: 1fr 1fr;}'
+    '.weekly .fields > div:nth-child(3) {border-left: 0;}'
+    '.weekly .fields > div:nth-child(n+3) {border-top: 1px solid #38506A;}}'
+    '@media (max-width: 490px) {.weekly .fields {grid-template-columns: 1fr;}'
+    '.weekly .fields > div + div {border-left: 0; border-top: 1px solid #38506A;}}</style>'
     '<div class="pfnav"><b>ПОРТФЕЛЬ ЖК</b><a href="#summary">Показатели</a><a href="#priority">Приоритет</a><a href="#segments">Структура</a>'
-    '<a href="#reasons">Причины</a><a href="#forecast">Прогноз</a><a href="#decisions">Решения</a><a href="#contribution">Концентрация</a>'
+    '<a href="#reasons">Причины</a><a href="#forecast">Прогноз</a><a href="#weekly-decisions">Решения</a><a href="#contribution">Концентрация</a>'
     '<a href="#dynamics">Динамика</a><a href="#matrix">Матрица</a><a href="#remarks">Замечания</a><a href="#drill">Детализация</a><a href="#money">Финансы</a>'
     '<a href="#orders">Поручения</a><a href="#notes">Методология</a></div>', unsafe_allow_html=True)
 
@@ -68,6 +88,50 @@ def weeks_text(weeks):
 
 def pace_text(weekly_average):
     return f"{weekly_average:.2f}".rstrip("0").rstrip(".").replace(".", ",").replace("-", "−")
+
+
+def weekly_decisions(projects):
+    specs = [
+        dict(key="calls", pool="silent", title="Связаться с собственниками, у которых нет записи",
+             issue="без записи и официального вызова",
+             action="Начать обзвон с квартир с наибольшей расчётной неустойкой за день.",
+             ask="Поручить клиентскому сервису провести обзвон по всем ЖК, где есть такие квартиры.",
+             owner="Клиентский сервис", check="Сколько собственников записались после звонка",
+             detail="reasons", link="Причины непередачи"),
+        dict(key="onestop", pool="refused", title="Подписать акты по завершённым приёмкам",
+             issue="прошли приёмку, акты не подписаны",
+             action="Уточнить причины по каждому случаю. На повторный визит подключать выездную группу, если замечание можно устранить на месте.",
+             ask="Согласовать повторные визиты с выездной группой для подходящих случаев.",
+             owner="Директор по заселению", check="Сколько актов подписано после повторного визита",
+             detail="reasons", link="Причины непередачи"),
+        dict(key="realloc", pool="queue", title="Предложить более ранние даты приёмки",
+             issue="записаны на приёмку позже семи дней",
+             action="Проверить свободные слоты и спрос на ранние визиты. Перераспределить действующие смены, если есть резерв.",
+             ask="Поручить директору по заселению проверить загрузку и предложить новый график.",
+             owner="Директор по заселению", check="Сколько визитов перенесено на более ранние даты",
+             detail="reasons", link="Причины непередачи"),
+        dict(key="brigades", pool="blocked", title="Ускорить устранение замечаний, задерживающих передачу",
+             action="Выделить бригады по видам работ и начать с замечаний, после устранения которых квартиру можно передать.",
+             ask="Поручить операционному директору представить график и потребность в бригадах.",
+             owner="Операционный директор", check="Сколько квартир готовы к передаче после устранения замечаний",
+             detail="remarks", link="Реестр замечаний"),
+    ]
+    result = []
+    for spec in specs:
+        scope = [(project, measure) for project in projects for measure in project["cands"] if measure["key"] == spec["key"]]
+        if not scope:
+            continue
+        pool = spec["pool"]
+        if pool == "blocked":
+            risk = sum(project["risk_blocked"] for project, _ in scope)
+            problem = f"У просроченных квартир с открытыми замечаниями расчётная неустойка составляет {fm(risk)}/день."
+        else:
+            count = sum(project["reasons"][pool]["n"] for project, _ in scope)
+            problem = f"{f(count)} {pl(count)} {spec['issue']}."
+        result.append(dict(spec, problem=problem, projects=len(scope),
+                           effect_day=sum(measure["effect_day"] for _, measure in scope),
+                           effect=sum(measure["effect"] for _, measure in scope)))
+    return sorted(result, key=lambda decision: -decision["effect"])
 
 
 import pf_detail as DT  # noqa: E402
@@ -113,6 +177,7 @@ plan_title = "Согласовать недельный план передач 
 plan_owner = "Директор по заселению"
 plan_due = "До конца следующего рабочего дня после согласования"
 plan_output = "По каждому ЖК — число передач на неделю, ответственный и срок по каждой группе"
+weekly = weekly_decisions(projects)
 U.section("Сводка по портфелю", f"{len(projects)} ЖК · все показатели рассчитаны на вымышленных данных", anchor="summary", num="1.")
 slice_text = dd(slice_dates[0]) if min(slice_dates) == max(slice_dates) else f"{dd(min(slice_dates))}–{dd(max(slice_dates))}"
 st.markdown(f'<div class="slice">Срез на <b>{slice_text}</b> · сравнение за неделю по <b>{dd(act_d)}</b></div>', unsafe_allow_html=True)
@@ -128,11 +193,25 @@ U.kpi_cards([
 st.markdown(f'<div class="dev"><span class="k">За неделю</span> '
             f'Из просрочки вышло <b>{f(tot["left_n"])}</b> {pl(tot["left_n"])}, новых просрочек — <b>{f(tot["entered_n"])}</b>. '
             f'<b>{lagging} из {len(projects)} ЖК</b> отстают от целевого темпа снижения дневной неустойки. <a href="#dynamics">Динамика по ЖК</a>.</div>', unsafe_allow_html=True)
-st.markdown(f'<div class="card"><div class="h">На согласование · {plan_title}</div><div class="t">'
-            f'<b>{f(RSN["silent"]["n"])}</b> квартир без записи и официального вызова, '
-            f'по <b>{f(RSN["refused"]["n"])}</b> приёмка прошла без подписания акта. '
-            f'<a href="#reasons">Разбивка по ЖК</a>.<br>Предлагаемый ответственный — {plan_owner.lower()}. '
-            f'Срок — {plan_due.lower()}. <a href="#orders">Результат к следующей проверке</a>.</div></div>', unsafe_allow_html=True)
+week_cards = []
+for decision in weekly:
+    week_cards.append(
+        f'<article class="item"><h3>{html.escape(decision["title"])}</h3><div class="fields">'
+        f'<div><span class="label">Проблема</span>{html.escape(decision["problem"])}'
+        f'<span class="subline">В расчёте {decision["projects"]} из {len(projects)} ЖК · '
+        f'<a href="#{decision["detail"]}">{decision["link"]}</a></span></div>'
+        f'<div><span class="label">Расчётное снижение неустойки</span><strong class="amount">−{fm(decision["effect_day"])}/день</strong>'
+        f'<span class="subline">к концу 4-й недели · −{fm(decision["effect"])} за 4 недели</span></div>'
+        f'<div><span class="label">Предлагаемое решение</span>{html.escape(decision["action"])}</div>'
+        f'<div><span class="label">Что нужно от ГД</span>{html.escape(decision["ask"])}'
+        f'<span class="subline">Ответственный — {html.escape(decision["owner"])}. '
+        f'Через неделю — {html.escape(decision["check"].lower())}.</span></div></div></article>')
+st.markdown('<section class="weekly" id="weekly-decisions"><h2>Решения недели по портфелю</h2>'
+            '<div class="intro">К согласованию · первая проверка через неделю после согласования. Эффекты рассчитаны на демонстрационных данных, до учёта затрат.</div>'
+            + ("".join(week_cards) or '<div class="intro">В текущем срезе нет мер с расчётным эффектом.</div>')
+            + f'<div class="intro"><strong>{plan_title}.</strong> {plan_owner} представит план {plan_due.lower()}.</div>'
+            '<div class="links"><a href="#orders">Поручения к согласованию</a><a href="#decisions">Все решения по ЖК</a></div></section>',
+            unsafe_allow_html=True)
 st.markdown('<div class="note">Дневная неустойка — расчётная сумма за один дополнительный день просрочки по квартирам на дату среза. '
             f'Охват расчёта — {n_cov} из {len(projects)} ЖК. Цены квартир приняты как допущение (см. «Методология»). '
             '«Готовы к передаче» — часть просроченных квартир: объект не передан, готовность подтверждена, открытых замечаний нет.</div>', unsafe_allow_html=True)
@@ -649,6 +728,8 @@ U.section("Поручения к согласованию", "Предложен�
 ro = [["Весь портфель", plan_title, plan_owner, plan_due,
        "Проверить квартиры без записи и официального вызова и квартиры с приёмкой без подписанного акта",
        plan_output, "К согласованию"]]
+ro.extend(["Весь портфель", decision["ask"], decision["owner"], "Через неделю после согласования",
+           decision["check"], "Факт по каждому ЖК в работе", "К согласованию"] for decision in weekly)
 for p_ in ranked_d:
     if not p_["decisions"]:
         continue
