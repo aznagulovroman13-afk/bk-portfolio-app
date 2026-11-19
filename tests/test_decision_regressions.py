@@ -127,7 +127,14 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch):
     assert "Возможные требования по сценарию" not in summary
     assert "Возможные требования по сценарию" in report.split('id="money"', 1)[1]
     assert "Вторая смена приёмки · проверка перед согласованием" in [e.label for e in app.expander]
-    assert "Бунинские кварталы" not in summary and "Дзен-кварталы" not in summary
+    priced_projects = PF.build(data, dict(params, prices={key: value * 1e6 for key, value in PF.DEFAULT_PRICES.items()}))
+    priority = PF.priority(priced_projects["projects"])
+    assert f'Приоритет недели — {priority["name"]} · {C.fmt_money(priority["risk_day"])}/день' in summary
+    assert summary.index("Приоритет недели") < summary.index("Решения недели по портфелю")
+    orders = report.split('id="orders"', 1)[1].split('id="notes"', 1)[0]
+    for section in (summary, orders):
+        assert "до конца следующего рабочего дня после согласования" in section
+        assert "через неделю после согласования" in section
     assert "Расчётная неустойка, ₽/день" in summary and "один дополнительный день просрочки" in summary
     assert "Накопленная неустойка (верхняя оценка)" in report
     assert len(app.selectbox(key="pf_goto").options) == 10
