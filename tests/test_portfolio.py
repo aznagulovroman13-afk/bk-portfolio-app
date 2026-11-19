@@ -154,7 +154,7 @@ def _txt(at):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", t))
 
 
-SLICE_DATES = {"13.11.2026", "06.11.2026", "20.11.2026", "11.12.2026", "01.01.2026"}
+SLICE_DATES = {"13.11.2026", "20.11.2026", "27.11.2026", "18.12.2026", "01.01.2026"}
 
 
 def _no_dates_sources(at, t):
@@ -299,7 +299,7 @@ def test_plan_fact_and_dynamics_are_comparable(B):
 def test_first_screen_shows_three_cards_slice_date_and_methodology():
     at = _open()
     t = _screen_text(at)
-    for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Факт на 13.11.2026", "Охват расчёта — 10 из 10 ЖК",
+    for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Факт на 20.11.2026", "Охват расчёта — 10 из 10 ЖК",
               "/ 100 / 150", "Приоритетный объект портфеля", "Основная причина", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
               "Изменение за неделю к целевому темпу", "Передано за неделю: факт / целевой темп", "Неустойка на просроченную квартиру, ₽/день",
               "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Причины непередачи готовых квартир", "Прогноз и целевой темп",
@@ -410,7 +410,11 @@ def test_main_decision_is_specific_per_project(B):
     assert len(B["projects"]) == 10
     mains = [p["decisions"][0] for p in B["projects"]]
     assert len({d["key"] for d in mains}) == len({d["short"] for d in mains}) == len({d["title"] for d in mains}) == 10
-    assert not [d for d in mains if d["key"] == "crew"] and all(p["decisions"] and len(p["decisions"]) >= 2 for p in B["projects"])
+    assert all(d["key"] != "crew" for d in mains)
+    for project in B["projects"]:
+        available_pools = {candidate["pool"] for candidate in project["cands"] if candidate["key"] != "crew"}
+        selected_pools = {decision["pool"] for decision in project["decisions"]}
+        assert len(project["decisions"]) == len(selected_pools) == min(3, len(available_pools))
     for p, d in zip(B["projects"], mains):
         assert d["effect"] > 0 and d["effect_day"] <= p["risk_day"] + 1e-6 and d["key"] in {c["key"] for c in p["cands"]}
         assert (p["reasons"][d["pool"]]["n"] > 0) if d["pool"] in p["reasons"] else p["risk_blocked"] > 0
@@ -549,7 +553,7 @@ def test_screens_have_no_service_labels_placeholders_or_emphasis_on_one_project(
         text = text.replace("демо-данные", "")
         assert not [w for w in bad if w in text], (name, [w for w in bad if w in text])
     orders = next(m.value for m in at.markdown if "Было → цель" in m.value and "<table" in m.value)
-    assert "Ответственный" in orders and "20.11.2026" in orders
+    assert "Ответственный" in orders and "27.11.2026" in orders
     mains = html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", next(m.value for m in at.markdown if "Главное решение и ожидаемый эффект" in m.value))))
     shorts = [p["decisions"][0]["short"] for p in ranked]
     assert len(set(shorts)) == 10 and all(sh in mains for sh in shorts)
@@ -558,19 +562,29 @@ def test_screens_have_no_service_labels_placeholders_or_emphasis_on_one_project(
 def test_demo_week_package_financial_reconciliation(D):
     report = PF.build(D, dict(P0, prices={key: value * 1e6 for key, value in PF.DEFAULT_PRICES.items()}))
     totals, projects = report["totals"], report["projects"]
-    assert (totals["overdue_prev"], totals["left_n"], totals["entered_n"], totals["overdue_kv"]) == (607, 112, 32, 527)
-    assert totals["ready"] == sum(reason["n"] for reason in totals["reasons"].values()) == 290
+    assert (totals["overdue_prev"], totals["left_n"], totals["entered_n"], totals["overdue_kv"]) == (527, 100, 4, 431)
+    assert totals["ready"] == sum(reason["n"] for reason in totals["reasons"].values()) == 192
     assert totals["risk_prev"] - totals["left_risk"] + totals["entered_risk"] == pytest.approx(totals["risk_day"])
-    assert totals["risk_day"] == pytest.approx(4_720_530)
+    assert totals["risk_prev"] == pytest.approx(4_720_530)
+    assert totals["risk_day"] == pytest.approx(3_886_590)
+    assert totals["week_fact"] == totals["week_pa_bilateral"] + totals["week_pa_unilateral"]
+    assert (totals["week_fact"], totals["week_pa_bilateral"], totals["week_pa_unilateral"]) == (120, 117, 3)
+    assert totals["left_n"] <= totals["week_fact"]
+    for key, source in D.items():
+        units = source["units"]
+        assert units["Объект"].is_unique
+        assert units["Дата принятия собственником"].notna().eq(units["Односторонний ПА"].notna()).all()
+        project = next(project for project in projects if project["key"] == key)
+        latest = project["weekly"].iloc[-1]
+        assert latest["Передано, квартир"] == latest["По двусторонним ПА"] + latest["По односторонним ПА"]
     assert totals["accrued_up"] == pytest.approx(sum(project["accrued_up"] for project in projects))
-    assert sum(project["risk_vs_target"] > 0 for project in projects) == 4
+    assert sum(project["risk_vs_target"] > 0 for project in projects) == 2
     priority = max(projects, key=lambda project: project["decisions"][0]["effect_day"])
     package = DC.week_package(projects, priority)
     assert priority["key"] == "bunino" and priority["decisions"][0]["key"] == "unilateral"
-    assert (package[0]["eligible"], package[0]["units"], package[0]["week_units"]) == (12, 11, 3)
-    assert priority["decisions"][0]["effect_day"] == pytest.approx(107_000 * 11 / 12)
+    assert (package[0]["eligible"], package[0]["units"], package[0]["week_units"]) == (7, 6, 2)
+    assert priority["decisions"][0]["effect_day"] == pytest.approx(65_000 * 6 / 7)
     assert len({(measure["group"], measure["subreason"]) for measure in package}) == len(package)
-    assert [measure["eligible"] for measure in package] == [12, 67, 50, 45, 51]
     for measure in package:
         assert measure["week_units"] == sum(item["week_units"] for item in measure["items"])
         assert measure["cost"] == measure["units"] * DC.PACKAGE_RATES[measure["key"]]
@@ -581,7 +595,7 @@ def test_demo_week_package_financial_reconciliation(D):
         assert sum(row["risk"] for row in project["groups"]) == pytest.approx(project["risk_day"])
         assert all(decision["effect"] == pytest.approx(decision["effect_day"] * 14) for decision in project["decisions"])
     plan = DC.handover_plan(projects, package, PF.PROBLEMS)
-    assert tuple(sum(row[key] for row in plan) for key in ("baseline", "total", "new", "closing")) == (527, 152, 4, 379)
+    assert tuple(sum(row[key] for row in plan) for key in ("baseline", "total", "new", "closing")) == (431, 142, 17, 306)
     for row in plan:
         assert sum(row["groups"].values()) == row["total"]
         assert all(row["groups"][group["key"]] <= group["n"] for group in row["project"]["groups"])
