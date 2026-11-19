@@ -168,8 +168,6 @@ def update_project_route(name):
 
 sg = lambda v: ("+" if v > 0 else "−" if v < 0 else "") + f(abs(v))
 tr_, to_ = max(tot["risk_day"], 1), max(tot["overdue_kv"], 1)
-_ranked_names = [p_["name"] for p_ in PF.by_risk(projects)]
-COLORS = {n_: c_ for n_, c_ in zip(_ranked_names, [U.NAVY, U.GOLD, U.SILVER, "#5B7BA6"])}
 
 # ---------------------------------------------------------------- 1. Верхняя сводка
 slice_dates = [DA[key]["calc_date"] for key in project_keys]
@@ -332,9 +330,9 @@ for r_ in srows:
         f'<span class="sub"><span{wk_cls}>{"ниже целевого темпа" if bad_ else "в рамках целевого темпа"}</span></span>',
         f(r_["left"]),
         f'{html.escape(r_["decision"])}<span class="sub">−{fm(r_["dec_day"])} в день · −{fm(r_["dec_4w"])} за 4 недели</span>' if r_["dec_day"] else html.escape(r_["decision"])])
-tot_dec_txt = ""
+portfolio_target = max(0, tot["overdue_prev"] - tot["target_burn"])
 tb.append(["Итого по портфелю", f'{f(tot["overdue_kv"])}<span class="sub">{arrow(d_over)} {sg(d_over)} за неделю</span>', f(tot["ready"]), f(round(tot["risk_day"])), "100%",
-           f'<span class="nw">{U.spark([sum(p_["trend"][i] for p_ in projects) for i in range(len(trend_dates))], portfolio_lag, dates=trend_dates)}</span>',
+           f'<span class="nw">{U.spark([sum(p_["trend"][i] for p_ in projects) for i in range(len(trend_dates))], portfolio_lag, dates=trend_dates, target=portfolio_target)}</span>',
            f(tot["rem"]["left_cum"]), ""])
 U.fin_table(["ЖК", "Просрочка по ДДУ", "Готовы к передаче", DAILY_PENALTY, "Доля в дневной неустойке", "Динамика просрочки за 12 недель", "Остаток замечаний", "Главное решение и ожидаемый эффект"],
             tb, right=(1, 2, 3, 4, 6), total_last=True, cls="pt3", hide=(2, 4, 6, 7))
@@ -430,7 +428,7 @@ fg = go.Figure()
 for key_, lab_, col_, dash_ in (("base", "Текущий темп", U.NAVY, "solid"), ("target", "Целевой темп", U.GRAPH, "dash"), ("scn", f"Все готовые за {rw} {rw_w}", U.GOOD, "solid")):
     pth = PFC[key_]["path"][:cut_]
     fg.add_scatter(x=[x_[0] for x_ in pth], y=[x_[2] / 1e9 for x_ in pth], mode="lines", name=lab_, line=dict(color=col_, width=2.5, dash=dash_))
-fg.update_layout(title="Накопленная расчётная неустойка портфеля по неделям, млрд ₽", margin=dict(l=8, r=8, t=34, b=8), legend=dict(orientation="h", y=-0.18), hovermode="x unified")
+fg.update_layout(title="Будущая расчётная неустойка с даты среза нарастающим итогом, млрд ₽", margin=dict(l=8, r=8, t=34, b=8), legend=dict(orientation="h", y=-0.18), hovermode="x unified")
 fg.update_yaxes(rangemode="tozero", gridcolor=U.LINE, showgrid=True)
 fg.update_xaxes(title_text="недель от даты среза")
 with st.expander("График накопленной неустойки"):
@@ -537,12 +535,14 @@ with v2:
 lf = go.Figure()
 for p in projects:
     w = p["weekly"]
-    lf.add_scatter(x=w["Неделя"], y=w["Просрочка на конец недели, квартир"], mode="lines+markers", name=p["name"], line=dict(color=COLORS.get(p["name"], "#C3CAD4"), width=2.5 if p["name"] in COLORS else 1.2))
-lf.update_layout(title="Просрочка по ДДУ на конец недели, квартир (цветом выделены четыре ЖК с наибольшей дневной неустойкой)", margin=dict(l=8, r=8, t=34, b=8), legend=dict(orientation="h", y=-0.18),
-                 hovermode="x unified")
+    below_target = p["risk_vs_target"] > 0
+    lf.add_scatter(x=w["Неделя"], y=w["Просрочка на конец недели, квартир"], mode="lines+markers", name=p["name"],
+                   line=dict(color=U.RISK if below_target else U.NAVY, width=2.6 if below_target else 1.4))
+lf.update_layout(title="Просрочка по ДДУ на конец недели, квартир", margin=dict(l=8, r=8, t=34, b=8),
+                 legend=dict(orientation="h", y=-0.18), hovermode="x unified")
 lf.update_yaxes(rangemode="tozero", gridcolor=U.LINE, showgrid=True)
 U.chart(lf, key="pf_line", height=300)
-st.markdown('<div class="note">Красное отклонение — итог недели хуже цели по неустойке. Зелёная стрелка в сводке и детализации — улучшение показателя.</div>', unsafe_allow_html=True)
+st.markdown('<div class="note">Красный — ЖК отстаёт от недельной цели по дневной неустойке. Синий — цель выполнена. Зелёная стрелка в сводке и детализации — улучшение показателя. Передачи за 7 дней включают все переданные квартиры, в том числе переданные в срок.</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- 6. Матрица рисков
 U.section("Просрочка и неустойка по причинам", "Сравнение причин просрочки по ЖК", anchor="matrix", num="9.")
