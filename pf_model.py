@@ -220,7 +220,7 @@ def project(d: dict, P: dict, K: dict | None = None, *, comparison_date: pd.Time
         left_n=int(left.sum()), left_risk=float(rate[left].sum()), entered_n=int(entered.sum()), entered_risk=float(rate[entered].sum()),
         week_plan=week_plan, week_dev=(int(last["Передано, квартир"]) - week_plan) if week_plan is not None else None,
         week_plan_next=int(round(float(full["Передано, квартир"].tail(4).mean()) * PLAN_UPLIFT)) if len(full) else 0,
-        next_week_new=int(next_week_due.sum()),
+        next_week_new=int(next_week_due.sum()), next_week_new_risk=float(rate[next_week_due].sum()),
         has_risk=True,
         remarks=n_rem, critical=int(A["Критических"].sum()), remarks_over=int(A["Просрочено (регл)"].sum()),
         blocking=rm(rem["Блокирует"]), remarks_cost=n_rem * pf_stats.COST_PER_REMARK,

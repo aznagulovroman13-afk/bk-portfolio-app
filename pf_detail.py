@@ -98,7 +98,7 @@ def korpus_table(A: pd.DataFrame, price: float) -> pd.DataFrame:
     tr = C.transferred_mask(a)
     nt = a["Просрочка ДДУ"].eq(C.NT_OVERDUE)
     kv = a["Тип объекта"].eq("Квартира")
-    ready = a["Исходный статус"].eq("Открыта к передаче") & a["Замечаний открыто"].eq(0) & nt & kv
+    ready = C.ready_mask(a) & nt & kv
     risk = (a["Ставка ЦБ на срок ДДУ, %"].fillna(0) / 100 / 150 * price).where(nt & kv, 0.0)
     g = a.assign(tr=tr, nt=nt, ntkv=nt & kv, ready=ready, risk=risk).groupby("k").agg(
         n=("Объект", "size"), tr=("tr", "sum"), nt=("nt", "sum"), ntkv=("ntkv", "sum"), ready=("ready", "sum"),

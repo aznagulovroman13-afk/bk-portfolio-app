@@ -391,23 +391,55 @@ def week_package(projects, focus):
 
 
 def handover_plan(projects, package, group_keys):
-    """План закрытия текущей просрочки: цели мер входят в общий план и занимают места первыми."""
+    """База — готовые с записью. Резерв — заявки из пакета в пределах мощности."""
     plan = []
     for project in projects:
-        reserved = dict.fromkeys(group_keys, 0)
+        capacity = int(round(project["gross_left"] * 1.10))
+        booked = project["reasons"]["booked"]
+        booked_n = min(booked["n"], capacity)
+        booked_risk = booked_n * booked["risk"] / booked["n"] if booked["n"] else 0.0
+        by_group = dict.fromkeys(group_keys, 0)
+        by_group["ready"] = booked_n
+        reserve_risk = 0.0
         for measure in package:
-            reserved[measure["group"]] += sum(item["week_units"] for item in measure["items"] if item["project"]["key"] == project["key"])
-        current = {group["key"]: group["n"] for group in project["groups"]}
-        backlog = project["overdue_kv"]
-        target = min(backlog, max(project["week_plan_next"], sum(reserved.values())))
-        rest = target - sum(reserved.values())
-        remaining = {key: current.get(key, 0) - reserved[key] for key in group_keys}
-        available = sum(remaining.values()) or 1
-        exact = {key: rest * remaining[key] / available for key in group_keys}
-        allocation = {key: int(exact[key]) for key in group_keys}
-        for key in sorted(group_keys, key=lambda k: -(exact[k] - allocation[k]))[:rest - sum(allocation.values())]:
-            allocation[key] += 1
-        by_group = {key: reserved[key] + allocation[key] for key in group_keys}
-        plan.append(dict(project=project, groups=by_group, baseline=backlog, total=target,
-                         new=project["next_week_new"], closing=backlog - target + project["next_week_new"]))
+            for item in measure["items"]:
+                if item["project"]["key"] != project["key"]:
+                    continue
+                n = min(item["week_units"], capacity - sum(by_group.values()))
+                by_group[measure["group"]] += n
+                reserve_risk += n * item["average"]
+        total, backlog = sum(by_group.values()), project["overdue_kv"]
+        new = project["next_week_new"]
+        risk_before = project["risk_day"] + project["next_week_new_risk"]
+        plan.append(dict(project=project, groups=by_group, baseline=backlog, capacity=capacity,
+                         booked=booked_n, reserve=total-booked_n, total=total, new=new,
+                         closing_base=backlog-booked_n+new, closing=backlog-total+new,
+                         risk_base=max(0.0, risk_before-booked_risk),
+                         risk_total=max(0.0, risk_before-booked_risk-reserve_risk)))
     return plan
+
+
+def incremental_package_forecast(projects, package):
+    """Прогноз от текущего темпа с ограничением эффекта оставшейся просрочкой ЖК."""
+    daily_by_project = {}
+    for measure in package:
+        for item in measure["items"]:
+            key = item["project"]["key"]
+            daily_by_project[key] = daily_by_project.get(key, 0.0) + item["effect_day"]
+    rows = []
+    for project in projects:
+        key = project["key"]
+        forecast_data = forecast(project)
+        simulation = forecast_data["base"]
+        potential = daily_by_project.get(key, 0.0)
+        previous_credit = 0.0
+        previous_accrued = 0.0
+        effect = 0.0
+        for week in range(1, MONTH_W + 1):
+            _, remaining, accrued = simulation["path"][min(week, len(simulation["path"])-1)]
+            credit = min(potential * week / MONTH_W, remaining * forecast_data["r_unit"])
+            effect += min(accrued-previous_accrued, 7 * (previous_credit+credit)/2)
+            rows.append(dict(key=key, week=week, base=accrued, effect=effect, day=credit,
+                             closing=remaining, potential=potential))
+            previous_credit, previous_accrued = credit, accrued
+    return rows
