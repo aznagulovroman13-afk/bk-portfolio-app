@@ -154,7 +154,7 @@ def _txt(at):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", t))
 
 
-SLICE_DATES = {"13.11.2026", "20.11.2026", "27.11.2026", "18.12.2026", "01.01.2026"}
+SLICE_DATES = {"13.11.2026", "20.11.2026", "27.11.2026", "04.12.2026", "11.12.2026", "18.12.2026", "01.01.2026"}
 
 
 def _no_dates_sources(at, t):
@@ -299,22 +299,21 @@ def test_plan_fact_and_dynamics_are_comparable(B):
 def test_first_screen_shows_three_cards_slice_date_and_methodology():
     at = _open()
     t = _screen_text(at)
-    for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Факт на 20.11.2026", "Охват расчёта — 10 из 10 ЖК",
+    for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Срез 20.11.2026", "Охват расчёта — 10 из 10 ЖК",
               "/ 100 / 150", "Приоритетный объект портфеля", "Основная причина", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
               "Изменение за неделю к целевому темпу", "Передано за неделю: факт / целевой темп", "Неустойка на просроченную квартиру, ₽/день",
               "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Причины непередачи готовых квартир", "Прогноз и целевой темп",
               "Управленческие решения и ожидаемый эффект"):
         assert s in t, s
-    assert "факт 100 → цель 142" in t
-    assert "49 уже готовы" in t and "по 93 нужно снять препятствия к передаче" in t
-    assert "Лаголово — 2 из 25" in t and "Прокшино — 2 из 22" in t
-    assert "Бюджет пакета на 4 недели — 1 231 000 ₽" in t and "в том числе 108 000 ₽" in t
-    assert "подтверждённых оснований и оформленных актов" in t
+    assert "в базовом плане" in t and "в резерве после подтверждения условий" in t
+    assert "Утвердить бюджет 1 231 000 ₽ на меры по 54 квартирам" in t
+    assert "Юрдепартамент проверяет основания и риск оспаривания" in t
+    assert t.index("Что согласовать") < t.index("Квартир в просрочке")
     project_cards = next(m.value for m in at.markdown if 'class="exec-projects"' in m.value)
     featured = project_cards.split('id="exec-project-title"', 1)[1].split("</article>", 1)[0]
     assert "Дзен-кварталы" in featured and "417 880" in featured
     assert "37 в просрочке · 27 готовы к передаче" in featured
-    assert "7 квартир из просрочки" in featured and "прогноз новых просрочек — 0" in featured
+    assert "база" in featured and "резерв" in featured and "прогноз новых просрочек — 0" in featured
     assert sorted(at.selectbox(key="pf_goto").options) == sorted(n for _, n in pf_data.PROJECTS)
     assert "Произведённые выплаты" not in t and "Предъявленные требования" not in t
     payout = next(expander for expander in at.expander if expander.label == "Сценарий будущих выплат по ЖК")
@@ -605,7 +604,17 @@ def test_demo_week_package_financial_reconciliation(D):
         assert sum(row["risk"] for row in project["groups"]) == pytest.approx(project["risk_day"])
         assert all(decision["effect"] == pytest.approx(decision["effect_day"] * 14) for decision in project["decisions"])
     plan = DC.handover_plan(projects, package, PF.PROBLEMS)
-    assert tuple(sum(row[key] for row in plan) for key in ("baseline", "total", "new", "closing")) == (431, 142, 17, 306)
+    assert tuple(sum(row[key] for row in plan) for key in ("baseline", "total", "new", "closing")) == (431, 55, 17, 393)
     for row in plan:
         assert sum(row["groups"].values()) == row["total"]
         assert all(row["groups"][group["key"]] <= group["n"] for group in row["project"]["groups"])
+        assert row["booked"] <= row["project"]["reasons"]["booked"]["n"]
+        assert row["total"] == row["booked"] + row["reserve"] <= row["capacity"]
+        assert row["closing_base"] - row["closing"] == row["reserve"]
+        assert row["risk_total"] <= row["risk_base"]
+        detail = DT.korpus_table(D[row["project"]["key"]]["units"], row["project"]["price"])
+        assert detail["Готовы к передаче"].sum() == row["project"]["ready"]
+        assert detail["Дневная экспозиция, ₽"].sum() == pytest.approx(row["project"]["risk_day"], abs=len(detail))
+    scenario = DC.incremental_package_forecast(projects, package)
+    for row in scenario:
+        assert 0 <= row["effect"] <= row["base"]
