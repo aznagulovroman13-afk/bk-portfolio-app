@@ -11,7 +11,12 @@ import streamlit as st
 
 st.set_page_config(page_title="Портфель ЖК", page_icon="🏢", layout="wide", initial_sidebar_state="collapsed")
 
+import pf_auth  # noqa: E402
 import pf_ui as U  # noqa: E402
+
+if not pf_auth.authenticated():
+    pf_auth.login_screen(U.CSS)
+    st.stop()
 
 import pf_core as C  # noqa: E402
 import pf_data  # noqa: E402
@@ -126,6 +131,9 @@ def _load_demo_projects(projects: tuple, schema: str = REPORT_SCHEMA):
 
 DA = _load_demo_projects(pf_data.PROJECTS, REPORT_SCHEMA)
 with st.sidebar:
+    if st.button("Выйти", key="pf_exit"):
+        st.session_state.clear()
+        st.rerun()
     st.markdown("**Допущения расчёта**")
     pr_in = {}
     for k_, nm_ in pf_data.PROJECTS:

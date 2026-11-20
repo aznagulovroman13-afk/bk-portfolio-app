@@ -1,25 +1,40 @@
-"""Снимки отчёта: python tools/shots.py <адрес> <каталог/> <метка>. Вход без пароля."""
-import sys, time
+"""Снимки отчёта: python tools/shots.py <адрес> <каталог/> <метка>. Пароль берётся из .streamlit/secrets.toml (APP_PASSWORD), в вывод не попадает."""
+import sys, time, tomllib
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 BASE, OUT, tag = sys.argv[1], sys.argv[2], sys.argv[3]
+PWD = tomllib.loads(Path(__file__).resolve().parents[1].joinpath(".streamlit", "secrets.toml").read_text(encoding="utf-8"))["APP_PASSWORD"]
 READY = "Сводка по портфелю"
 BAD = ("Требует уточнения", "Нет данных", "нет данных", "демо", "ДЕМО", "DEMO", "вымышл", "условн", "модельн", "Power BI", "А101", "ориентир", "war room", "one-stop")
 Path(OUT).mkdir(parents=True, exist_ok=True)
 
 
-def login(page):
-    """Открывает отчёт; пароля нет. Возвращает кадр страницы и время до появления первого экрана."""
-    started = time.time()
-    page.goto(BASE); page.wait_for_load_state("networkidle")
-    fr = page.main_frame
-    for _ in range(240):                      # на Streamlit Cloud приложение открыто во вложенном кадре
+def app_frame(page, marker, tries=240):
+    """Кадр с приложением (на Streamlit Cloud приложение открыто во вложенном кадре), в котором есть метка marker: текст или поле пароля."""
+    for _ in range(tries):
         time.sleep(0.5)
-        fr = next((x for x in page.frames if READY in x.locator("body").inner_text()), None)
-        if fr:
-            break
-    assert fr, "первый экран не открылся"
-    assert not fr.locator("input[type=password]").count(), "на странице есть поле пароля"
+        for x in page.frames:
+            try:
+                if (marker == "password" and x.locator("input[type=password]").count()) or (marker != "password" and marker in x.locator("body").inner_text()):
+                    return x
+            except Exception:
+                continue
+    return None
+
+
+def login(page, name=None):
+    """Открывает адрес, снимает экран входа (если name задан), вводит пароль и ждёт первый экран. Возвращает кадр и время входа."""
+    page.goto(BASE); page.wait_for_load_state("networkidle")
+    gate = app_frame(page, "password", 120)
+    assert gate, "экран входа не открылся"
+    assert READY not in gate.locator("body").inner_text(), "отчёт открыт без пароля"
+    time.sleep(1)
+    if name:
+        page.screenshot(path=OUT + name)
+    started = time.time()
+    gate.locator("input[type=password]").fill(PWD); page.keyboard.press("Enter")
+    fr = app_frame(page, READY)
+    assert fr, "первый экран не открылся после ввода пароля"
     return fr, round(time.time() - started, 1)
 
 
@@ -33,8 +48,8 @@ def optional(step, *args):
 with sync_playwright() as pw:
     b = pw.chromium.launch(executable_path="/usr/bin/google-chrome")
     p = b.new_page(viewport={"width": 1440, "height": 900})
-    f, secs = login(p)
-    print("первый экран открыт без пароля, с:", secs)
+    f, secs = login(p, f"00_login_screen_{tag}_1440.png")
+    print("отчёт без пароля не открывается; первый экран после ввода пароля, с:", secs)
     time.sleep(3)
 
     def shot(name, sel=None, off=0):

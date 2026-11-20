@@ -112,9 +112,14 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     demo_for_ui = {key: dict(project, observed_through=project["calc_date"]) for key, project in data.items()}
     monkeypatch.setattr(pf_demo, "build", lambda projects: demo_for_ui)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=30)
+    app.secrets["APP_PASSWORD"] = "test-password"
     app.run()
     assert not app.exception
-    assert not app.text_input and "Пароль" not in " ".join(block.value for block in app.markdown)
+    assert app.text_input[0].label == "Пароль"
+    assert not app.caption
+    app.text_input[0].input("test-password")
+    app.button[0].click().run()
+    assert not app.exception
     report = " ".join(block.value for block in app.markdown)
     captions = " ".join(block.value for block in app.caption)
     assert "Поручения к согласованию" in report
@@ -178,7 +183,10 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     assert app.query_params["jk"] == "lag"
     assert "const jump = null;" in app.get("html")[-1].proto.body
     linked = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=30)
+    linked.secrets["APP_PASSWORD"] = "test-password"
     linked.query_params["jk"] = "bunino"
     linked.run()
+    linked.text_input[0].input("test-password")
+    linked.button[0].click().run()
     assert not linked.exception and linked.selectbox(key="pf_sel").value == "Бунинские кварталы"
     assert "const jump = 1;" in linked.get("html")[-1].proto.body

@@ -42,6 +42,16 @@ def test_repo_has_no_data_files():
                 and ".venv" not in str(p) and ".git" not in p.parts]
 
 
+def test_password_compare_and_lockout():
+    import pf_auth
+    assert pf_auth.check_password("abc", "abc") and not pf_auth.check_password("abd", "abc")
+    assert not pf_auth.check_password("", "") and not pf_auth.check_password("x", None)
+    st = {}
+    for i in range(pf_auth.MAX_FAILS):
+        assert pf_auth.lock_left(st, now=100) == 0
+        pf_auth.register_fail(st, now=100)
+    assert pf_auth.lock_left(st, now=100) == pf_auth.LOCK_SECONDS
+    assert pf_auth.lock_left(st, now=100 + pf_auth.LOCK_SECONDS + 1) == 0
 
 
 def test_all_projects_share_one_schema(D):
@@ -135,7 +145,7 @@ def test_data_has_no_pii_columns_and_sources_are_clean(D):
             assert not re.search(r"фио|телефон|e-?mail|инн|коммент|собственник\b", cols)
         names = " ".join(d["contractors"]["Подрядчик"])
         assert not BAD.search(names)
-    src = " ".join((ROOT / f).read_text(encoding="utf-8") for f in ("app.py", "pf_model.py", "pf_ui.py", "pf_data.py", "pf_detail.py", "pf_stats.py"))
+    src = " ".join((ROOT / f).read_text(encoding="utf-8") for f in ("app.py", "pf_model.py", "pf_ui.py", "pf_data.py", "pf_auth.py", "pf_detail.py", "pf_stats.py"))
     assert "/workspace" not in src and "logo" not in src.lower() and not BAD.search(src)
     assert not [w for w in LABELS[:6] if w in src.replace("Демо-данные", "")], "служебные метки в коде"
     assert "badge" not in src
@@ -154,6 +164,7 @@ def _txt(at):
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", t))
 
 
+PWD = "test-password-123"
 SLICE_DATES = {"13.11.2026", "20.11.2026", "27.11.2026", "04.12.2026", "11.12.2026", "18.12.2026", "01.01.2026"}
 
 
@@ -166,17 +177,39 @@ def _no_dates_sources(at, t):
     assert "срез" not in cols.lower() and "Дат" not in cols
 
 
-def _app():
+def _app(secret_yes=True, pwd=PWD):
     from streamlit.testing.v1 import AppTest
-    return AppTest.from_file(str(ROOT / "app.py"), default_timeout=240)
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=240)
+    at.secrets["SHOW_REAL_DATA"] = "yes" if secret_yes else "no"
+    at.secrets["APP_PASSWORD"] = pwd
+    return at
 
 
-
-
-
-def _open():
+def test_login_screen_only_without_password():
     at = _app()
     at.run()
+    assert not at.exception
+    t = _txt(at)
+    assert "Закрытый отчёт" in t and at.text_input[0].label == "Пароль"
+    assert not any(s in t for s in ("Бунинские", "Прокшино", "просрочено", "Сводка для совещания"))
+    assert len(at.text_input) == 1 and at.text_input[0].proto.type == 1  # password
+    assert not at.dataframe and not at.get("plotly_chart")
+    at.text_input[0].input("неверный")
+    at.button[0].click().run()
+    assert "Неверный пароль" in _txt(at) and "Бунинские" not in _txt(at)
+    for _ in range(4):
+        at.text_input[0].input("again")
+        at.button[0].click().run()
+    assert "Слишком много попыток" in _txt(at)
+    assert at.text_input[0].disabled and at.button[0].disabled and "pf_auth_ok" not in at.session_state
+
+
+
+def _login():
+    at = _app()
+    at.run()
+    at.text_input[0].input(PWD)
+    at.button[0].click().run()
     assert not at.exception, [e.message for e in at.exception]
     return at
 
@@ -186,17 +219,18 @@ def _screen_text(at):
     return _txt(at) + " " + re.sub(r"<[^>]+>", " ", side)
 
 
-def test_report_opens_without_password_and_secrets():
-    at = _app()
+def test_demo_opens_without_real_data_flag():
+    at = _app(secret_yes=False)
     at.run()
+    at.text_input[0].input(PWD)
+    at.button[0].click().run()
     assert not at.exception, [e.message for e in at.exception]
-    assert not at.text_input
     t = _txt(at)
-    assert t.count("Демо-данные") == 1 and "Сводка по портфелю" in t and "Закрытый отчёт" not in t and "Выйти" not in _screen_text(at)
+    assert t.count("Демо-данные") == 1 and "Сводка по портфелю" in t
 
 
 def test_full_report_after_login_labels_data_mode():
-    at = _open()
+    at = _login()
     t = _screen_text(at)
     for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения и методология расчёта", "Приоритетный объект портфеля", "Просрочка и неустойка по причинам", "Прогноз и целевой темп"):
         assert s in t, s
@@ -209,7 +243,7 @@ def test_full_report_after_login_labels_data_mode():
 
 @pytest.mark.parametrize("name", ["Бунинские кварталы", "Прокшино", "Дзен-кварталы"])
 def test_each_project_gets_identical_set_of_blocks(name):
-    at = _open()
+    at = _login()
     at.session_state["pf_sel"] = name
     at.run()
     assert not at.exception, [e.message for e in at.exception]
@@ -297,7 +331,7 @@ def test_plan_fact_and_dynamics_are_comparable(B):
 
 
 def test_first_screen_shows_three_cards_slice_date_and_methodology():
-    at = _open()
+    at = _login()
     t = _screen_text(at)
     for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Срез 20.11.2026", "Охват расчёта — 10 из 10 ЖК",
               "/ 100 / 150", "Приоритетный объект портфеля", "Основная причина", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
@@ -326,7 +360,7 @@ def test_first_screen_shows_three_cards_slice_date_and_methodology():
 
 
 def test_jump_button_opens_selected_project_detail():
-    at = _open()
+    at = _login()
     at.selectbox(key="pf_goto").select("Лаголово").run()
     assert not at.exception and at.session_state["pf_sel"] == "Лаголово"
     assert at.selectbox(key="pf_sel").value == "Лаголово"
@@ -449,7 +483,7 @@ def test_week_dynamics_is_compared_with_target(B):
 
 
 def test_new_sections_render_for_each_project_and_changed_coefficient():
-    at = _open()
+    at = _login()
     t = _screen_text(at)
     for s in ("Стоимость второй смены", "Записаны на приёмку", "Срок закрытия, недель", "Ожидаемые выплаты по сценарию"):
         assert s in t, s
@@ -525,7 +559,7 @@ def test_headline_and_screen_rows(B):
 
 
 def test_first_screen_v7_has_table_and_remarks_section_without_brands():
-    at = _open()
+    at = _login()
     t = _screen_text(at)
     for s in ("Структура портфеля по ЖК", "Реестр замечаний по портфелю", "Всего замечаний", "Открытые замечания", "Средний срок устранения", "Связь с финансовыми показателями",
               "Доля просроченных", "С одним неустранённым", "Главное решение и ожидаемый эффект", "Сводка по портфелю"):
@@ -551,7 +585,7 @@ def test_screens_have_no_service_labels_placeholders_or_emphasis_on_one_project(
     bad = [w.lower() for w in ("де" + "мо", "вымыш" + "лен", "услов" + "н", "нет " + "данных", "ориен" + "тир", "модел" + "ьн", "Требует " + "уточнения", "DE" + "MO-", "Учеб" + "ный")]
     B2 = PF.build(pf_demo.build(pf_data.PROJECTS), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))
     ranked = PF.by_risk(B2["projects"])
-    at = _open()
+    at = _login()
     assert at.selectbox(key="pf_sel").value == ranked[0]["name"]            # умолчание — ЖК с наибольшей неустойкой по данным, а не фиксированный ЖК
     assert at.selectbox(key="pf_goto").value is None
     for name in [p["name"] for p in ranked]:
