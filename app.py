@@ -16,13 +16,14 @@ import pf_ui as U  # noqa: E402
 import pf_core as C  # noqa: E402
 import pf_data  # noqa: E402
 import pf_decide as DC  # noqa: E402
+import pf_detail as DT  # noqa: E402
 import pf_demo  # noqa: E402
 import pf_model as PF  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
-REPORT_SCHEMA = "v15"
+REPORT_SCHEMA = "v16"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA:
-    for module in (U, DC, pf_demo, PF):
+    for module in (U, DC, DT, pf_demo, PF):
         reload(module)
 
 st.markdown(U.CSS, unsafe_allow_html=True)
@@ -174,8 +175,6 @@ def result_text(measure):
 def scope_label(measure):
     return dict(DC.REASONS)[measure["subreason"]] if measure["subreason"] else PF.PROBLEMS[measure["group"]]["title"]
 
-
-import pf_detail as DT  # noqa: E402
 
 st.markdown('<div class="rh exec-header"><div class="kick">Отчёт для генерального директора · Демо-данные</div><div class="ttl">Портфель ЖК</div></div>',
             unsafe_allow_html=True)
