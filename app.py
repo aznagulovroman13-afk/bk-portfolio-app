@@ -266,7 +266,8 @@ plan_history = f'факт {f(tot["left_n"])} → цель {f(plan_total)}'
 plan_title = "Утвердить недельный план передач по каждому ЖК"
 plan_owner = "Директор по заселению"
 risk_leader = projects[0]
-risk_leader_plan = plan_by_project[risk_leader["key"]]
+summary_project = projects_by_key.get("zen", risk_leader)
+summary_project_plan = plan_by_project[summary_project["key"]]
 pack_budget = f'Бюджет пакета на {DC.MONTH_W} недели — {f(pack_cost)} ₽'
 if priority_package:
     pack_budget += f' · в том числе {f(priority_package["cost"])} ₽ по ЖК «{focus["name"]}»'
@@ -312,13 +313,13 @@ st.markdown(
     f'<span class="exec-delta {"good" if rk_d < 0 else "bad" if rk_d > 0 else "flat"}">{sgm(rk_d)}/день за неделю</span></div>'
     '</div>'
     '<div class="exec-projects">'
-    '<article class="exec-project" aria-labelledby="exec-risk-title">'
-    '<span class="exec-label">Самая высокая дневная неустойка</span>'
-    f'<h3 id="exec-risk-title">{project_link(risk_leader["key"], risk_leader["name"])}</h3>'
-    f'<span class="exec-value">{f(round(risk_leader["risk_day"]))} <em>₽/день</em></span>'
-    f'<p>{f(risk_leader["overdue_kv"])} в просрочке · {f(risk_leader["ready"])} готовы к передаче</p>'
-    f'<p>К {review_date:%d.%m} — передать <b>{f(risk_leader_plan["total"])} квартир из просрочки</b> · '
-    f'ожидается {f(risk_leader_plan["new"])} {C.plural(risk_leader_plan["new"], "новая просрочка", "новые просрочки", "новых просрочек")}</p></article>'
+    '<article class="exec-project" aria-labelledby="exec-project-title">'
+    '<span class="exec-label">ЖК на контроле</span>'
+    f'<h3 id="exec-project-title">{project_link(summary_project["key"], summary_project["name"])}</h3>'
+    f'<span class="exec-value">{f(round(summary_project["risk_day"]))} <em>₽/день</em></span>'
+    f'<p>{f(summary_project["overdue_kv"])} в просрочке · {f(summary_project["ready"])} готовы к передаче</p>'
+    f'<p>К {review_date:%d.%m} — передать <b>{f(summary_project_plan["total"])} '
+    f'{pl(summary_project_plan["total"])} из просрочки</b> · прогноз новых просрочек — {f(summary_project_plan["new"])}</p></article>'
     '<article class="exec-project is-action" aria-labelledby="exec-priority-title">'
     f'<span class="exec-label">{"Наибольший эффект главной меры" if priority_measure else "Приоритет недели"}</span>'
     f'<h3 id="exec-priority-title">{project_link(focus["key"], focus["name"])}</h3>'
