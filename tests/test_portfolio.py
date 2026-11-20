@@ -310,7 +310,11 @@ def test_first_screen_shows_three_cards_slice_date_and_methodology():
     assert "Лаголово — 2 из 25" in t and "Прокшино — 2 из 22" in t
     assert "Бюджет пакета на 4 недели — 1 231 000 ₽" in t and "в том числе 108 000 ₽" in t
     assert "подтверждённых оснований и оформленных актов" in t
-    assert "13 квартир из просрочки" in t and "ожидается 9 новых просрочек" in t
+    project_cards = next(m.value for m in at.markdown if 'class="exec-projects"' in m.value)
+    featured = project_cards.split('id="exec-project-title"', 1)[1].split("</article>", 1)[0]
+    assert "Дзен-кварталы" in featured and "417 880" in featured
+    assert "37 в просрочке · 27 готовы к передаче" in featured
+    assert "7 квартир из просрочки" in featured and "прогноз новых просрочек — 0" in featured
     assert sorted(at.selectbox(key="pf_goto").options) == sorted(n for _, n in pf_data.PROJECTS)
     assert "Произведённые выплаты" not in t and "Предъявленные требования" not in t
     payout = next(expander for expander in at.expander if expander.label == "Сценарий будущих выплат по ЖК")

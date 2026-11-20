@@ -124,7 +124,9 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     assert "нет данных" not in (report + captions).lower()
     summary = report.split('id="summary"', 1)[1].split('<div class="cmph">', 1)[0]
     assert "Сводка по портфелю" in summary and summary.count('class="exec-metric"') == 3
-    assert "Самая высокая дневная неустойка" in summary and "Наибольший эффект главной меры" in summary
+    assert "ЖК на контроле" in summary and "Наибольший эффект главной меры" in summary
+    featured = summary.split('id="exec-project-title"', 1)[1].split("</article>", 1)[0]
+    assert '/?jk=zen#drill" data-project-link>Дзен-кварталы' in featured
     assert summary.count('class="exec-approval-item"') == 2
     assert "Цель по остатку просрочки" in summary
     assert report.count("Демо-данные") == 1
