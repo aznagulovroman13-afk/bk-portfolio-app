@@ -81,7 +81,7 @@ def test_internal_consistency_of_every_project(D, folder):
     assert set(R["Группа"]) == {"Окна", "Отделка", "Двери", "Инженерные системы", "Прочее"}
     # шахматка: каждое помещение корпуса на экране ровно один раз
     for k in DT.korpus_list(A)[:3]:
-        _, info = DT.chess_html(A, k)
+        _, info = DT.chess_html(A, k, project_key=folder)
         assert info["units"] == int((A["Корпус"].astype(str) == k).sum()) == sum(info["counts"].values())
 
 
@@ -229,36 +229,59 @@ def test_demo_opens_without_real_data_flag():
     assert t.count("Демо-данные") == 1 and "Сводка по портфелю" in t
 
 
-def test_full_report_after_login_labels_data_mode():
-    at = _login()
-    t = _screen_text(at)
-    for s in ("Портфель ЖК", "Бунинские кварталы", "Прокшино", "Дзен-кварталы", "Допущения и методология расчёта", "Приоритетный объект портфеля", "Просрочка и неустойка по причинам", "Прогноз и целевой темп"):
-        assert s in t, s
-    for s in ("Требует уточнения", "модельн", "Подтверждённые суммы"):
-        assert s not in t, s
-    assert not BAD.search(t)
-    assert t.count("Демо-данные") == 1
-    _no_dates_sources(at, t)
-
-
-@pytest.mark.parametrize("name", ["Бунинские кварталы", "Прокшино", "Дзен-кварталы"])
-def test_each_project_gets_identical_set_of_blocks(name):
-    at = _login()
-    at.session_state["pf_sel"] = name
+def _open(at, **route):
+    at.query_params.clear()
+    at.query_params.update(route)
     at.run()
     assert not at.exception, [e.message for e in at.exception]
-    assert [t.label for t in at.tabs] == ["Обзор", "Шахматка", "Замечания", "Подрядчики", "Финансы", "Динамика"]
-    t = _screen_text(at)
-    for s in ("Ключевые проблемы ЖК", "Ответственные роли", "Контрольный показатель", "Корпуса", "Открытых замечаний", "Балл риска",
-              "Мало данных", "Потенциал претензий", "Блокируют передачу",
-              "срок ДДУ нарушен", "Открыта к передаче", "Не принята"):
-        assert s in t, s
-    _no_dates_sources(at, t)
-    assert len([m for m in at.markdown if 'class="cb"' in m.value]) == 1      # шахматка выбранного ЖК
-    heads = [" ".join(map(str, d.value.columns)) for d in at.dataframe]
-    assert any("Помещений" in h and "Критических" in h for h in heads) and any("Балл риска" in h for h in heads)
+    return _screen_text(at)
 
 
+def test_full_report_after_login_labels_data_mode():
+    at = _login()
+    sections = {
+        "summary": "Сводка по портфелю",
+        "segments": "Структура портфеля по ЖК",
+        "decisions": "Приоритетный объект портфеля",
+        "reasons": "Причины непередачи готовых квартир",
+        "forecast": "Прогноз и целевой темп",
+        "contribution": "Концентрация дневной неустойки по ЖК",
+        "dynamics": "Динамика: неделя к неделе",
+        "matrix": "Просрочка и неустойка по причинам",
+        "remarks": "Реестр замечаний по портфелю",
+        "money": "Финансы: неустойка и стоимость устранения",
+        "orders": "Поручения к согласованию",
+        "notes": "Допущения и методология расчёта",
+    }
+    for key, heading in sections.items():
+        page = _open(at, view=key)
+        assert heading in page
+        assert "Сводка по портфелю" not in page or key == "summary"
+        assert not BAD.search(page)
+        for term in ("Требует уточнения", "модельн", "Подтверждённые суммы"):
+            assert term not in page
+        _no_dates_sources(at, page)
+    assert _open(at).count("Демо-данные") == 1
+
+
+@pytest.mark.parametrize("key", ["bunino", "proksh", "zen"])
+def test_each_project_gets_identical_set_of_blocks(key):
+    at = _login()
+    overview = _open(at, jk=key)
+    for name in ("Обзор", "Шахматка", "Замечания", "Подрядчики", "Финансы", "Динамика"):
+        assert name in overview
+    for text in ("Ключевые проблемы ЖК", "Ответственные роли", "Контрольный показатель", "Корпуса", "Открытых замечаний"):
+        assert text in overview
+    assert "Сводка по портфелю" not in overview
+    assert any(f'jk={key}&amp;tab=chess&amp;corpus=' in m.value for m in at.markdown)
+    chess = _open(at, jk=key, tab="chess")
+    assert "срок ДДУ нарушен" in chess and "Открыта к передаче" in chess and "Не принята" in chess
+    assert len([m for m in at.markdown if 'class="cb"' in m.value]) == 1
+    assert "Блокируют передачу" in _open(at, jk=key, tab="remarks")
+    _open(at, jk=key, tab="contractors")
+    assert any("Балл риска" in d.value.columns for d in at.dataframe)
+    assert "Потенциал претензий" in _open(at, jk=key, tab="money")
+    assert "Просрочка на конец недели" in _open(at, jk=key, tab="dynamics")
 
 
 # ---------------------------------------------------------------- первый экран по новому ТЗ
@@ -330,15 +353,11 @@ def test_plan_fact_and_dynamics_are_comparable(B):
     assert t["risk_delta"] == pytest.approx(t["entered_risk"] - t["left_risk"])
 
 
-def test_first_screen_shows_three_cards_slice_date_and_methodology():
+def test_first_screen_shows_three_cards_and_links():
     at = _login()
     t = _screen_text(at)
-    for s in ("Просрочка по ДДУ", "Из них готовы к передаче", "Расчётная неустойка, ₽/день", "Срез 20.11.2026", "Охват расчёта — 10 из 10 ЖК",
-              "/ 100 / 150", "Приоритетный объект портфеля", "Основная причина", "Предлагаемые решения и ожидаемый эффект", "Доля в дневной неустойке портфеля",
-              "Изменение за неделю к целевому темпу", "Передано за неделю: факт / целевой темп", "Неустойка на просроченную квартиру, ₽/день",
-              "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию", "Причины непередачи готовых квартир", "Прогноз и целевой темп",
-              "Управленческие решения и ожидаемый эффект"):
-        assert s in t, s
+    for label in ("Квартир в просрочке", "Готовы к передаче", "Расчётная неустойка", "Срез 20.11.2026"):
+        assert label in t
     assert "в базовом плане" in t and "в резерве после подтверждения условий" in t
     assert "Утвердить бюджет 1 231 000 ₽ на меры по 54 квартирам" in t
     assert "Юрдепартамент проверяет основания и риск оспаривания" in t
@@ -348,22 +367,38 @@ def test_first_screen_shows_three_cards_slice_date_and_methodology():
     assert "Дзен-кварталы" in featured and "417 880" in featured
     assert "37 в просрочке · 27 готовы к передаче" in featured
     assert "база" in featured and "резерв" in featured and "прогноз новых просрочек — 0" in featured
-    assert sorted(at.selectbox(key="pf_goto").options) == sorted(n for _, n in pf_data.PROJECTS)
+    assert all(f'href="/?view={view}" data-pf-route class="exec-metric"' in project_cards
+               for view in ("segments", "reasons", "money"))
     assert "Произведённые выплаты" not in t and "Предъявленные требования" not in t
+    _open(at, view="money")
     payout = next(expander for expander in at.expander if expander.label == "Сценарий будущих выплат по ЖК")
     assert any("Ожидаемые выплаты по сценарию" in block.value for block in payout.markdown)
-    assert t.index("Расчётная неустойка") < t.index("Приоритетный объект портфеля") < t.index("Структура портфеля по ЖК")
-    # порядок строк таблицы: по убыванию риска
+    t = _open(at, view="segments")
     order = [p["name"] for p in PF.by_risk(PF.build(pf_demo.build(pf_data.PROJECTS), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])]
-    i = [t.index(n, t.index("Структура портфеля по ЖК")) for n in order]
-    assert i == sorted(i)
+    indexes = [t.index(name, t.index("Структура портфеля по ЖК")) for name in order]
+    assert indexes == sorted(indexes)
 
 
-def test_jump_button_opens_selected_project_detail():
+def test_project_corpus_unit_links_and_matching_remarks(D):
     at = _login()
-    at.selectbox(key="pf_goto").select("Лаголово").run()
-    assert not at.exception and at.session_state["pf_sel"] == "Лаголово"
-    assert at.selectbox(key="pf_sel").value == "Лаголово"
+    d = D["zen"]
+    row = d["units"].loc[d["units"]["Замечаний открыто"].gt(0)].iloc[0]
+    unit, corpus = row["Объект"], row["Корпус"]
+    _open(at, jk="zen", tab="chess", corpus=corpus)
+    chess = next(m.value for m in at.markdown if 'class="cb"' in m.value)
+    assert f'jk=zen&amp;tab=chess&amp;corpus={corpus}&amp;unit={unit}' in chess
+    report = _open(at, jk="zen", tab="chess", corpus=corpus, unit=unit)
+    assert "Срок по ДДУ" in report and "Блокирует передачу" in report
+    for contractor in d["remark_items"].loc[d["remark_items"]["Объект"].eq(unit), "Подрядчик"]:
+        assert contractor in report
+    path = next(m.value for m in at.markdown if 'class="pf-path"' in m.value)
+    assert f'jk=zen&amp;tab=chess&amp;corpus={corpus}#drill' in path and 'unit=' not in path
+    _open(at, jk="zen", tab="chess", corpus=corpus, unit="not-in-this-corpus")
+    assert any('class="cb"' in m.value for m in at.markdown)
+    other_corpus = next(value for value in DT.korpus_list(d["units"]) if value != corpus)
+    at.selectbox(key=f"pf_chess_zen_{corpus}").select(other_corpus).run()
+    assert not at.exception and at.query_params["corpus"] == other_corpus
+    assert "unit" not in at.query_params
 
 
 def test_cache_keys_bumped_for_new_schema():
@@ -484,11 +519,11 @@ def test_week_dynamics_is_compared_with_target(B):
 
 def test_new_sections_render_for_each_project_and_changed_coefficient():
     at = _login()
-    t = _screen_text(at)
-    for s in ("Стоимость второй смены", "Записаны на приёмку", "Срок закрытия, недель", "Ожидаемые выплаты по сценарию"):
-        assert s in t, s
+    assert "Стоимость второй смены" in _open(at, view="decisions")
     assert "Подрядчики: доля дневной неустойки и потенциал удержаний" in [e.label for e in at.expander]
-    assert not re.search(r"Требует уточнения", t)
+    assert "Записаны на приёмку" in _open(at, view="reasons")
+    assert "Срок закрытия, недель" in _open(at, view="segments")
+    assert "Ожидаемые выплаты по сценарию" in _open(at, view="money")
     at.slider(key="pf_k_claim").set_value(70).run()
     assert not at.exception
     assert any("Возможные требования составляют 70%" in caption.value for caption in at.caption)
@@ -558,18 +593,19 @@ def test_headline_and_screen_rows(B):
     assert [r["risk"] for r in rows] == sorted((r["risk"] for r in rows), reverse=True)
 
 
-def test_first_screen_v7_has_table_and_remarks_section_without_brands():
+def test_directory_and_remarks_sections():
     at = _login()
-    t = _screen_text(at)
-    for s in ("Структура портфеля по ЖК", "Реестр замечаний по портфелю", "Всего замечаний", "Открытые замечания", "Средний срок устранения", "Связь с финансовыми показателями",
-              "Доля просроченных", "С одним неустранённым", "Главное решение и ожидаемый эффект", "Сводка по портфелю"):
-        assert s in t, s
-    labels = [e.label for e in at.expander]
-    assert "Расширенные показатели по ЖК: неустойка, темп и сроки" in labels and "Расширенные показатели по замечаниям и квартирам" in labels
-    for _, n in pf_data.PROJECTS:
-        assert n in t
-    assert t.index("Сводка по портфелю") < t.index("Приоритетный объект портфеля")
-    assert not BAD.search(t) and "Требует уточнения" not in t
+    directory = _open(at, view="segments")
+    assert "Структура портфеля по ЖК" in directory and "Главное решение и ожидаемый эффект" in directory
+    assert "Расширенные показатели по ЖК: неустойка, темп и сроки" in [e.label for e in at.expander]
+    for _, name in pf_data.PROJECTS:
+        assert name in directory
+    remarks = _open(at, view="remarks")
+    for term in ("Реестр замечаний по портфелю", "Всего замечаний", "Открытые замечания",
+                 "Средний срок устранения", "Связь с финансовыми показателями", "Доля просроченных", "С одним неустранённым"):
+        assert term in remarks
+    assert "Расширенные показатели по замечаниям и квартирам" in [e.label for e in at.expander]
+    assert not BAD.search(remarks) and "Требует уточнения" not in remarks
     at.selectbox(key="pf_qsel").select("Прокшино").run()
     assert not at.exception
 
@@ -586,17 +622,16 @@ def test_screens_have_no_service_labels_placeholders_or_emphasis_on_one_project(
     B2 = PF.build(pf_demo.build(pf_data.PROJECTS), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))
     ranked = PF.by_risk(B2["projects"])
     at = _login()
-    assert at.selectbox(key="pf_sel").value == ranked[0]["name"]            # умолчание — ЖК с наибольшей неустойкой по данным, а не фиксированный ЖК
-    assert at.selectbox(key="pf_goto").value is None
-    for name in [p["name"] for p in ranked]:
-        at.selectbox(key="pf_sel").select(name).run()
-        assert not at.exception, name
-        text = (_screen_text(at) + " " + " ".join(c.value for c in at.caption)).lower()
+    for project in ranked:
+        name = project["name"]
+        text = (_open(at, jk=project["key"]) + " " + " ".join(c.value for c in at.caption)).lower()
         assert text.count("демо-данные") == 1
         text = text.replace("демо-данные", "")
         assert not [w for w in bad if w in text], (name, [w for w in bad if w in text])
+    _open(at, view="orders")
     orders = next(m.value for m in at.markdown if "Было → цель" in m.value and "<table" in m.value)
     assert "Ответственный" in orders and "27.11.2026" in orders
+    _open(at, view="segments")
     mains = html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", next(m.value for m in at.markdown if "Главное решение и ожидаемый эффект" in m.value))))
     shorts = [p["decisions"][0]["short"] for p in ranked]
     assert len(set(shorts)) == 10 and all(sh in mains for sh in shorts)

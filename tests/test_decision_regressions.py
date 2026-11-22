@@ -120,48 +120,57 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     app.text_input[0].input("test-password")
     app.button[0].click().run()
     assert not app.exception
+    def open_screen(**route):
+        app.query_params.clear()
+        app.query_params.update(route)
+        app.run()
+        assert not app.exception, [e.message for e in app.exception]
+        return " ".join(block.value for block in app.markdown)
+
     report = " ".join(block.value for block in app.markdown)
-    captions = " ".join(block.value for block in app.caption)
-    assert "Поручения к согласованию" in report
-    assert "Чистый темп, квартир в неделю" in report and "При целевом темпе, недель" in report
-    assert "Предполагаемая сумма прошлых выплат" not in report
-    assert "Подтверждённые исходные данные" not in captions
-    assert "нет данных" not in (report + captions).lower()
-    summary = report.split('id="summary"', 1)[1].split('<div class="cmph">', 1)[0]
+    summary = report.split('id="summary"', 1)[1]
     assert "Сводка по портфелю" in summary and summary.count('class="exec-metric"') == 3
     assert "ЖК на контроле" in summary and "наибольший эффект главной меры" in summary
     featured = summary.split('id="exec-project-title"', 1)[1].split("</article>", 1)[0]
-    assert '/?jk=zen#drill" data-project-link>Дзен-кварталы' in featured
+    assert '/?jk=zen#drill" data-pf-route>Дзен-кварталы' in featured
     assert summary.count('class="exec-approval-item"') == 2
     assert "Цель по остатку просрочки" in summary
     assert report.count("Демо-данные") == 1
     assert "сравнение с <b>04.11.2026</b>" in summary
-    assert "Выполнить недельный план передач по ЖК" in summary and "Утвердить бюджет" in summary
-    assert "Возможные требования по сценарию" not in summary
-    assert "Возможные требования по сценарию" in report.split('id="money"', 1)[1]
+    assert "Утвердить бюджет" in summary and "Возможные требования по сценарию" not in summary
+    assert "Расчётная неустойка</span>" in summary and "<em>₽/день</em>" in summary
+    assert '<summary>Ещё</summary>' in report
+    assert 'href="/?view=orders" data-pf-route>Поручения и план по ЖК' in summary
+
+    money = open_screen(view="money")
+    assert "Возможные требования по сценарию" in money
+    assert "Накопленная неустойка (верхняя оценка)" in money
+    assert "Предполагаемая сумма прошлых выплат" not in money
+    forecast = open_screen(view="forecast")
+    assert "Чистый темп, квартир в неделю" in forecast and "При целевом темпе, недель" in forecast
+    decisions = open_screen(view="decisions")
     assert "Вторая смена приёмки · проверка перед согласованием" in [e.label for e in app.expander]
     priced_projects = PF.build(demo_for_ui, dict(params, prices={key: value * 1e6 for key, value in PF.DEFAULT_PRICES.items()}))
     priority = max(priced_projects["projects"], key=lambda project: project["decisions"][0]["effect_day"])
-    details = report.split('id="priority"', 1)[1].split('id="segments"', 1)[0]
+    details = decisions.split('id="priority"', 1)[1]
     assert "Критерий выбора" in details and priority["name"] in details
-    assert summary.index("Что согласовать") < summary.index("Решения недели по портфелю")
-    orders = report.split('id="orders"', 1)[1].split('id="notes"', 1)[0]
-    for section in (summary, orders):
+    assert f'/?jk={priority["key"]}#drill" data-pf-route>{priority["name"]}' in summary
+    assert "один дополнительный день просрочки" in decisions
+    orders = open_screen(view="orders")
+    assert "Поручения к согласованию" in orders
+    for section in (decisions, orders):
         assert "Нужно решение ГД" in section and "В рабочем порядке" in section
         assert "18.11.2026" in section
-    assert "Расчётная неустойка</span>" in summary and "<em>₽/день</em>" in summary
-    assert "один дополнительный день просрочки" in summary
-    assert "Накопленная неустойка (верхняя оценка)" in report
-    assert f'/?jk={priority["key"]}#drill" data-project-link>{priority["name"]}' in summary
-    assert '<summary>Ещё</summary>' in report
-    assert 'href="#orders">Поручения и план по ЖК' in summary
-    assert report.count('class="contrib-row') == 10
-    assert "Итого, квартиры" in report and "тем больше квартир" in report
+
+    assert open_screen(view="contribution").count('class="contrib-row') == 10
+    matrix = open_screen(view="matrix")
+    assert "Итого, квартиры" in matrix and "тем больше квартир" in matrix
     app.radio(key="pf_matrix_metric").set_value("₽ в день").run()
     assert not app.exception
     money_report = " ".join(block.value for block in app.markdown)
     assert "Итого, ₽ в день" in money_report and "тем выше расчётная неустойка в ₽/день" in money_report
-    assert len(app.selectbox(key="pf_goto").options) == 10
+
+    open_screen(view="reasons")
     assert app.selectbox(key="pf_reason_scope").value == "Весь портфель"
     portfolio_reasons = next(block.value for block in app.markdown if '<table class="fin ready-reasons">' in block.value)
     assert "Доля готовых" in portfolio_reasons and "Расчётная неустойка, ₽/день" in portfolio_reasons
@@ -170,23 +179,13 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     assert not app.exception
     project_reasons = next(block.value for block in app.markdown if '<table class="fin ready-reasons">' in block.value)
     assert '<td class="r">4</td>' in project_reasons and '<td class="r">40</td>' not in project_reasons
-    app.selectbox(key="pf_goto").select("Всеволожск").run()
-    assert not app.exception and app.selectbox(key="pf_sel").value == "Всеволожск"
-    assert app.query_params["jk"] == "vsev"
-    assert any('href="/?jk=vsev#drill" data-project-link>Открыть карточку ЖК «Всеволожск»' in block.value for block in app.markdown)
-    assert "const jump = 1;" in app.get("html")[-1].proto.body
-    app.selectbox(key="pf_goto").select("Дзен-кварталы").run()
-    assert not app.exception and app.selectbox(key="pf_sel").value == "Дзен-кварталы"
-    assert "const jump = 2;" in app.get("html")[-1].proto.body
-    app.selectbox(key="pf_sel").select("Лаголово").run()
-    assert not app.exception and app.selectbox(key="pf_goto").value == "Лаголово"
-    assert app.query_params["jk"] == "lag"
-    assert "const jump = null;" in app.get("html")[-1].proto.body
+
+    directory = open_screen(view="segments")
+    assert directory.count("#drill") == 10
     linked = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "app.py"), default_timeout=30)
     linked.secrets["APP_PASSWORD"] = "test-password"
     linked.query_params["jk"] = "bunino"
     linked.run()
     linked.text_input[0].input("test-password")
     linked.button[0].click().run()
-    assert not linked.exception and linked.selectbox(key="pf_sel").value == "Бунинские кварталы"
-    assert "const jump = 1;" in linked.get("html")[-1].proto.body
+    assert not linked.exception and linked.header[0].value == "Бунинские кварталы"
