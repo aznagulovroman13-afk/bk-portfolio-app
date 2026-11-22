@@ -4,8 +4,11 @@ from __future__ import annotations
 import html
 
 import pandas as pd
+import streamlit as st
 
 import pf_core as C
+import pf_nav as N
+import pf_ui as U
 
 # статусы и пастельные цвета шахматки: заливка, рамка, текст
 STATUS = {
@@ -31,6 +34,7 @@ def chess_css() -> str:
             "font-variant-numeric:tabular-nums;padding-right:4px}.cb .row{display:flex;flex-wrap:wrap;gap:3px;max-width:640px}"
             ".cb .c{position:relative;width:46px;height:34px;border:1px solid;border-radius:4px;font-size:11px;line-height:1.1;"
             "display:flex;flex-direction:column;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}"
+            ".cb a.c{color:inherit!important;text-decoration:none!important}.cb a.c:hover,.cb a.c:focus-visible{outline:2px solid #45688D;outline-offset:1px}"
             ".cb .c b{font-weight:700}.cb .c s{text-decoration:none;font-size:8.5px;opacity:.85}"
             ".cb .c.d::after{content:'';position:absolute;top:2px;right:2px;width:5px;height:5px;border-radius:50%;background:#B3261E}"
             ".cb .c.k::before{content:'';position:absolute;top:2px;left:2px;width:5px;height:5px;border-radius:1px;background:#0B1F3A}"
@@ -56,7 +60,7 @@ def korpus_list(A: pd.DataFrame) -> list[str]:
     return ks
 
 
-def chess_html(A: pd.DataFrame, korpus: str) -> tuple[str, dict]:
+def chess_html(A: pd.DataFrame, korpus: str, *, project_key: str) -> tuple[str, dict]:
     """Шахматка корпуса: секции → этажи → помещения; цвет — статус, красная точка — срок ДДУ нарушен, синяя — есть критические замечания."""
     a = A[A["Корпус"].astype(str) == str(korpus)].copy()
     a["_sec"] = a["Секция"].astype(str)
@@ -83,14 +87,44 @@ def chess_html(A: pd.DataFrame, korpus: str) -> tuple[str, dict]:
                 tip = (f"{r['Тип объекта']} {r['_n']} · {label}" + (f" · срок ДДУ нарушен, {_num(days)} дн." if bad else "")
                        + (f" · замечаний {_num(r['Замечаний открыто'])}, критических {_num(r['Критических'])}" if _num(r["Замечаний открыто"]) else ""))
                 t = TYPE_SHORT.get(r["Тип объекта"], "")
-                cells.append(f'<div class="c {code}{" d" if bad else ""}{" k" if crit else ""}" title="{html.escape(tip)}">'
-                             f'<b>{html.escape(t + (" " if t else "") + str(r["_n"]))}</b><s>{dt}</s></div>')
+                content = f'<b>{html.escape(t + (" " if t else "") + str(r["_n"]))}</b><s>{dt}</s>'
+                cells.append(N.link(tip, content=content, css=f'c {code}{" d" if bad else ""}{" k" if crit else ""}',
+                                    jk=project_key, tab="chess", corpus=korpus, unit=r["Объект"]))
             rows.append(f'<div class="fl"><div class="fn">{fl}</div><div class="row">{"".join(cells)}</div></div>')
         secs.append(f'<div class="sec1"><h5>Секция {html.escape(str(sec))}</h5>{"".join(rows)}</div>')
     legend = "".join(f'<span><i class="{c}"></i>{html.escape(lab)} — {C.fmt_int(counts.get(lab, 0))}</span>' for c, lab, _ in STATUS.values())
     legend += '<span><i class="dm"></i>срок ДДУ нарушен</span><span><i class="km"></i>есть критические замечания</span>'
     out = f'{chess_css()}<div class="cb"><div class="secs">{"".join(secs)}</div><div class="lg">{legend}</div></div>'
     return out, {"units": int(len(a)), "counts": counts}
+
+
+def unit_title(unit):
+    return f'{unit["Тип объекта"]} {unit["Квартира"]}'
+
+
+def show_unit(unit, remarks):
+    st.subheader(unit_title(unit))
+    st.caption(f'Корпус {unit["Корпус"]} · Секция {unit["Секция"]} · Этаж {unit["Этаж"]}')
+    status = STATUS.get(unit["Исходный статус"], ("", unit["Исходный статус"], ()))[1]
+    due = pd.Timestamp(unit["Срок по ДДУ"]).strftime("%d.%m.%Y") if pd.notna(unit["Срок по ДДУ"]) else "Нет данных"
+    rows = [
+        ["Статус", status],
+        ["Срок по ДДУ", due],
+        ["Просрочка по ДДУ, дней", C.fmt_int(unit["Просрочка ДДУ факт, дн."])],
+        ["Готовность подтверждена", "Да" if unit["Готовность подтверждена"] else "Нет"],
+    ]
+    if pd.notna(unit["Дата принятия собственником"]):
+        rows.append(["Дата передаточного акта", pd.Timestamp(unit["Дата принятия собственником"]).strftime("%d.%m.%Y")])
+    U.fin_table(["Показатель", "Значение"], rows)
+    st.subheader("Замечания по помещению")
+    issues = remarks.loc[remarks["Объект"].eq(unit["Объект"])]
+    if issues.empty:
+        st.info("По этому помещению открытых замечаний нет.")
+        return
+    U.fin_table(["Вид работ", "Важность", "Подрядчик", "Дней открыто", "Блокирует передачу"],
+                [[row["Группа"], row["Важность"], row["Подрядчик"], C.fmt_int(row["Возраст"]),
+                  "Да" if row["Блокирует"] else "Нет"]
+                 for row in issues.sort_values("Возраст", ascending=False).to_dict("records")], right=(3,))
 
 
 def korpus_table(A: pd.DataFrame, price: float) -> pd.DataFrame:

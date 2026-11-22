@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import html
-import json
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -35,7 +34,7 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
   padding: 0 var(--bk-pad); background: var(--navy); font-size: 13px; white-space: nowrap; }
 .pfnav b { color: #fff; font-size: 14px; letter-spacing: .02em; margin-right: 18px; font-weight: 600; }
 .pfnav a, .pfnav summary { color: #C5CEDA !important; text-decoration: none !important; display: block; padding: 6px 9px; border-radius: 4px; }
-.pfnav a:hover, .pfnav summary:hover, .pfnav [aria-current="location"], .pfnav .more.is-current > summary {
+.pfnav a:hover, .pfnav summary:hover, .pfnav [aria-current="page"], .pfnav .more:has([aria-current="page"]) > summary {
   color: #fff !important; background: #263F5D; }
 .pfnav :focus-visible { outline: 2px solid #B8E4FF; outline-offset: 1px; }
 .pfnav .more { position: relative; }
@@ -44,6 +43,19 @@ h1, h2, h3, h4, p, li, label { color: var(--ink); }
 .pfnav summary::after { content: " ▾"; }
 .pfnav .more-links { position: absolute; top: calc(100% + 6px); right: 0; min-width: 170px; padding: 5px; border-radius: 6px;
   background: var(--navy); box-shadow: 0 5px 20px #14213D33; max-height: calc(100dvh - 53px); overflow-y: auto; }
+.pf-links, .pf-path { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px; }
+.pf-path { color: var(--ink2); font-size: 13px; }
+.pf-path > :not(:first-child)::before { content: ""; display: inline-block; width: 5px; height: 5px; margin: 0 11px 2px 0; border-top: 1px solid var(--ink3); border-right: 1px solid var(--ink3); transform: rotate(45deg); }
+.pf-links a { padding: 7px 11px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); text-decoration: none !important; }
+.pf-links a[aria-current="page"] { background: #E1EAF4; border-color: #8EA8C4; font-weight: 700; }
+.pf-links a:hover, .pf-path a:hover { border-color: #45688D; text-decoration: underline !important; }
+.pf-links a:focus-visible, .pf-path a:focus-visible { outline: 2px solid #45688D; outline-offset: 2px; }
+.st-key-pf_routes { display: none; }
+:root:not([data-pf-route-ready]) a[data-pf-route] { pointer-events: none; }
+@media (max-width: 435px) {
+  .pfnav { gap: 0; }
+  .pfnav a, .pfnav summary { font-size: 11px; padding-inline: 3px !important; }
+}
 /* шапка отчёта */
 .rh { background: var(--navy); color: #fff; border-radius: 6px; padding: 26px 30px 20px; margin: 4px 0 18px; border-bottom: 3px solid var(--gold); }
 .rh .kick { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #C5CEDA; font-weight: 600; }
@@ -112,7 +124,7 @@ table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px
 .tw table.fin th:first-child { background: #F3F5F8; } .tw table.fin tr.tot td:first-child { background: #F3F5F8; }
 .fin td.r { white-space: nowrap; } .fin td .sub { display: block; white-space: nowrap; font-size: 11px; color: var(--ink3); font-weight: 400; } .fin td .wr { color: var(--risk); font-weight: 600; }
 .fin td .improved { color: #2E7D32; font-weight: 600; }
-a[data-project-link] { color: #234F7A !important; text-decoration: underline; text-underline-offset: 3px; }
+a[data-pf-route] { color: #234F7A !important; text-decoration: underline; text-underline-offset: 3px; }
 .contrib-bars { border: 1px solid var(--line); background: var(--paper); border-radius: 4px; padding: 12px 14px; container-type: inline-size; }
 .contrib-row { display: grid; grid-template-columns: minmax(110px, 1.05fr) minmax(48px, .95fr) 150px; align-items: center;
   padding: 7px 0; gap: 10px; font-size: 13px; border-bottom: 1px solid #E6EAF0; }
@@ -131,7 +143,10 @@ a[data-project-link] { color: #234F7A !important; text-decoration: underline; te
   .hm { display: none; } .fin { font-size: 12px; } .fin td, .fin th { padding: 7px 8px; }
   .kgrid.big { grid-template-columns: 1fr; } .ladder { grid-template-columns: 1fr; } .ladder .ar { display: none; } .ladder .st { margin-bottom: 8px; }
   .prio { grid-template-columns: 1fr; gap: 16px; } .cmp { grid-template-columns: 1fr; }
-  .pfnav { padding: 0 6px; gap: 1px; justify-content: space-between; font-size: 12px; }
+  .pfnav { padding: 0 43px 0 6px; gap: 1px; justify-content: space-between; font-size: 12px; }
+  header [data-testid="stExpandSidebarButton"] {
+    position: fixed !important; top: 5px; right: 4px; left: auto !important; width: 34px; height: 34px; color: #C5CEDA !important;
+  }
   .stMainBlockContainer, .block-container { padding-right: 76px !important; }
   .pfnav b { display: none; }
   .pfnav a, .pfnav summary { padding: 6px 4px; }
@@ -155,113 +170,6 @@ div[data-testid="stExpander"] details { background: var(--paper); border: 1px so
 @media (max-width: 900px) { .dec { grid-template-columns: 1fr; } .dec > div { border-right: none; border-bottom: 1px solid var(--line); } }
 </style>
 """
-
-
-NAVIGATION = """
-<nav class="pfnav" aria-label="Разделы отчёта"><b>ПОРТФЕЛЬ ЖК</b>
-<a href="#summary">Сводка</a><a href="#weekly-decisions">Решения</a><a href="#segments">ЖК</a>
-<a href="#orders">Поручения</a><a href="#money">Финансы</a>
-<details class="more"><summary>Ещё</summary><div class="more-links">
-<a href="#priority">Приоритет</a><a href="#reasons">Причины</a><a href="#forecast">Прогноз</a>
-<a href="#decisions">Меры по ЖК</a><a href="#contribution">Концентрация</a><a href="#dynamics">Динамика</a>
-<a href="#matrix">Матрица</a><a href="#remarks">Замечания</a><a href="#drill">Детализация</a><a href="#notes">Методология</a>
-</div></details></nav>
-"""
-
-
-def navigation_script(project_key: str | None, jump: int | None, initial_route: bool) -> str:
-    route = json.dumps(project_key)
-    return """<script>
-(() => {
-    function syncProjectAddress(key, section = 'drill') {
-        for (const view of new Set([window, window.parent])) {
-            try {
-                const address = new URL(view.location.href);
-                address.searchParams.set('jk', key);
-                address.hash = section;
-                if (address.href !== view.location.href) {
-                    view.history.replaceState(view.history.state, '', address);
-                }
-            } catch {
-                // An embedding page on a different origin owns its address.
-            }
-        }
-    }
-
-    if (!window.portfolioNavRefresh) {
-        let scheduled = false;
-        window.portfolioNavRefresh = function () {
-            if (scheduled) return;
-            scheduled = true;
-            requestAnimationFrame(() => {
-                scheduled = false;
-                const nav = document.querySelector('.pfnav');
-                if (!nav) return;
-                const links = [...nav.querySelectorAll('a[href^="#"]')];
-                let active = links[0];
-                let closest = -Infinity;
-                for (const link of links) {
-                    const section = document.getElementById(link.hash.slice(1));
-                    if (!section) continue;
-                    const top = section.getBoundingClientRect().top;
-                    if (top <= 112 && top > closest) {
-                        closest = top;
-                        active = link;
-                    }
-                }
-                for (const link of links) {
-                    if (link === active) link.setAttribute('aria-current', 'location');
-                    else link.removeAttribute('aria-current');
-                }
-                nav.querySelector('.more').classList.toggle('is-current', !!active.closest('.more'));
-            });
-        };
-
-        document.addEventListener('scroll', window.portfolioNavRefresh, {capture: true, passive: true});
-        window.addEventListener('hashchange', window.portfolioNavRefresh);
-        window.addEventListener('resize', window.portfolioNavRefresh);
-        document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') {
-                const menu = document.querySelector('.pfnav .more[open]');
-                if (menu) {
-                    menu.open = false;
-                    menu.querySelector('summary').focus();
-                }
-            }
-        });
-        document.addEventListener('click', event => {
-            const link = event.target.closest('a');
-            const menu = document.querySelector('.pfnav .more[open]');
-            if (menu && (link || !menu.contains(event.target))) menu.open = false;
-            if (!link?.matches('[data-project-link]') || event.defaultPrevented ||
-                event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-
-            const target = new URL(link.href);
-            const current = new URL(window.location.href);
-            const key = target.searchParams.get('jk');
-            event.preventDefault();
-            if (current.searchParams.get('jk') === key) {
-                syncProjectAddress(key);
-                document.getElementById('drill')?.scrollIntoView({block: 'start'});
-                return;
-            }
-            // Keep navigation in the Streamlit frame. The link itself points to the public URL.
-            current.searchParams.set('jk', key);
-            current.hash = 'drill';
-            window.location.assign(current);
-        });
-    }
-    const selectedProject = """ + route + """;
-    const initialRoute = """ + json.dumps(initial_route) + """;
-    const section = initialRoute && window.location.hash ? window.location.hash.slice(1) : 'drill';
-    if (selectedProject) syncProjectAddress(selectedProject, section);
-    const jump = """ + json.dumps(jump) + """;
-    if (jump) requestAnimationFrame(() => requestAnimationFrame(() => {
-        document.getElementById(section)?.scrollIntoView({block: 'start'});
-    }));
-    window.portfolioNavRefresh();
-})();
-</script>"""
 
 
 def _template():
