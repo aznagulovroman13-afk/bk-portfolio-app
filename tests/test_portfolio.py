@@ -166,6 +166,8 @@ def _txt(at):
 
 PWD = "test-password-123"
 SLICE_DATES = {"13.11.2026", "20.11.2026", "27.11.2026", "04.12.2026", "11.12.2026", "18.12.2026", "01.01.2026"}
+# даты норм о моратории и изменениях 214-ФЗ (реквизиты и периоды действия, не сроки поручений)
+SLICE_DATES |= {"18.03.2024", "22.03.2024", "21.03.2024", "31.12.2025", "01.07.2023", "31.12.2026", "01.09.2024", "01.01.2025"}
 
 
 def _no_dates_sources(at, t):
@@ -701,30 +703,43 @@ def test_demo_week_package_financial_reconciliation(D):
 
 
 def test_penalty_summary_is_consistent_with_portfolio(D, B):
+    import pandas as pd
     import pf_penalty as PN
     T = PN.table(D, B["projects"])
     rows, tot = T["rows"], T["total"]
     assert len(rows) == len(pf_data.PROJECTS) and {r["key"] for r in rows} == set(FOLDERS)
     for r in rows:
         p = next(p for p in B["projects"] if p["key"] == r["key"])
-        # 2026 по ДДУ совпадает с накопленной неустойкой ЖК (верхняя оценка) в разделе «Финансы»
+        # 2026 по ДДУ совпадает с накопленной неустойкой ЖК (верхняя оценка, начисление с 01.01.2026) в разделе «Финансы»
         assert r["ddu"][2026] == pytest.approx(p["accrued_up"], rel=1e-6)
         assert r["total"] == pytest.approx(sum(r["ddu"].values()) + sum(r["remarks"].values()))
-        assert all(v >= 0 for v in list(r["ddu"].values()) + list(r["remarks"].values()))
-        # замечания без просрочки регламента — без неустойки; есть просроченные — неустойка положительна
+        for m in ("ddu", "remarks"):
+            for y in PN.YEARS:
+                assert r[m][y] >= 0 and r["effect"][m][y] >= -1e-6
+                assert r["gross"][m][y] == pytest.approx(r[m][y] + r["effect"][m][y])
+            # 2025 целиком в моратории: ничего не начислено; 2026 — мораторий не действует
+            assert r[m][2025] == 0 and r["effect"][m][2026] == 0
+        # 2024: начислено только за 01.01–21.03 по ставке не выше 7,5% — заметно меньше расчёта без моратория
+        assert r["ddu"][2024] <= r["gross"]["ddu"][2024] * (81 / 366) * (PN.RATE_CAP / PN.HIST_DDU_RATE) + 1e-6
         assert (r["remarks"][2026] > 0) == (r["flats_overdue_remarks"] > 0)
-        assert r["remarks"][2026] == pytest.approx(
-            r["flats_overdue_remarks"] * PN.CLAIM_BASE_PER_FLAT * PN.REMARK_RATE * max(10.0, p["rem"]["avg_days"] - PN.REMARK_LIMIT_DAYS))
+        # 266-ФЗ / 482-ФЗ: неустойка за недостатки по квартире не выше стоимости устранения и 3% цены
+        if r["flats_overdue_remarks"]:
+            per_flat = r["remarks"][2026] / r["flats_overdue_remarks"]
+            assert per_flat <= min(PN.CLAIM_BASE_PER_FLAT, PN.QUALITY_CAP * p["price"]) + 1e-6
+    assert PN.MORATORIUM == (pd.Timestamp("2024-03-22"), pd.Timestamp("2025-12-31")) and PN.RATE_CAP == 7.5
+    assert PN.in_moratorium(pd.Timestamp("2024-03-22")) and not PN.in_moratorium(pd.Timestamp("2024-03-21"))
+    assert not PN.in_moratorium(pd.Timestamp("2026-01-01")) and PN.year_in_moratorium(2025) and not PN.year_in_moratorium(2024)
+    assert PN.remark_daily_rate(pd.Timestamp("2024-08-31")) == 0.01
+    assert PN.remark_daily_rate(pd.Timestamp("2025-01-10")) == pytest.approx(21 / 100 / 150)
     # итог = сумма строк по каждому году и мере, доли дают 100%, строки по убыванию суммы
     for y in PN.YEARS:
-        assert tot["ddu"][y] == pytest.approx(sum(r["ddu"][y] for r in rows))
-        assert tot["remarks"][y] == pytest.approx(sum(r["remarks"][y] for r in rows))
+        for m in ("ddu", "remarks"):
+            assert tot[m][y] == pytest.approx(sum(r[m][y] for r in rows))
+            assert tot["effect"][m][y] == pytest.approx(sum(r["effect"][m][y] for r in rows))
     assert tot["total"] == pytest.approx(sum(r["total"] for r in rows))
+    assert tot["effect_total"] == pytest.approx(sum(r["effect_total"] for r in rows)) and tot["effect_total"] > 0
     assert sum(r["share"] for r in rows) == pytest.approx(1.0)
     assert [r["total"] for r in rows] == sorted((r["total"] for r in rows), reverse=True)
-    # больше просрочки по ДДУ в 2026 — больше неустойки 2026 по ДДУ (монотонно по накопленной сумме)
-    by_ddu = sorted(rows, key=lambda r: B["projects"][[p["key"] for p in B["projects"]].index(r["key"])]["accrued_up"])
-    assert [r["ddu"][2026] for r in by_ddu] == sorted(r["ddu"][2026] for r in rows)
     # неустойка за замечания — второстепенная мера относительно просрочки передачи
     assert 0 < sum(tot["remarks"].values()) < 0.2 * sum(tot["ddu"].values())
 
@@ -732,11 +747,12 @@ def test_penalty_summary_is_consistent_with_portfolio(D, B):
 def test_penalty_summary_on_first_screen():
     at = _login()
     t = _txt(at)
-    assert "Портфель ЖК · начисленная неустойка, млн ₽" in t
-    for s in ("За просрочку передачи по ДДУ", "За замечания (сроки устранения недостатков)", "Итого 2024–2026", "Доля портфеля",
-              "Итого по портфелю", "Неустойка портфеля за 2024–2026 гг."):
+    assert "Портфель ЖК · неустойка с учётом моратория, млн ₽" in t
+    for s in ("Начислено за просрочку передачи по ДДУ", "Начислено за замечания (сроки устранения недостатков)", "Итого начислено 2024–2026",
+              "Доля портфеля", "Итого по портфелю", "Начислено за 2024–2026 гг.", "Не начислено в период моратория (ПП № 326)",
+              "Расчёт без учёта моратория", "ПП РФ от 18.03.2024 № 326", "22.03.2024 по 31.12.2025", "7,5%", "266-ФЗ"):
         assert s in t, s
     assert all(n in t for _, n in pf_data.PROJECTS)
-    block = t[t.index("Портфель ЖК · начисленная неустойка"):t.index("ЖК упорядочены по сумме неустойки")]
+    block = t[t.index("Портфель ЖК · неустойка с учётом моратория"):t.index("ЖК упорядочены по сумме начисленной неустойки")]
     assert not any(w in block for w in ("Нет данных", "ориентир", "демо", "Демо", "срок до"))
-    assert t.index("Портфель ЖК · начисленная неустойка") < t.index("Квартир в просрочке")
+    assert t.index("Портфель ЖК · неустойка с учётом моратория") < t.index("Квартир в просрочке")

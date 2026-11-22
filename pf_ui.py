@@ -130,6 +130,9 @@ table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px
 .pen-split { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--ink2); font-size: 13px; } .pen-split b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .fin th.grp { text-align: center; border-bottom: 1px solid var(--line); } .fin .sep { border-left: 1px solid var(--line); }
 .pen-table td.r, .pen-table th.r { white-space: nowrap; }
+.pen-head .pen-eff, .fin td.pen-eff, .fin tr.pen-eff td { color: var(--ink3); } .fin tr.sub-tot td { font-weight: 700; border-top: 1px solid var(--navy); }
+.pen-note { font-size: 12.5px; color: var(--ink2); background: #F3F5F8; border: 1px solid var(--line); padding: 9px 14px; margin: 0 0 10px; line-height: 1.5; }
+.pen-bridge { margin-bottom: 10px; } .fin th .sub { display: block; font-size: 10px; text-transform: none; letter-spacing: 0; color: var(--ink3); font-weight: 400; }
 .pen-bar { display: inline-block; width: 56px; height: 6px; background: #E6EAF0; margin-right: 8px; vertical-align: middle; } .pen-bar i { display: block; height: 100%; background: var(--navy); }
 a[data-pf-route] { color: #234F7A !important; text-decoration: underline; text-underline-offset: 3px; }
 .contrib-bars { border: 1px solid var(--line); background: var(--paper); border-radius: 4px; padding: 12px 14px; container-type: inline-size; }

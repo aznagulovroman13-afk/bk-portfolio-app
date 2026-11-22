@@ -509,36 +509,65 @@ if not priority_package and priority_measure:
     priority_effect += ", потенциал вне пакета"
 overdue_tone = "good" if d_over < 0 else "bad" if d_over > 0 else "flat"
 def penalty_block(T: dict, slice_label: str) -> str:
-    """Сводка «Портфель ЖК»: неустойка по годам за просрочку передачи по ДДУ и за замечания, доля ЖК в портфеле."""
+    """Сводка «Портфель ЖК»: начисленная неустойка по годам за просрочку передачи по ДДУ и за замечания с учётом моратория."""
     mln = lambda v: f"{v / 1e6:,.1f}".replace(",", "\u00a0").replace(".", ",")
     pct = lambda v: f"{100 * v:.1f}%".replace(".", ",")
-    tot = T["total"]
-    ddu_t, rem_t = sum(tot["ddu"].values()), sum(tot["remarks"].values())
-    years = "".join(f'<th class="r">{y}</th>' for y in PN.YEARS)
-    head = ('<thead><tr><th rowspan="2">ЖК</th><th class="grp" colspan="3">За просрочку передачи по ДДУ</th>'
-            '<th class="grp sep" colspan="3">За замечания (сроки устранения недостатков)</th>'
-            '<th class="r sep" rowspan="2">Итого 2024–2026</th><th class="r" rowspan="2">Доля портфеля</th></tr>'
+    tot, Y = T["total"], PN.YEARS
+    full = {y: PN.year_in_moratorium(y) for y in Y}
+    cell = lambda v, y, sep="": f'<td class="r{sep}">{"—" if full[y] and abs(v) < 1 else mln(v)}</td>'
+    acc_y = {y: tot["ddu"][y] + tot["remarks"][y] for y in Y}
+    eff_y = {y: tot["effect"]["ddu"][y] + tot["effect"]["remarks"][y] for y in Y}
+    gross_y = {y: acc_y[y] + eff_y[y] for y in Y}
+    yh = "".join(f'<th class="r">{y}</th>' for y in Y)
+
+    def brow(label, vals, cls=""):
+        return (f'<tr{cls}><td>{label}</td>' + "".join(cell(vals[y], y) for y in Y)
+                + f'<td class="r sep"><b>{mln(sum(vals.values()))}</b></td></tr>')
+
+    bridge = ('<div class="tw"><table class="fin pen-bridge"><thead><tr><th>Портфель, млн ₽</th>' + yh
+              + '<th class="r sep">2024–2026</th></tr></thead><tbody>'
+              + brow("Начислено за просрочку передачи по ДДУ", tot["ddu"])
+              + brow("Начислено за замечания (сроки устранения недостатков)", tot["remarks"])
+              + brow("Итого начислено", acc_y, ' class="sub-tot"')
+              + brow("Не начислено в период моратория (ПП № 326)", eff_y, ' class="pen-eff"')
+              + brow("Расчёт без учёта моратория", gross_y)
+              + '</tbody></table></div>')
+
+    years = "".join(f'<th class="r">{y}{"<span class=sub>мораторий</span>" if full[y] else ""}</th>' for y in Y)
+    head = ('<thead><tr><th rowspan="2">ЖК</th><th class="grp" colspan="3">Начислено за просрочку передачи по ДДУ</th>'
+            '<th class="grp sep" colspan="3">Начислено за замечания (сроки устранения недостатков)</th>'
+            '<th class="r sep" rowspan="2">Итого начислено 2024–2026</th><th class="r" rowspan="2">Доля портфеля</th>'
+            '<th class="r sep" rowspan="2">Не начислено (ПП № 326)</th></tr>'
             f'<tr>{years}{years.replace('<th class="r">', '<th class="r sep">', 1)}</tr></thead>')
 
     def row(r, cls=""):
-        ddu = "".join(f'<td class="r">{mln(r["ddu"][y])}</td>' for y in PN.YEARS)
-        rem = "".join(f'<td class="r{" sep" if i == 0 else ""}">{mln(r["remarks"][y])}</td>' for i, y in enumerate(PN.YEARS))
+        ddu = "".join(cell(r["ddu"][y], y) for y in Y)
+        rem = "".join(cell(r["remarks"][y], y, " sep" if i == 0 else "") for i, y in enumerate(Y))
         bar = f'<span class="pen-bar"><i style="width:{100 * r["share"]:.1f}%"></i></span>' if not cls else ""
         return (f'<tr{cls}><td>{html.escape(r["name"])}</td>{ddu}{rem}<td class="r sep"><b>{mln(r["total"])}</b></td>'
-                f'<td class="r">{bar}{pct(r["share"])}</td></tr>')
+                f'<td class="r">{bar}{pct(r["share"])}</td><td class="r sep pen-eff">{mln(r["effect_total"])}</td></tr>')
 
     body = "".join(row(r) for r in T["rows"]) + row(tot, ' class="tot"')
-    by_year = " · ".join(f'{y} — {mln(tot["ddu"][y] + tot["remarks"][y])}' for y in PN.YEARS)
+    ddu_t, rem_t = sum(tot["ddu"].values()), sum(tot["remarks"].values())
     return (
-        '<section class="pen-summary" id="penalty-summary"><h2>Портфель ЖК · начисленная неустойка, млн ₽</h2>'
-        f'<div class="pen-head"><div><span class="exec-label">Неустойка портфеля за 2024–2026 гг.</span>'
+        '<section class="pen-summary" id="penalty-summary"><h2>Портфель ЖК · неустойка с учётом моратория, млн ₽</h2>'
+        f'<div class="pen-head"><div><span class="exec-label">Начислено за 2024–2026 гг.</span>'
         f'<strong>{mln(tot["total"])} <em>млн ₽</em></strong></div>'
+        f'<div><span class="exec-label">Не начислено в период моратория (ПП № 326)</span>'
+        f'<strong class="pen-eff">{mln(tot["effect_total"])} <em>млн ₽</em></strong></div>'
         f'<div class="pen-split"><span>За просрочку передачи по ДДУ <b>{mln(ddu_t)}</b> · {pct(ddu_t / tot["total"])}</span>'
         f'<span>За замечания <b>{mln(rem_t)}</b> · {pct(rem_t / tot["total"])}</span>'
-        f'<span>По годам: {by_year}</span></div></div>'
+        f'<span>Расчёт без учёта моратория <b>{mln(tot["total"] + tot["effect_total"])}</b></span></div></div>'
+        '<div class="pen-note"><b>Мораторий (ПП РФ от 18.03.2024 № 326 с изменениями).</b> С 22.03.2024 по 31.12.2025 неустойка '
+        'за нарушение срока передачи по ДДУ (ч. 2 ст. 6 214-ФЗ) и за нарушение сроков устранения недостатков (ч. 8 ст. 7) '
+        'не начисляется; с 01.01.2026 начисление возобновлено в общем порядке. До 22.03.2024 ставка ограничена 7,5% (ключевая ставка '
+        'на 01.07.2023). Уплата по требованиям, предъявленным до начала моратория, отсрочена до 31.12.2026. '
+        'С 01.09.2024 неустойка за недостатки — 1/150 ключевой ставки в день, не более стоимости устранения (266-ФЗ); '
+        'с 01.01.2025 суммы по требованиям о качестве — не более 3% цены договора (482-ФЗ).</div>'
+        f'{bridge}'
         f'<div class="tw"><table class="fin pen-table">{head}<tbody>{body}</tbody></table></div>'
-        f'<p class="exec-date">2026 год — по дату среза {slice_label}. Доля — вклад ЖК в неустойку портфеля за три года. '
-        'ЖК упорядочены по сумме неустойки.</p></section>')
+        f'<p class="exec-date">2026 год — по дату среза {slice_label}; «—» — начисление не производится (мораторий). '
+        'Доля — вклад ЖК в начисленную неустойку портфеля за три года. ЖК упорядочены по сумме начисленной неустойки.</p></section>')
 
 
 if view == "summary":
@@ -1084,10 +1113,13 @@ if view == "notes":
         f"<br><b>Накопленная неустойка.</b> За дни просрочки с {dd(pf_demo.ACCRUAL_START)} по {slice_text}; для переданных квартир расчёт заканчивается датой передачи. "
         "Верхняя оценка — дневная сумма × дни, нижняя — 75% верхней. Выплаты приняты равными нулю. "
         "<br><b>Неустойка по годам (сводка «Портфель ЖК»).</b> За просрочку передачи по ДДУ 2026 год равен накопленной неустойке "
-        "по квартирам среза (верхняя оценка), дни просрочки разнесены по календарным годам; за 2024–2025 годы добавлены начисления "
-        "по ранее переданным очередям ЖК пропорционально профилю ЖК. За замечания — 1% расчётной стоимости устранения недостатков "
-        f"по квартире ({f(PN.CLAIM_BASE_PER_FLAT)} ₽) за каждый день сверх регламентного срока {PN.REMARK_LIMIT_DAYS} дней "
-        "по квартирам с просроченными замечаниями. Доля ЖК — вклад в сумму портфеля за три года. "
+        "по квартирам среза (верхняя оценка, начисление с 01.01.2026). 2024–2025 годы — ранее переданные очереди ЖК, уровень "
+        "к 2026 году задан профилем ЖК; ставка на срок исполнения — 16%, с 01.07.2023 по 21.03.2024 — не выше 7,5% (п. 2 ПП № 326). "
+        "С 22.03.2024 по 31.12.2025 неустойка не начисляется (п. 1 ПП № 326 в ред. ПП № 1916, № 925); сумма за этот период показана "
+        "как «Не начислено в период моратория» — по тем же ставкам, без ограничения 7,5%. За замечания — от расчётной стоимости "
+        f"устранения недостатков по квартире ({f(PN.CLAIM_BASE_PER_FLAT)} ₽) за дни сверх регламентного срока {PN.REMARK_LIMIT_DAYS} дней: "
+        "до 01.09.2024 — 1% в день, далее 1/150 ключевой ставки Банка России, не более стоимости устранения (ч. 8 ст. 7 214-ФЗ "
+        "в ред. 266-ФЗ) и в пределах 3% цены договора (ч. 4 ст. 10, 482-ФЗ). Доля ЖК — вклад в начисленную сумму портфеля за три года. "
         f"<br><b>Сценарий выплат.</b> Возможные требования — {C.fmt_pct(K['claim'])} верхней границы. Предполагаемое снижение требований — {C.fmt_pct(K['cut'])}. "
         "Ожидаемые будущие выплаты по сценарию — возможные требования за вычетом предполагаемого снижения. "
         "<br><b>Готовы к передаче</b> — квартира просрочена по ДДУ, не передана, готовность подтверждена (есть дата готовности, нет отмены готовности и мотивированного отказа), открытых замечаний нет; "

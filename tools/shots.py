@@ -57,7 +57,12 @@ with sync_playwright() as pw:
 
     p.set_viewport_size({"width": 1440, "height": 1000})
     shot("01_first_screen")
-    f.locator("#penalty-summary").screenshot(path=OUT + f"01b_penalty_summary_{tag}_1440.png")
+    p.set_viewport_size({"width": 1440, "height": 1900})
+    time.sleep(1)
+    f.locator("#penalty-summary").scroll_into_view_if_needed()
+    p.screenshot(path=OUT + f"01b_penalty_summary_{tag}_1440.png", full_page=False)
+    p.set_viewport_size({"width": 1440, "height": 1000})
+    time.sleep(1)
     for section, anchor, name in (
         ("ЖК", "segments", "02_portfolio_table"),
         ("Причины непередачи", "reasons", "04_reasons"),
