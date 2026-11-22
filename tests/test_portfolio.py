@@ -353,22 +353,23 @@ def test_plan_fact_and_dynamics_are_comparable(B):
     assert t["risk_delta"] == pytest.approx(t["entered_risk"] - t["left_risk"])
 
 
-def test_first_screen_shows_three_cards_and_links():
+def test_first_screen_shows_transfer_timeline_and_links():
     at = _login()
     t = _screen_text(at)
-    for label in ("Квартир в просрочке", "Готовы к передаче", "Расчётная неустойка", "Срез 20.11.2026"):
+    for label in ("Квартир в просрочке", "Расчётная неустойка", "Срез 20.11.2026", "Передача квартир по годам"):
         assert label in t
-    assert "в базовом плане" in t and "в резерве после подтверждения условий" in t
-    assert "Утвердить бюджет 1 231 000 ₽ на меры по 54 квартирам" in t
-    assert "Юрдепартамент проверяет основания и риск оспаривания" in t
-    assert t.index("Что согласовать") < t.index("Квартир в просрочке")
     project_cards = next(m.value for m in at.markdown if 'class="exec-projects"' in m.value)
+    assert "Что согласовать" not in t and '>Готовы к передаче</span>' not in project_cards
+    assert all(f'<th scope="row">{year}</th>' in project_cards for year in (2024, 2025, 2026))
+    assert project_cards.count('Передано <b>Нет данных</b>') == 2
+    assert project_cards.count('С замечаниями <b>Нет данных</b> · Без замечаний <b>Нет данных</b>') == 3
+    assert 'title="Ноя 2026, передано ' in project_cards and 'title="За пределами среза"' in project_cards
     featured = project_cards.split('id="exec-project-title"', 1)[1].split("</article>", 1)[0]
     assert "Дзен-кварталы" in featured and "417 880" in featured
     assert "37 в просрочке · 27 готовы к передаче" in featured
     assert "база" in featured and "резерв" in featured and "прогноз новых просрочек — 0" in featured
     assert all(f'href="/?view={view}" data-pf-route class="exec-metric"' in project_cards
-               for view in ("segments", "reasons", "money"))
+               for view in ("segments", "money"))
     assert "Произведённые выплаты" not in t and "Предъявленные требования" not in t
     _open(at, view="money")
     payout = next(expander for expander in at.expander if expander.label == "Сценарий будущих выплат по ЖК")
