@@ -85,7 +85,7 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
             "Просрочка ДДУ факт, дн.": 40, "Срок по ДДУ": pd.Timestamp("2026-08-01"),
             "Дата принятия собственником": pd.to_datetime(
                 [None] * 5 + ["2026-10-21", "2026-10-28", "2026-11-04" if key == "zen" else "2026-11-06"]),
-            "Результат передачи": [None] * 5 + ["С замечаниями", "Без замечаний", "С замечаниями"],
+            "Результат передачи": [None] * 5 + (["Без замечаний"] * 3 if key == "zen" else ["С замечаниями", "Без замечаний", None]),
             "Коэф. неустойки на 1 ₽ цены (верх)": 0.04, "Коэф. неустойки на 1 ₽ цены (низ)": 0.03,
             "Ставка ЦБ на срок ДДУ, %": 15., "Мот. отказ / снятие готовности": False,
             "Плановая дата ключей в ОЗ": pd.NaT,
@@ -131,16 +131,18 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     report = " ".join(block.value for block in app.markdown)
     summary = report.split('id="summary"', 1)[1]
     assert "Сводка по портфелю" in summary and summary.count('class="exec-metric"') == 2
-    assert "ЖК на контроле" in summary and "наибольший эффект главной меры" in summary
-    featured = summary.split('id="exec-project-title"', 1)[1].split("</article>", 1)[0]
-    assert '/?jk=zen#drill" data-pf-route>Дзен-кварталы' in featured
+    zen = summary.split('id="exec-project-zen"', 1)[1].split("</article>", 1)[0]
+    bunino = summary.split('id="exec-project-bunino"', 1)[1].split("</article>", 1)[0]
+    assert '/?jk=zen#drill" data-pf-route>Дзен-кварталы' in zen
     assert "Что согласовать" not in summary and "Цель по остатку просрочки" not in summary
-    assert "Передача квартир по годам" in summary and "по 11.11.2026" in summary
-    assert 'Передано <b>30</b> · С замечаниями <b>20</b> · Без замечаний <b>10</b>' in summary
+    assert "Передача квартир по годам и ЖК" in summary and "по 11.11.2026" in summary
+    assert '<th scope="row">2026</th><td>3</td><td>0</td><td>3</td>' in zen
+    assert '<th scope="row">2026</th><td>3</td><td>1</td><td>1</td>' in bunino
+    assert 'Результат указан по 2 из 3' in bunino
     assert report.count("Демо-данные") == 1
     assert "сравнение с <b>04.11.2026</b>" in summary
     assert "Утвердить бюджет" not in summary and "Возможные требования по сценарию" not in summary
-    assert "Расчётная неустойка</span>" in summary and "<em>₽/день</em>" in summary
+    assert "Расчётная неустойка за просрочку передачи</span>" in summary and "<em>₽/день</em>" in summary
     assert '<summary>Ещё</summary>' in report
     assert 'href="/?view=orders" data-pf-route>Поручения' in summary
 

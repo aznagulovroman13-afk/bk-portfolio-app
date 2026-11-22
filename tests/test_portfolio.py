@@ -353,21 +353,31 @@ def test_plan_fact_and_dynamics_are_comparable(B):
     assert t["risk_delta"] == pytest.approx(t["entered_risk"] - t["left_risk"])
 
 
-def test_first_screen_shows_transfer_timeline_and_links():
+def test_first_screen_shows_annual_transfers_by_project(D):
     at = _login()
     t = _screen_text(at)
-    for label in ("Квартир в просрочке", "Расчётная неустойка", "Срез 20.11.2026", "Передача квартир по годам"):
+    for label in ("Квартир в просрочке", "Расчётная неустойка за просрочку передачи",
+                  "Срез 20.11.2026", "Передача квартир по годам и ЖК"):
         assert label in t
     project_cards = next(m.value for m in at.markdown if 'class="exec-projects"' in m.value)
     assert "Что согласовать" not in t and '>Готовы к передаче</span>' not in project_cards
-    assert all(f'<th scope="row">{year}</th>' in project_cards for year in (2024, 2025, 2026))
-    assert project_cards.count('Передано <b>Нет данных</b>') == 2
-    assert project_cards.count('С замечаниями <b>Нет данных</b> · Без замечаний <b>Нет данных</b>') == 3
-    assert 'title="Ноя 2026, передано ' in project_cards and 'title="За пределами среза"' in project_cards
-    featured = project_cards.split('id="exec-project-title"', 1)[1].split("</article>", 1)[0]
-    assert "Дзен-кварталы" in featured and "417 880" in featured
-    assert "37 в просрочке · 27 готовы к передаче" in featured
-    assert "база" in featured and "резерв" in featured and "прогноз новых просрочек — 0" in featured
+    assert ">Янв<" not in project_cards and "Шкала передач по месяцам" not in project_cards
+    assert project_cards.index('id="exec-project-bunino"') < project_cards.index('id="exec-project-scandc"')
+    for key, name in pf_data.PROJECTS:
+        card = project_cards.split(f'id="exec-project-{key}"', 1)[1].split("</article>", 1)[0]
+        assert name in card
+        assert f'/?jk={key}&amp;tab=money#drill' in card
+        assert f'/?jk={key}&amp;tab=remarks#drill' in card
+        assert "Неустойка за просрочку передачи" in card and "Открытых замечаний" in card
+        assert re.findall(r'<th scope="row">(20\d{2})</th>', card) == ["2024", "2025", "2026"]
+        for year in (2024, 2025):
+            assert f'<th scope="row">{year}</th>' + '<td class="is-missing">Нет данных</td>' * 3 in card
+        units = D[key]["units"]
+        dates = units["Дата принятия собственником"]
+        total = (C.transferred_mask(units) & units["Тип объекта"].eq("Квартира")
+                 & dates.dt.year.eq(2026) & dates.le(D[key]["calc_date"])).sum()
+        assert f'<th scope="row">2026</th><td>{C.fmt_int(total)}</td>' in card
+        assert card.count('class="is-missing"') == 8
     assert all(f'href="/?view={view}" data-pf-route class="exec-metric"' in project_cards
                for view in ("segments", "money"))
     assert "Произведённые выплаты" not in t and "Предъявленные требования" not in t
