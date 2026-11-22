@@ -44,55 +44,51 @@ st.markdown(
     #summary {margin-top: 14px;}
     .exec-summary {display: grid; gap: 12px; color: var(--ink);}
     .exec-date {font-size: 13px; color: var(--ink2); margin: 0;}
-    .exec-metrics, .exec-projects {display: grid; gap: 12px; align-items: start;}
-    .exec-metrics {grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);}
-    .exec-projects {grid-template-columns: repeat(2, minmax(0, 1fr));}
-    .exec-metric, .exec-project, .exec-overdue {border: 1px solid var(--line); background: var(--paper); border-radius: 7px;}
-    .exec-metric {padding: 11px 16px 12px; text-decoration: none !important;}
-    .exec-overdue {min-width: 0; padding: 11px 16px 14px;}
-    .exec-overdue .exec-metric {display: block; border: 0; padding: 0;}
+    .exec-metrics, .exec-projects {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;}
+    .exec-metric, .exec-project {border: 1px solid var(--line); background: var(--paper); border-radius: 7px;}
+    .exec-metric {min-width: 0; padding: 11px 16px 12px; text-decoration: none !important;}
     .exec-metric:hover {border-color: #6799CE; background: #F5F8FC;}
-    .exec-transfers {padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--line);}
-    .exec-transfers h3 {font-size: 15px; color: var(--navy); margin: 0; padding: 0;}
-    .exec-transfers p {font-size: 12px; color: var(--ink2); margin: 3px 0 8px;}
-    .exec-timeline {overflow-x: auto;}
-    .exec-timeline table {width: 100%; min-width: 470px; border-collapse: separate; border-spacing: 2px; font-size: 11px;}
-    .exec-timeline th, .exec-timeline td {padding: 0; text-align: center; border: 0; color: var(--ink2);}
-    .exec-timeline th[scope="row"] {width: 40px; color: var(--navy); text-align: left;}
-    .exec-timeline td {width: 7.7%; font-variant-numeric: tabular-nums;}
-    .exec-timeline td span {display: block; min-height: 20px; padding: 2px 0; line-height: 16px; border-radius: 3px; background: #EEF1F5;}
-    .exec-timeline td .active {background: #D8E6F4; color: #173D66; font-weight: 700;}
-    .exec-timeline td .beyond {background: transparent;}
-    .exec-timeline .exec-year-total {padding: 3px 0 6px; text-align: left; font-size: 12px;}
-    .exec-year-total b {color: var(--navy);}
     .exec-label {display: block; font-size: 12px; line-height: 1.35; color: var(--ink2); font-weight: 600;}
-    .exec-metric strong, .exec-value {display: block; font-size: clamp(25px, 3vw, 41px); line-height: 1.1; font-weight: 700;
+    .exec-metric strong {display: block; font-size: clamp(25px, 3vw, 41px); line-height: 1.1; font-weight: 700;
       font-variant-numeric: tabular-nums; letter-spacing: -.035em; margin: 4px 0; color: var(--navy);}
-    .exec-metric em, .exec-value em {font-style: normal; font-size: .48em; font-weight: 600; letter-spacing: 0; white-space: nowrap;}
+    .exec-metric em {font-style: normal; font-size: .48em; font-weight: 600; white-space: nowrap;}
     .exec-delta {display: block; font-size: 12px; color: var(--ink2);}
     .exec-delta.good {color: #246829;}
     .exec-delta.bad {color: var(--risk);}
-    .exec-project {position: relative; min-width: 0; padding: 15px 18px; border-top: 3px solid var(--gold);}
-    .exec-project h3 {font-size: clamp(17px, 1.55vw, 22px); line-height: 1.25; margin: 5px 0 0; padding: 0; font-weight: 650;}
+    .exec-project {min-width: 0; padding: 15px 18px; border-top: 3px solid var(--gold);}
+    .exec-project h3 {font-size: clamp(17px, 1.55vw, 22px); line-height: 1.25; margin: 0; padding: 0; font-weight: 650;}
     .exec-project h3 a {color: var(--navy) !important;}
-    .exec-project h3 a::after {position: absolute; inset: 0; border-radius: 7px; content: "";}
-    .exec-project:has(h3 a:hover) {border-color: #6799CE;}
-    .exec-project .exec-value {margin: 8px 0 5px;}
-    .exec-project p {font-size: 13px; line-height: 1.45; color: var(--ink2); margin: 3px 0 0;}
+    .exec-project-metrics {display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 8px; margin: 11px 0 14px;}
+    .exec-project-metrics dt {color: var(--ink2); font-size: 12px; line-height: 1.25;}
+    .exec-project-metrics dd {margin: 4px 0 0; color: var(--navy); font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums;}
+    .exec-summary h2.exec-projects-heading {margin: 4px 0 0 !important; padding: 0 !important;
+      font-size: 19px !important; line-height: 1.3; color: var(--navy);}
+    .exec-annual {width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums;}
+    .exec-annual th, .exec-annual td {padding: 6px; text-align: right; border-bottom: 1px solid var(--line);}
+    .exec-annual th:first-child {text-align: left;}
+    .exec-annual thead th {background: #F3F5F8; color: var(--ink2); font-size: 11px;}
+    .exec-annual td {color: var(--navy);}
+    .exec-annual td.is-missing, .exec-annual td.coverage {color: var(--ink2); font-size: 11px;}
+    .exec-annual td.coverage {text-align: left;}
     .exec-control {display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; color: var(--ink2);}
     .exec-plan-readiness {margin-top: 9px; font-size: 13px; color: var(--ink2);}
     .exec-plan-readiness strong {color: var(--navy);}
     .exec-plan-readiness .pending {color: #80550E; font-weight: 600;}
     .exec-control {margin-top: 9px; font-size: 13px;}
     .exec-control strong {color: var(--navy);}
+    .pfnav a[data-pf-route] {color: #C5CEDA !important;}
+    .pfnav a[data-pf-route]:hover, .pfnav a[aria-current="page"][data-pf-route] {color: #fff !important;}
     .exec-summary :focus-visible {outline: 2px solid #6799CE; outline-offset: 3px;}
     @media (max-width: 760px) {
-      .exec-projects, .exec-metrics {grid-template-columns: 1fr;}
+      .stMainBlockContainer:has(.exec-summary) {padding-right: var(--bk-pad) !important;}
+      .exec-projects {grid-template-columns: 1fr;}
       .exec-metric .exec-label {font-size: 11px;}
       .exec-metric strong {font-size: clamp(15px, 4vw, 25px); letter-spacing: -.04em;}
       .exec-metric em {font-size: .75em;}
       .exec-delta {font-size: 11px;}
-      .exec-header, .exec-project, .exec-overdue, .exec-metric {padding: 12px;}
+      .exec-header, .exec-project, .exec-metric {padding: 12px;}
+      .exec-project-metrics dd {font-size: 13px;}
+      .exec-annual th, .exec-annual td {padding: 5px 3px;}
     }
     """
     '.priority-label {display: block; font-size: 11px; color: #234F7A; font-weight: 700;}'
@@ -160,48 +156,48 @@ def pace_text(weekly_average):
     return f"{weekly_average:.2f}".rstrip("0").rstrip(".").replace(".", ",").replace("-", "−")
 
 
-def transfer_timeline(portfolio, through):
+def annual_transfers(units, through, project_name):
     date = "Дата принятия собственником"
     result = "Результат передачи"
-    units = pd.concat([project["units"] for project in portfolio.values()], ignore_index=True)
     accepted = units.loc[units["Тип объекта"].eq("Квартира") & C.transferred_mask(units)
                          & units[date].le(through)].reindex(columns=[date, result])
-    months = ("Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек")
-    headings = "".join(f'<th scope="col">{month}</th>' for month in months)
     rows = []
     for year in (2024, 2025, 2026):
         records = accepted.loc[accepted[date].dt.year.eq(year)]
-        counts = records[date].dt.month.value_counts()
+        total = len(records)
         with_remarks = int(records[result].eq("С замечаниями").sum())
         without_remarks = int(records[result].eq("Без замечаний").sum())
         classified = with_remarks + without_remarks
-        cells = []
-        for month, name in enumerate(months, 1):
-            count = counts.get(month)
-            if count is not None:
-                cells.append(f'<td><span class="active" title="{name} {year}, передано {f(count)}">{f(count)}</span></td>')
-            else:
-                beyond = (year, month) > (through.year, through.month)
-                label = "За пределами среза" if beyond else "Нет записей"
-                css = ' class="beyond"' if beyond else ""
-                cells.append(f'<td><span{css} title="{label}" aria-label="{label}"></span></td>')
-        total = f(len(records)) if len(records) else "Нет данных"
-        with_text = f(with_remarks) if classified else "Нет данных"
-        without_text = f(without_remarks) if classified else "Нет данных"
-        coverage = f' · Результат указан по {f(classified)} из {total}' if 0 < classified < len(records) else ""
-        rows.append(f'<tr><th scope="row">{year}</th>{"".join(cells)}</tr>'
-                    f'<tr><td></td><td colspan="12" class="exec-year-total">Передано <b>{total}</b> · '
-                    f'С замечаниями <b>{with_text}</b> · Без замечаний <b>{without_text}</b>{coverage}</td></tr>')
-    return ('<section class="exec-transfers" aria-labelledby="exec-transfers-title">'
-            '<h3 id="exec-transfers-title">Передача квартир по годам</h3>'
-            f'<p>По датам передаточных актов · по {through:%d.%m.%Y}</p>'
-            '<div class="exec-timeline" tabindex="0" role="region" aria-label="Шкала передач по месяцам">'
-            f'<table aria-label="Переданные квартиры"><thead><tr><th scope="col">Год</th>{headings}</tr></thead>'
-            f'<tbody>{"".join(rows)}</tbody></table></div></section>')
+        values = (total if total else None, with_remarks if classified else None,
+                  without_remarks if classified else None)
+        cells = "".join(f"<td>{f(value)}</td>" if value is not None
+                        else '<td class="is-missing">Нет данных</td>' for value in values)
+        rows.append(f'<tr><th scope="row">{year}</th>{cells}</tr>')
+        if 0 < classified < total:
+            rows.append(f'<tr><td colspan="4" class="coverage">{year} · Результат указан по {f(classified)} из {f(total)}</td></tr>')
+    return (f'<table class="exec-annual" aria-label="Передача квартир по годам, {html.escape(project_name)}">'
+            '<thead><tr><th scope="col">Год</th><th scope="col">Передано</th>'
+            '<th scope="col">С замечаниями</th><th scope="col">Без замечаний</th></tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table>')
 
 
 def project_link(key, label, tab=None):
     return N.link(label, jk=key, **({"tab": tab} if tab else {}))
+
+
+def summary_project_card(project, data, through):
+    key, name = project["key"], project["name"]
+    in_arrears = f(project["overdue_kv"])
+    penalty = f'{f(round(project["risk_day"]))} ₽/день' if project.get("has_risk", True) else "Нет данных"
+    return (
+        f'<article class="exec-project" aria-labelledby="exec-project-{key}">'
+        f'<h3 id="exec-project-{key}">{project_link(key, name)}</h3>'
+        '<dl class="exec-project-metrics">'
+        f'<div><dt>Квартир в просрочке</dt><dd>{in_arrears}</dd></div>'
+        f'<div><dt>Неустойка за просрочку передачи</dt><dd>{project_link(key, penalty, "money")}</dd></div>'
+        f'<div><dt>Открытых замечаний</dt><dd>{project_link(key, f(project["remarks"]), "remarks")}</dd></div></dl>'
+        f'{annual_transfers(data["units"], through, name)}</article>'
+    )
 
 
 def signed_money(value):
@@ -488,14 +484,11 @@ plan = DC.handover_plan(projects, package, PF.PROBLEMS)
 plan_total, plan_new, plan_closing = (sum(row[key] for row in plan) for key in ("total", "new", "closing"))
 plan_ready, plan_pending, plan_base, plan_risk_base, plan_risk = (
     sum(row[key] for row in plan) for key in ("booked", "reserve", "closing_base", "risk_base", "risk_total"))
-plan_by_project = {row["project"]["key"]: row for row in plan}
 plan_history = f'база {f(plan_ready)} + резерв после проверки {f(plan_pending)}'
 plan_title = "Выполнить недельный план передач по ЖК"
 budget_title = f"Утвердить бюджет {f(pack_cost)} ₽ на меры по {f(pack_units)} квартирам"
 plan_owner = "Директор по заселению"
 risk_leader = projects[0]
-summary_project = projects_by_key.get("zen", risk_leader)
-summary_project_plan = plan_by_project[summary_project["key"]]
 slice_text = dd(slice_dates[0]) if min(slice_dates) == max(slice_dates) else f"{dd(min(slice_dates))}–{dd(max(slice_dates))}"
 priority_amount = f'−{fm(priority_measure["effect_day"])}' if priority_measure else ""
 priority_effect = f"{priority_amount}/день к концу 4-й недели" if priority_measure else "без отдельного эффекта"
@@ -513,7 +506,6 @@ plan_readiness = (
 )
 if not priority_package and priority_measure:
     priority_effect += ", потенциал вне пакета"
-priority_detail = priority_package["title"] if priority_package else priority_measure["short"] if priority_measure else ""
 overdue_tone = "good" if d_over < 0 else "bad" if d_over > 0 else "flat"
 if view == "summary":
     st.markdown('<div class="rh exec-header"><div class="kick">Отчёт для генерального директора · Демо-данные</div>'
@@ -523,28 +515,23 @@ if view == "summary":
         f'<span class="exec-label">Квартир в просрочке</span><strong>{f(tot["overdue_kv"])}</strong>'
         f'<span class="exec-delta {overdue_tone}">{sg(d_over)} за неделю</span>'))
     risk_card = N.report_link("money", "Финансы портфеля", css="exec-metric", content=(
-        f'<span class="exec-label">Расчётная неустойка</span><strong>{f(round(tot["risk_day"]))} <em>₽/день</em></strong>'
+        f'<span class="exec-label">Расчётная неустойка за просрочку передачи</span><strong>{f(round(tot["risk_day"]))} <em>₽/день</em></strong>'
         f'<span class="exec-delta">за неделю {sgm(rk_d)}/день · цель прошлой недели {sgm(rk_t)}/день</span>'))
+    first_projects = ("bunino", "scandc", "scands")
+    display_order = [projects_by_key[key] for key in first_projects if key in projects_by_key]
+    display_order.extend(project for project in projects if project["key"] not in first_projects)
+    cards = "".join(summary_project_card(project, DA[project["key"]], act_d) for project in display_order)
     st.markdown(
         '<div class="exec-summary">'
         f'<p class="exec-date">Срез <b>{slice_text}</b> · {len(projects)} ЖК</p>'
-        '<div class="exec-metrics"><article class="exec-overdue">'
-        + overdue_card + transfer_timeline(DA, act_d) + '</article>' + risk_card + '</div>'
+        f'<div class="exec-metrics">{overdue_card}{risk_card}</div>'
         '<div class="exec-control">'
         f'<span>Накоплено, оценка <strong>{fm(tot["accrued_lo"])} – {fm(tot["accrued_up"])}</strong> · '
         f'сценарий выплат <strong>{fm(LD["expected"])}</strong> · эффект пакета до затрат <strong>{fm(pack_effect)}</strong></span>'
         f'{N.report_link("money", "Финансы")}</div>'
-        '<div class="exec-projects"><article class="exec-project" aria-labelledby="exec-project-title">'
-        '<span class="exec-label">ЖК на контроле · отдельный мониторинг</span>'
-        f'<h3 id="exec-project-title">{project_link(summary_project["key"], summary_project["name"])}</h3>'
-        f'<span class="exec-value">{f(round(summary_project["risk_day"]))} <em>₽/день</em></span>'
-        f'<p>{f(summary_project["overdue_kv"])} в просрочке · {f(summary_project["ready"])} готовы к передаче</p>'
-        f'<p>К {review_date:%d.%m} — база {f(summary_project_plan["booked"])} + резерв {f(summary_project_plan["reserve"])} '
-        f'· прогноз новых просрочек — {f(summary_project_plan["new"])}</p></article>'
-        '<article class="exec-project" aria-labelledby="exec-priority-title">'
-        '<span class="exec-label">Приоритет недели · наибольший эффект главной меры</span>'
-        f'<h3 id="exec-priority-title">{project_link(focus["key"], focus["name"])}</h3>'
-        f'<p>{html.escape(priority_detail)}</p><p>{priority_effect} · потенциал до затрат</p></article></div></div>',
+        '<h2 class="exec-projects-heading">Передача квартир по годам и ЖК</h2>'
+        f'<p class="exec-date">По датам передаточных актов · по {act_d:%d.%m.%Y}</p>'
+        f'<div class="exec-projects">{cards}</div></div>',
         unsafe_allow_html=True)
     st.markdown('<nav class="pf-links" aria-label="Открыть раздел из сводки">' + "".join(
         N.report_link(key) for key in ("segments", "dynamics", "decisions", "remarks", "orders", "forecast")
