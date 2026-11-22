@@ -27,9 +27,9 @@ import pf_model as PF  # noqa: E402
 import pf_penalty as PN  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
-REPORT_SCHEMA = "v17"
-if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA:
-    for module in (U, DC, DT, pf_demo, PF):
+REPORT_SCHEMA = "v18"
+if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or not hasattr(PN, "year_in_moratorium"):
+    for module in (U, DC, DT, pf_demo, PF, PN):
         reload(module)
 
 st.markdown(U.CSS, unsafe_allow_html=True)
