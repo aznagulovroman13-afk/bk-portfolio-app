@@ -124,6 +124,13 @@ table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px
 .tw table.fin th:first-child { background: #F3F5F8; } .tw table.fin tr.tot td:first-child { background: #F3F5F8; }
 .fin td.r { white-space: nowrap; } .fin td .sub { display: block; white-space: nowrap; font-size: 11px; color: var(--ink3); font-weight: 400; } .fin td .wr { color: var(--risk); font-weight: 600; }
 .fin td .improved { color: #2E7D32; font-weight: 600; }
+.pen-summary { margin: 4px 0 18px; } .pen-summary h2 { font-size: 17px; color: var(--navy); margin: 0 0 8px; }
+.pen-head { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: flex-end; background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--navy); padding: 12px 16px; margin-bottom: 8px; }
+.pen-head strong { display: block; font-size: 28px; color: var(--navy); font-variant-numeric: tabular-nums; } .pen-head strong em { font-size: 14px; font-style: normal; color: var(--ink2); }
+.pen-split { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--ink2); font-size: 13px; } .pen-split b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.fin th.grp { text-align: center; border-bottom: 1px solid var(--line); } .fin .sep { border-left: 1px solid var(--line); }
+.pen-table td.r, .pen-table th.r { white-space: nowrap; }
+.pen-bar { display: inline-block; width: 56px; height: 6px; background: #E6EAF0; margin-right: 8px; vertical-align: middle; } .pen-bar i { display: block; height: 100%; background: var(--navy); }
 a[data-pf-route] { color: #234F7A !important; text-decoration: underline; text-underline-offset: 3px; }
 .contrib-bars { border: 1px solid var(--line); background: var(--paper); border-radius: 4px; padding: 12px 14px; container-type: inline-size; }
 .contrib-row { display: grid; grid-template-columns: minmax(110px, 1.05fr) minmax(48px, .95fr) 150px; align-items: center;

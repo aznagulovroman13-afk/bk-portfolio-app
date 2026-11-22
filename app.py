@@ -24,6 +24,7 @@ import pf_detail as DT  # noqa: E402
 import pf_demo  # noqa: E402
 import pf_nav as N  # noqa: E402
 import pf_model as PF  # noqa: E402
+import pf_penalty as PN  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
 REPORT_SCHEMA = "v17"
@@ -507,10 +508,44 @@ plan_readiness = (
 if not priority_package and priority_measure:
     priority_effect += ", потенциал вне пакета"
 overdue_tone = "good" if d_over < 0 else "bad" if d_over > 0 else "flat"
+def penalty_block(T: dict, slice_label: str) -> str:
+    """Сводка «Портфель ЖК»: неустойка по годам за просрочку передачи по ДДУ и за замечания, доля ЖК в портфеле."""
+    mln = lambda v: f"{v / 1e6:,.1f}".replace(",", "\u00a0").replace(".", ",")
+    pct = lambda v: f"{100 * v:.1f}%".replace(".", ",")
+    tot = T["total"]
+    ddu_t, rem_t = sum(tot["ddu"].values()), sum(tot["remarks"].values())
+    years = "".join(f'<th class="r">{y}</th>' for y in PN.YEARS)
+    head = ('<thead><tr><th rowspan="2">ЖК</th><th class="grp" colspan="3">За просрочку передачи по ДДУ</th>'
+            '<th class="grp sep" colspan="3">За замечания (сроки устранения недостатков)</th>'
+            '<th class="r sep" rowspan="2">Итого 2024–2026</th><th class="r" rowspan="2">Доля портфеля</th></tr>'
+            f'<tr>{years}{years.replace('<th class="r">', '<th class="r sep">', 1)}</tr></thead>')
+
+    def row(r, cls=""):
+        ddu = "".join(f'<td class="r">{mln(r["ddu"][y])}</td>' for y in PN.YEARS)
+        rem = "".join(f'<td class="r{" sep" if i == 0 else ""}">{mln(r["remarks"][y])}</td>' for i, y in enumerate(PN.YEARS))
+        bar = f'<span class="pen-bar"><i style="width:{100 * r["share"]:.1f}%"></i></span>' if not cls else ""
+        return (f'<tr{cls}><td>{html.escape(r["name"])}</td>{ddu}{rem}<td class="r sep"><b>{mln(r["total"])}</b></td>'
+                f'<td class="r">{bar}{pct(r["share"])}</td></tr>')
+
+    body = "".join(row(r) for r in T["rows"]) + row(tot, ' class="tot"')
+    by_year = " · ".join(f'{y} — {mln(tot["ddu"][y] + tot["remarks"][y])}' for y in PN.YEARS)
+    return (
+        '<section class="pen-summary" id="penalty-summary"><h2>Портфель ЖК · начисленная неустойка, млн ₽</h2>'
+        f'<div class="pen-head"><div><span class="exec-label">Неустойка портфеля за 2024–2026 гг.</span>'
+        f'<strong>{mln(tot["total"])} <em>млн ₽</em></strong></div>'
+        f'<div class="pen-split"><span>За просрочку передачи по ДДУ <b>{mln(ddu_t)}</b> · {pct(ddu_t / tot["total"])}</span>'
+        f'<span>За замечания <b>{mln(rem_t)}</b> · {pct(rem_t / tot["total"])}</span>'
+        f'<span>По годам: {by_year}</span></div></div>'
+        f'<div class="tw"><table class="fin pen-table">{head}<tbody>{body}</tbody></table></div>'
+        f'<p class="exec-date">2026 год — по дату среза {slice_label}. Доля — вклад ЖК в неустойку портфеля за три года. '
+        'ЖК упорядочены по сумме неустойки.</p></section>')
+
+
 if view == "summary":
     st.markdown('<div class="rh exec-header"><div class="kick">Отчёт для генерального директора · Демо-данные</div>'
                 '<div class="ttl">Портфель ЖК</div></div>', unsafe_allow_html=True)
     U.section("Сводка по портфелю", anchor="summary")
+    st.markdown(penalty_block(PN.table(DA, projects), slice_text), unsafe_allow_html=True)
     overdue_card = N.report_link("segments", "Квартиры в просрочке по ЖК", css="exec-metric", content=(
         f'<span class="exec-label">Квартир в просрочке</span><strong>{f(tot["overdue_kv"])}</strong>'
         f'<span class="exec-delta {overdue_tone}">{sg(d_over)} за неделю</span>'))
@@ -1048,6 +1083,11 @@ if view == "notes":
         "Двусторонние и односторонние акты учитываются раздельно. Все строки реестра сформированы синтетически. "
         f"<br><b>Накопленная неустойка.</b> За дни просрочки с {dd(pf_demo.ACCRUAL_START)} по {slice_text}; для переданных квартир расчёт заканчивается датой передачи. "
         "Верхняя оценка — дневная сумма × дни, нижняя — 75% верхней. Выплаты приняты равными нулю. "
+        "<br><b>Неустойка по годам (сводка «Портфель ЖК»).</b> За просрочку передачи по ДДУ 2026 год равен накопленной неустойке "
+        "по квартирам среза (верхняя оценка), дни просрочки разнесены по календарным годам; за 2024–2025 годы добавлены начисления "
+        "по ранее переданным очередям ЖК пропорционально профилю ЖК. За замечания — 1% расчётной стоимости устранения недостатков "
+        f"по квартире ({f(PN.CLAIM_BASE_PER_FLAT)} ₽) за каждый день сверх регламентного срока {PN.REMARK_LIMIT_DAYS} дней "
+        "по квартирам с просроченными замечаниями. Доля ЖК — вклад в сумму портфеля за три года. "
         f"<br><b>Сценарий выплат.</b> Возможные требования — {C.fmt_pct(K['claim'])} верхней границы. Предполагаемое снижение требований — {C.fmt_pct(K['cut'])}. "
         "Ожидаемые будущие выплаты по сценарию — возможные требования за вычетом предполагаемого снижения. "
         "<br><b>Готовы к передаче</b> — квартира просрочена по ДДУ, не передана, готовность подтверждена (есть дата готовности, нет отмены готовности и мотивированного отказа), открытых замечаний нет; "

@@ -698,3 +698,45 @@ def test_demo_week_package_financial_reconciliation(D):
     scenario = DC.incremental_package_forecast(projects, package)
     for row in scenario:
         assert 0 <= row["effect"] <= row["base"]
+
+
+def test_penalty_summary_is_consistent_with_portfolio(D, B):
+    import pf_penalty as PN
+    T = PN.table(D, B["projects"])
+    rows, tot = T["rows"], T["total"]
+    assert len(rows) == len(pf_data.PROJECTS) and {r["key"] for r in rows} == set(FOLDERS)
+    for r in rows:
+        p = next(p for p in B["projects"] if p["key"] == r["key"])
+        # 2026 по ДДУ совпадает с накопленной неустойкой ЖК (верхняя оценка) в разделе «Финансы»
+        assert r["ddu"][2026] == pytest.approx(p["accrued_up"], rel=1e-6)
+        assert r["total"] == pytest.approx(sum(r["ddu"].values()) + sum(r["remarks"].values()))
+        assert all(v >= 0 for v in list(r["ddu"].values()) + list(r["remarks"].values()))
+        # замечания без просрочки регламента — без неустойки; есть просроченные — неустойка положительна
+        assert (r["remarks"][2026] > 0) == (r["flats_overdue_remarks"] > 0)
+        assert r["remarks"][2026] == pytest.approx(
+            r["flats_overdue_remarks"] * PN.CLAIM_BASE_PER_FLAT * PN.REMARK_RATE * max(10.0, p["rem"]["avg_days"] - PN.REMARK_LIMIT_DAYS))
+    # итог = сумма строк по каждому году и мере, доли дают 100%, строки по убыванию суммы
+    for y in PN.YEARS:
+        assert tot["ddu"][y] == pytest.approx(sum(r["ddu"][y] for r in rows))
+        assert tot["remarks"][y] == pytest.approx(sum(r["remarks"][y] for r in rows))
+    assert tot["total"] == pytest.approx(sum(r["total"] for r in rows))
+    assert sum(r["share"] for r in rows) == pytest.approx(1.0)
+    assert [r["total"] for r in rows] == sorted((r["total"] for r in rows), reverse=True)
+    # больше просрочки по ДДУ в 2026 — больше неустойки 2026 по ДДУ (монотонно по накопленной сумме)
+    by_ddu = sorted(rows, key=lambda r: B["projects"][[p["key"] for p in B["projects"]].index(r["key"])]["accrued_up"])
+    assert [r["ddu"][2026] for r in by_ddu] == sorted(r["ddu"][2026] for r in rows)
+    # неустойка за замечания — второстепенная мера относительно просрочки передачи
+    assert 0 < sum(tot["remarks"].values()) < 0.2 * sum(tot["ddu"].values())
+
+
+def test_penalty_summary_on_first_screen():
+    at = _login()
+    t = _txt(at)
+    assert "Портфель ЖК · начисленная неустойка, млн ₽" in t
+    for s in ("За просрочку передачи по ДДУ", "За замечания (сроки устранения недостатков)", "Итого 2024–2026", "Доля портфеля",
+              "Итого по портфелю", "Неустойка портфеля за 2024–2026 гг."):
+        assert s in t, s
+    assert all(n in t for _, n in pf_data.PROJECTS)
+    block = t[t.index("Портфель ЖК · начисленная неустойка"):t.index("ЖК упорядочены по сумме неустойки")]
+    assert not any(w in block for w in ("Нет данных", "ориентир", "демо", "Демо", "срок до"))
+    assert t.index("Портфель ЖК · начисленная неустойка") < t.index("Квартир в просрочке")
