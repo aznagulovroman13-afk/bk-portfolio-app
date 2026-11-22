@@ -183,5 +183,6 @@ def build(projects: tuple) -> dict:
             apartments.loc[supplement, notice] = BK_NOTICE_AGE
         _advance_week(apartments, source, key)
         result[key] = dict(key=key, name=name, units=apartments, calc_date=REPORT_SNAPSHOT, observed_through=REPORT_SNAPSHOT,
-                           remarks=pf_stats.remark_agg(source), contractors=pf_stats.contractor_table(source))
+                           remarks=pf_stats.remark_agg(source), contractors=pf_stats.contractor_table(source),
+                           remark_items=source)
     return result
