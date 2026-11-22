@@ -85,6 +85,7 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
             "Просрочка ДДУ факт, дн.": 40, "Срок по ДДУ": pd.Timestamp("2026-08-01"),
             "Дата принятия собственником": pd.to_datetime(
                 [None] * 5 + ["2026-10-21", "2026-10-28", "2026-11-04" if key == "zen" else "2026-11-06"]),
+            "Результат передачи": [None] * 5 + ["С замечаниями", "Без замечаний", "С замечаниями"],
             "Коэф. неустойки на 1 ₽ цены (верх)": 0.04, "Коэф. неустойки на 1 ₽ цены (низ)": 0.03,
             "Ставка ЦБ на срок ДДУ, %": 15., "Мот. отказ / снятие готовности": False,
             "Плановая дата ключей в ОЗ": pd.NaT,
@@ -129,18 +130,19 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
 
     report = " ".join(block.value for block in app.markdown)
     summary = report.split('id="summary"', 1)[1]
-    assert "Сводка по портфелю" in summary and summary.count('class="exec-metric"') == 3
+    assert "Сводка по портфелю" in summary and summary.count('class="exec-metric"') == 2
     assert "ЖК на контроле" in summary and "наибольший эффект главной меры" in summary
     featured = summary.split('id="exec-project-title"', 1)[1].split("</article>", 1)[0]
     assert '/?jk=zen#drill" data-pf-route>Дзен-кварталы' in featured
-    assert summary.count('class="exec-approval-item"') == 2
-    assert "Цель по остатку просрочки" in summary
+    assert "Что согласовать" not in summary and "Цель по остатку просрочки" not in summary
+    assert "Передача квартир по годам" in summary and "по 11.11.2026" in summary
+    assert 'Передано <b>30</b> · С замечаниями <b>20</b> · Без замечаний <b>10</b>' in summary
     assert report.count("Демо-данные") == 1
     assert "сравнение с <b>04.11.2026</b>" in summary
-    assert "Утвердить бюджет" in summary and "Возможные требования по сценарию" not in summary
+    assert "Утвердить бюджет" not in summary and "Возможные требования по сценарию" not in summary
     assert "Расчётная неустойка</span>" in summary and "<em>₽/день</em>" in summary
     assert '<summary>Ещё</summary>' in report
-    assert 'href="/?view=orders" data-pf-route>Поручения и план по ЖК' in summary
+    assert 'href="/?view=orders" data-pf-route>Поручения' in summary
 
     money = open_screen(view="money")
     assert "Возможные требования по сценарию" in money
