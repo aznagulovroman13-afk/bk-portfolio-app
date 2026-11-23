@@ -28,9 +28,9 @@ import pf_penalty as PN  # noqa: E402
 import pf_gantt as GT  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
-REPORT_SCHEMA = "v23"
+REPORT_SCHEMA = "v24"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
-        or getattr(GT, "GANTT_SCHEMA", None) != "g1" or "card" not in N.ROUTE_FIELDS:
+        or getattr(GT, "GANTT_SCHEMA", None) != "g2" or "card" not in N.ROUTE_FIELDS:
     for module in (U, DC, DT, pf_demo, PF, PN, GT):
         reload(module)
     if "card" not in N.ROUTE_FIELDS:
@@ -294,7 +294,7 @@ def gantt_causes_project(g):
         law = " · ".join(x for x in (f'{_mln(r["penalty_ddu"])} млн ₽ по ч. 2 ст. 6' if r["penalty_ddu"] else "",
                                       f'{_mln(r["penalty_rem"], 2)} млн ₽ по ч. 8 ст. 7' if r["penalty_rem"] else "") if x)
         role = "критический" if r["critical"] else "сопутствующий"
-        rows.append(f'<tr><td><b>{html.escape(r["stage"])}</b><span class="sub">{role}</span></td>'
+        rows.append(f'<tr><td><b class="tip" title="{html.escape(r["full"])}">{html.escape(r["stage"])}</b><span class="sub">{role}</span></td>'
                     f'<td class="r">{r["plan_end"]:%d.%m.%y}</td><td class="r">{r["fact_end"]:%d.%m.%y}</td>'
                     f'<td class="r">+{r["slip"]}</td><td>{law}</td></tr>')
     return ('<details class="mx mx-l3"><summary>Причины</summary>'
@@ -311,7 +311,7 @@ def gantt_project_section(g):
     st.markdown(f'<div class="gantt-l1"><span class="mx-t">Сроки</span><b>+{g["delay"]} дн.</b>'
                 f'<span class="mx-s">критический этап — {html.escape(g["critical_name"])}</span></div>', unsafe_allow_html=True)
     with st.expander("Гант"):
-        U.chart(GT.project_figure(g), key=f"gantt_{g['key']}", height=380)
+        U.chart(GT.project_figure(g), key=f"gantt_{g['key']}", height=540)
         st.markdown(gantt_causes_project(g), unsafe_allow_html=True)
 
 
@@ -328,7 +328,8 @@ def main_row(project, data, through):
     return dict(key=key, name=project["name"], t2024=hist[2024], t2025=hist[2025],
                 t2026=int((done & date.dt.year.eq(2026) & date.le(through)).sum()),
                 left2026=int((due.dt.year.eq(2026) & ~done).sum()), overdue=int(project["overdue_kv"]),
-                pen_delay=sum(pen["ddu"].values()), pen_remarks=sum(pen["remarks"].values()), effect=pen["effect_total"])
+                pen_delay=sum(pen["ddu"].values()), pen_remarks=sum(pen["remarks"].values()), effect=pen["effect_total"],
+                resp=GANTT[key]["responsible"], resp_stage=GANTT[key]["critical_name"])
 
 
 MAIN_COLS = (("t2024", "2024"), ("t2025", "2025"), ("t2026", "2026"))
@@ -345,14 +346,18 @@ def main_table(rows, slice_label, open_more=False):
         return ("".join(f'<td class="r">{f(r[k])}</td>' for k, _ in MAIN_COLS)
                 + f'<td class="r sep">{f(r["left2026"])}</td><td class="r">{f(r["overdue"])}</td>'
                 + f'<td class="r sep">{_mln(r["pen_delay"])}</td><td class="r">{_mln(r["pen_remarks"])}</td>')
+    def resp(r):
+        o = r["resp"]
+        sub = f'<span class="sub">{html.escape(o["company"])}</span>' if o["company"] else ""
+        return f'<td class="sep resp" title="Критический этап: {html.escape(r["resp_stage"])}">{html.escape(o["short"])}{sub}</td>'
     top = [r for r in rows if r["key"] in MAIN_TOP]
     more = [r for r in rows if r["key"] not in MAIN_TOP]
-    body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}</tr>' for r in top)
-    body += "".join(f'<tr class="mt-hidden"><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}</tr>' for r in more)
+    body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}{resp(r)}</tr>' for r in top)
+    body += "".join(f'<tr class="mt-hidden"><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}{resp(r)}</tr>' for r in more)
     if more:
-        body += (f'<tr class="mt-toggle"><td colspan="8"><label for="mt-more">'
+        body += (f'<tr class="mt-toggle"><td colspan="9"><label for="mt-more">'
                  f'<span class="mt-open">▾ Развернуть · ещё {len(more)} ЖК</span><span class="mt-close">▴ Свернуть</span></label></td></tr>')
-    body += f'<tr class="tot"><td>{N.link("Итого портфель", card="total")}</td>{cells(tot)}</tr>'
+    body += f'<tr class="tot"><td>{N.link("Итого портфель", card="total")}</td>{cells(tot)}<td class="sep"></td></tr>'
     return ('<section class="main-port" id="main-portfolio">'
             f'<input type="checkbox" id="mt-more" class="mt-more"{" checked" if open_more else ""}>'
             f'<p class="exec-date">Срез <b>{slice_label}</b> · {len(rows)} ЖК · неустойка в млн ₽ с учётом моратория</p>'
@@ -360,12 +365,31 @@ def main_table(rows, slice_label, open_more=False):
             '<tr><th rowspan="2">ЖК</th><th class="grp" colspan="3" title="Передано квартир по передаточным актам">Передача по годам</th>'
             '<th class="r sep tip" rowspan="2" title="Квартиры со сроком по ДДУ в 2026 году, ещё не переданные">Остаток 2026</th>'
             '<th class="r tip" rowspan="2" title="Квартиры с нарушенным сроком по ДДУ на дату среза">В просрочке</th>'
-            '<th class="grp sep" colspan="2" title="Начислено за 2024–2026; период моратория ПП № 326 исключён">Неустойка, млн ₽</th></tr>'
+            '<th class="grp sep" colspan="2" title="Начислено за 2024–2026; период моратория ПП № 326 исключён">Неустойка, млн ₽</th>'
+            '<th class="sep tip" rowspan="2" title="Участник, отвечающий за критический этап задержки (по диаграмме Ганта)">Ответственный</th></tr>'
             '<tr><th class="r">2024</th><th class="r">2025</th><th class="r">2026</th>'
             '<th class="r sep tip" title="За просрочку передачи, ч. 2 ст. 6 214-ФЗ">За задержку</th>'
             '<th class="r tip" title="За нарушение сроков устранения недостатков, ч. 8 ст. 7 214-ФЗ">За замечания</th></tr>'
             f'</thead><tbody>{body}</tbody></table></div>'
             '<p class="exec-date">Нажмите на ЖК — карточка с диаграммой Ганта откроется ниже.</p></section>')
+
+
+def responsibility_table(g):
+    """Ответственные за задержку: участник → этап → дней задержки → неустойка этапа (как в диаграмме Ганта)."""
+    rows = [r for r in g["rows"] if r["slip"] > 0 or r["penalty_rem"] > 0]   # замечания: неустойка ч. 8 ст. 7 — на устранении
+    body = "".join(
+        f'<tr{" class=\"crit\"" if r["critical"] else ""}><td><b>{html.escape(r["owner"]["short"])}</b>'
+        + (f'<span class="sub">{html.escape(r["owner"]["company"])}</span>' if r["owner"]["company"] else "")
+        + f'</td><td>{html.escape(r["stage"])}{" · критический" if r["critical"] else ""}</td>'
+        f'<td class="r">{"+" + str(r["slip"]) if r["slip"] else "—"}</td><td class="r">{_mln(r["penalty_ddu"] + r["penalty_rem"])}</td>'
+        f'<td>{html.escape(r["owner"]["co"]) or "—"}</td></tr>' for r in rows)
+    tot = sum(r["penalty_ddu"] + r["penalty_rem"] for r in rows)
+    body += f'<tr class="tot"><td>Итого</td><td></td><td class="r">+{g["delay"]}</td><td class="r">{_mln(tot)}</td><td></td></tr>'
+    return ('<div class="tw"><table class="fin resp-table" aria-label="Ответственные за задержку">'
+            '<thead><tr><th>Ответственный</th><th>Этап</th><th class="r tip" title="Задержка этапа, дней">Дней</th>'
+            '<th class="r tip" title="Неустойка 2026 за просрочку передачи (ч. 2 ст. 6) и за замечания (ч. 8 ст. 7), приходящаяся на этап; 2024–2025 — в разделе «Неустойка по годам»">Неустойка 2026, млн ₽</th>'
+            '<th class="tip" title="Подразделение, контролирующее исполнение">Контроль</th></tr></thead>'
+            f'<tbody>{body}</tbody></table></div>')
 
 
 def project_card_l2(p, row):
@@ -378,7 +402,9 @@ def project_card_l2(p, row):
         f'<div><dt>Замечания</dt><dd>{f(p["remarks"])}</dd></div>'
         f'<div><dt>Сроки</dt><dd>+{g["delay"]} дн.</dd></div>'
         f'<div><dt>Критический этап</dt><dd>{html.escape(g["critical_name"])}</dd></div></dl>', unsafe_allow_html=True)
-    U.chart(GT.project_figure(g), key=f"gantt_main_{p['key']}", height=360)
+    U.chart(GT.project_figure(g), key=f"gantt_main_{p['key']}", height=540)
+    st.markdown('<div class="card-resp"><div class="card-resp-ttl">Ответственные за задержку</div>' + responsibility_table(g) + '</div>',
+                unsafe_allow_html=True)
     decisions = "".join(
         f'<li><b>{html.escape(d_["title"])}</b>{" — главное решение" if i == 0 else ""}'
         f'<span class="sub">−{fm(d_["effect_day"])} в день к концу 4-й недели</span></li>' for i, d_ in enumerate(p["decisions"]))
@@ -733,7 +759,7 @@ if view == "summary":
             project_card_l2(p_, row_)
     st.markdown('<div id="card-total" class="card-anchor"></div>', unsafe_allow_html=True)
     with st.expander(f'Итого портфель · сроки и неустойка по видам', expanded=open_card == "total"):
-        U.chart(GT.portfolio_figure(GANTT_LIST), key="gantt_portfolio", height=420)
+        U.chart(GT.portfolio_figure(GANTT_LIST), key="gantt_portfolio", height=520)
         st.markdown(gantt_causes_portfolio(GANTT_LIST)
                     + '<details class="mx mx-l3"><summary>Неустойка по годам</summary>'
                     + penalty_years(PEN_T["total"], name="портфель") + '</details>' + basis_details(), unsafe_allow_html=True)

@@ -66,17 +66,17 @@ with sync_playwright() as pw:
     mt.screenshot(path=OUT + f"01a3_main_table_collapsed_again_{tag}_1440.png")
     mt.locator("tr.mt-toggle label").click(); time.sleep(0.3)
     # уровень 2: клик по ЖК → карточка с диаграммой Ганта
-    mt.get_by_role("link", name="Деснаречье", exact=True).click()
-    exp = f.locator("[data-testid=stExpander]", has_text="Деснаречье · в просрочке").first
+    mt.get_by_role("link", name="Бунинские кварталы", exact=True).click()
+    exp = f.locator("[data-testid=stExpander]", has_text="Бунинские кварталы · в просрочке").first
     exp.locator(".js-plotly-plot").first.wait_for(state="visible", timeout=60000); time.sleep(2)
-    exp.scroll_into_view_if_needed(); shot("01b_card_desn_gantt")
+    exp.scroll_into_view_if_needed(); shot("01b_card_bunino_gantt")
     p.set_viewport_size({"width": 1440, "height": 2200}); time.sleep(1)
-    exp.screenshot(path=OUT + f"01c_card_desn_level2_{tag}_1440.png")
+    exp.screenshot(path=OUT + f"01c_card_bunino_level2_{tag}_1440.png")
     # уровень 3: причины, передачи, неустойка по годам, основания, решения
     for lab in ("Причины", "Передачи по годам", "Неустойка по годам", "Основания", "Решения"):
         exp.locator("details.mx-l3 > summary", has_text=lab).first.click(); time.sleep(0.4)
     p.set_viewport_size({"width": 1440, "height": 3200}); time.sleep(1)
-    exp.screenshot(path=OUT + f"01d_card_desn_level3_{tag}_1440.png")
+    exp.screenshot(path=OUT + f"01d_card_bunino_level3_{tag}_1440.png")
     p.set_viewport_size({"width": 1440, "height": 1000}); time.sleep(1)
     tot = f.locator("[data-testid=stExpander]", has_text="Итого портфель ·").first
     tot.locator("summary").first.click(); time.sleep(2)

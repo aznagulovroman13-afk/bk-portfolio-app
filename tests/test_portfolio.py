@@ -875,3 +875,39 @@ def test_main_table_totals_are_consistent(D):
         h = PN.history_factors(p["key"])
         assert (r[0] > 0) == (h[2024] > 0) and (r[1] > 0) == (h[2025] > 0)
         assert (r[0] > 0) <= (pen[p["key"]]["ddu"][2024] > 0)
+
+
+def test_responsible_party_matches_gantt_critical_stage(D):
+    """Ответственный в сводке = участник критического этапа Ганта; в карточке — участник → этап → дни → неустойка."""
+    import pf_penalty as PN, pf_gantt as GT
+    model = PF.build(D, dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"]
+    pen = {r["key"]: r for r in PN.table(D, model)["rows"]}
+    G = {g["key"]: g for g in GT.portfolio(D, model, pen)}
+    parties = {"Проектная группа", "Генподрядчик", "Отдел передачи", "Подрядчик", "Юридический отдел", "Гарантийный отдел"}
+    for key, g in G.items():
+        crit = next(r for r in g["rows"] if r["critical"])
+        assert g["responsible"] == crit["owner"] and crit["owner"]["party"] in parties
+        assert crit["owner"]["party"] == ("Подрядчик" if crit["key"] == "fix" or (crit["key"] == "ready" and g["cause"].startswith("Отделка"))
+                                         else GT.STAGE_OWNER[crit["key"]])
+        if crit["owner"]["company"]:
+            assert crit["owner"]["company"] in set(D[key]["contractors"]["Подрядчик"]) and crit["owner"]["company"].startswith("ООО")
+    at = _login()
+    table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    assert ">Ответственный</th>" in table
+    names = dict(pf_data.PROJECTS)
+    for key, g in G.items():
+        row = table.split(f'#card-{key}"', 1)[1].split("</tr>", 1)[0]
+        assert f'>{g["responsible"]["short"]}' in row
+        _open(at, card=key)
+        e = next(e for e in at.expander if e.label.startswith(names[key] + " · "))
+        inner = " ".join(m.value for m in e.markdown)
+        resp = inner.split('class="fin resp-table"', 1)[1].split("</table>", 1)[0]
+        shown = [r for r in g["rows"] if r["slip"] > 0 or r["penalty_rem"] > 0]
+        assert resp.count("<tr") - 2 == len(shown)              # шапка + строки этапов + итого
+        for r in shown:
+            assert (f'<td class="r">+{r["slip"]}</td>' if r["slip"] else '<td class="r">—</td>') in resp
+            assert f'>{r["owner"]["short"]}<' in resp
+        assert sum(r["slip"] for r in shown) == g["delay"]
+        total = sum(r["penalty_ddu"] + r["penalty_rem"] for r in shown)
+        # вся неустойка 2026 ЖК распределена по ответственным
+        assert total == pytest.approx(pen[key]["ddu"][2026] + pen[key]["remarks"][2026], rel=1e-9)

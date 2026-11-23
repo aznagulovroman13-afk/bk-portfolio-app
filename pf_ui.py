@@ -155,6 +155,9 @@ details.mx-cell > summary::before { content: none; } details.mx-cell > summary::
 .gantt-l1 .mx-t { font-weight: 650; } .gantt-l1 b { font-variant-numeric: tabular-nums; color: var(--risk); } .gantt-l1 .mx-s { color: var(--ink3); font-size: 12px; margin-left: auto; }
 .gantt-cause { font-size: 13px; color: var(--ink); margin: 6px 0 8px; } .gantt-causes td { font-size: 12.5px; }
 .main-table td:first-child a { font-weight: 650; }
+.main-table td.resp { font-size: 12px; white-space: nowrap; } .main-table td.resp .sub, .resp-table .sub { display: block; color: #5b6778; font-size: 11px; }
+.card-resp { margin: 6px 0 10px; } .card-resp-ttl { font-size: 12px; font-weight: 650; color: #14243b; margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+.resp-table tr.crit td:first-child b { color: #b3261e; }
 .mt-more { display: none; } .main-table tr.mt-hidden { display: none; } .mt-more:checked ~ .tw .main-table tr.mt-hidden { display: table-row; }
 .main-table tr.mt-toggle td { padding: 0; border-bottom: 1px solid #d5dbe5; }
 .main-table tr.mt-toggle label { display: block; cursor: pointer; padding: 7px 10px; color: #23406e; font-size: 12px; font-weight: 600; letter-spacing: .02em; }
@@ -252,7 +255,7 @@ def kpi_cards(items, big=False):
 def chart(fig, key=None, height=320):
     fig.update_layout(template="pf", height=height)
     fig.update_yaxes(automargin=True)
-    st.plotly_chart(fig, width="stretch", theme=None, config={"displayModeBar": False, "locale": "ru"}, key=key)
+    st.plotly_chart(fig, width="stretch", theme=None, config={"displayModeBar": False, "locale": "ru", "scrollZoom": False, "doubleClick": False, "responsive": True}, key=key)
 
 
 def fin_table(head, rows, right=(), total_last=False, cls="", hide=(), tips=None):
