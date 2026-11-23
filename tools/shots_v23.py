@@ -1,20 +1,13 @@
-"""Снимки v23: python tools/shots_v23.py <адрес> <каталог/>. Пароль — из .streamlit/secrets.toml, в вывод не попадает."""
+"""Снимки v23: python tools/shots_v23.py <адрес> <каталог/>. Отчёт без пароля."""
 import sys, time, tomllib
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-PWD = tomllib.loads(Path(__file__).resolve().parents[1].joinpath(".streamlit", "secrets.toml").read_text())["APP_PASSWORD"]
 base, out = sys.argv[1].rstrip("/") + "/", sys.argv[2]
 
 
 def open_(b, q, sel, w=1440, h=900):
     p = b.new_page(viewport={"width": w, "height": h}, device_scale_factor=2 if w < 800 else 1)
     p.goto(base + q)
-    g = []
-    for _ in range(300):
-        time.sleep(0.5)
-        g = [x for x in p.frames if x.locator("input[type=password]").count()]
-        if g: break
-    g[0].locator("input[type=password]").fill(PWD); g[0].locator("input[type=password]").press("Enter")
     f = None
     for _ in range(300):
         time.sleep(0.5)

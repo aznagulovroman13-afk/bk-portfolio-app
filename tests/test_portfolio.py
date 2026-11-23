@@ -192,31 +192,17 @@ def _app(secret_yes=True, pwd=PWD):
     return at
 
 
-def test_login_screen_only_without_password():
+def test_report_opens_without_password():
     at = _app()
     at.run()
     assert not at.exception
-    t = _txt(at)
-    assert "Закрытый отчёт" in t and at.text_input[0].label == "Пароль"
-    assert not any(s in t for s in ("Бунинские", "Прокшино", "просрочено", "Сводка для совещания"))
-    assert len(at.text_input) == 1 and at.text_input[0].proto.type == 1  # password
-    assert not at.dataframe and not at.get("plotly_chart")
-    at.text_input[0].input("неверный")
-    at.button[0].click().run()
-    assert "Неверный пароль" in _txt(at) and "Бунинские" not in _txt(at)
-    for _ in range(4):
-        at.text_input[0].input("again")
-        at.button[0].click().run()
-    assert "Слишком много попыток" in _txt(at)
-    assert at.text_input[0].disabled and at.button[0].disabled and "pf_auth_ok" not in at.session_state
+    assert not at.text_input and "Закрытый отчёт" not in _txt(at) and "Сводка по портфелю" in _txt(at)
 
 
 
 def _login():
     at = _app()
     at.run()
-    at.text_input[0].input(PWD)
-    at.button[0].click().run()
     assert not at.exception, [e.message for e in at.exception]
     return at
 
@@ -229,8 +215,6 @@ def _screen_text(at):
 def test_demo_opens_without_real_data_flag():
     at = _app(secret_yes=False)
     at.run()
-    at.text_input[0].input(PWD)
-    at.button[0].click().run()
     assert not at.exception, [e.message for e in at.exception]
     t = _txt(at)
     assert t.count("Демо-данные") == 1 and "Сводка по портфелю" in t

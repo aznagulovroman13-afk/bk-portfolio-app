@@ -1,9 +1,8 @@
-"""Снимки отчёта: python tools/shots.py <адрес> <каталог/> <метка>. Пароль берётся из .streamlit/secrets.toml (APP_PASSWORD), в вывод не попадает."""
+"""Снимки отчёта: python tools/shots.py <адрес> <каталог/> <метка>. Отчёт открывается без пароля."""
 import sys, time, tomllib
 from pathlib import Path
 from playwright.sync_api import expect, sync_playwright
 BASE, OUT, tag = sys.argv[1], sys.argv[2], sys.argv[3]
-PWD = tomllib.loads(Path(__file__).resolve().parents[1].joinpath(".streamlit", "secrets.toml").read_text(encoding="utf-8"))["APP_PASSWORD"]
 READY = "Сводка по портфелю"
 Path(OUT).mkdir(parents=True, exist_ok=True)
 
@@ -22,18 +21,13 @@ def app_frame(page, marker, tries=240):
 
 
 def login(page, name=None):
-    """Открывает адрес, снимает экран входа (если name задан), вводит пароль и ждёт первый экран. Возвращает кадр и время входа."""
+    """Открывает адрес (отчёт без пароля), снимает первый экран (если name задан) и ждёт его. Возвращает кадр и время открытия."""
+    started = time.time()
     page.goto(BASE); page.wait_for_load_state("networkidle")
-    gate = app_frame(page, "password", 120)
-    assert gate, "экран входа не открылся"
-    assert READY not in gate.locator("body").inner_text(), "отчёт открыт без пароля"
-    time.sleep(1)
+    fr = app_frame(page, READY)
+    assert fr, "первый экран не открылся"
     if name:
         page.screenshot(path=OUT + name)
-    started = time.time()
-    gate.locator("input[type=password]").fill(PWD); page.keyboard.press("Enter")
-    fr = app_frame(page, READY)
-    assert fr, "первый экран не открылся после ввода пароля"
     return fr, round(time.time() - started, 1)
 
 

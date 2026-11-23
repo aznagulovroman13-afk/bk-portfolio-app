@@ -117,10 +117,7 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     app.secrets["APP_PASSWORD"] = "test-password"
     app.run()
     assert not app.exception
-    assert app.text_input[0].label == "Пароль"
-    assert not app.caption
-    app.text_input[0].input("test-password")
-    app.button[0].click().run()
+    assert not app.text_input                     # отчёт открывается без пароля
     assert not app.exception
     def open_screen(**route):
         app.query_params.clear()
@@ -192,6 +189,4 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     linked.secrets["APP_PASSWORD"] = "test-password"
     linked.query_params["jk"] = "bunino"
     linked.run()
-    linked.text_input[0].input("test-password")
-    linked.button[0].click().run()
     assert not linked.exception and linked.header[0].value == "Бунинские кварталы"

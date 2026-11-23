@@ -1,4 +1,4 @@
-"""Портфель ЖК — отчёт для генерального директора с доступом по паролю."""
+"""Портфель ЖК — отчёт для генерального директора (открывается без пароля)."""
 import html
 from importlib import reload
 from math import ceil
@@ -10,12 +10,8 @@ import streamlit as st
 
 st.set_page_config(page_title="Портфель ЖК", page_icon="🏢", layout="wide", initial_sidebar_state="collapsed")
 
-import pf_auth  # noqa: E402
 import pf_ui as U  # noqa: E402
 
-if not pf_auth.authenticated():
-    pf_auth.login_screen(U.CSS)
-    st.stop()
 
 import pf_core as C  # noqa: E402
 import pf_data  # noqa: E402
