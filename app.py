@@ -496,7 +496,7 @@ def total_cell_panel(rows, cell):
         body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"], cell=cell)}</td><td class="r">{val(r)}</td></tr>' for r in rows)
         tv = sum(r[cell] for r in rows)
         body += f'<tr class="tot"><td>Итого портфель</td><td class="r">{_mln(tv) if cell.startswith("pen") else f(tv)}</td></tr>'
-        head = f'<th>ЖК</th><th class="r">{html.escape(title)}</th>'
+        head = f'<th>ЖК</th><th class="r">{html.escape(title)}{", млн ₽" if cell.startswith("pen") else ", квартир"}</th>'
     return (f'<section class="cell-panel" id="cell-total-{cell}"><div class="cell-ttl">{html.escape(title)} · <b>Итого портфель</b></div>'
             f'<div class="tw"><table class="fin cell-total"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div></section>')
 
