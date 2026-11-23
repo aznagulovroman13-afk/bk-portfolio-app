@@ -356,32 +356,32 @@ def test_plan_fact_and_dynamics_are_comparable(B):
 
 
 def test_first_screen_shows_annual_transfers_by_project(D):
+    import pf_penalty as PN
     at = _login()
     t = _screen_text(at)
-    for label in ("В просрочке", "Неустойка в день",
-                  "Срез 20.11.2026", "Передачи по годам"):
-        assert label in t
-    project_cards = next(m.value for m in at.markdown if 'class="exec-projects"' in m.value)
-    assert "Что согласовать" not in t and '>Готовы к передаче</span>' not in project_cards
-    assert ">Янв<" not in project_cards and "Шкала передач по месяцам" not in project_cards
-    assert project_cards.index('id="exec-project-bunino"') < project_cards.index('id="exec-project-scandc"')
+    raw = " ".join(m.value for m in at.markdown)
+    for label in ("Передача по годам", "Остаток 2026", "В просрочке", "Неустойка", "За задержку", "За замечания",
+                  "Срез 20.11.2026", "Итого портфель", "Передачи по годам"):
+        assert label in t, label
+    assert "Что согласовать" not in t and "Нет данных" not in t
+    table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    assert table.index("Бунинские кварталы") < table.index("Скандинавия Центр")
     for key, name in pf_data.PROJECTS:
-        card = project_cards.split(f'id="exec-project-{key}"', 1)[1].split("</article>", 1)[0]
-        assert name in card
-        assert f'/?jk={key}&amp;tab=money#drill' in card
-        assert f'/?jk={key}&amp;tab=remarks#drill' in card
-        assert "Неустойка в день" in card and "Замечания" in card
+        assert f'href="/?card={key}#card-{key}" data-pf-route>{name}</a>' in table
+        card = raw.split(f'id="exec-project-{key}"', 1)[1].split("</table>", 1)[0]
         assert re.findall(r'<th scope="row">(20\d{2})</th>', card) == ["2024", "2025", "2026"]
-        for year in (2024, 2025):
-            assert f'<th scope="row">{year}</th>' + '<td class="is-missing">Нет данных</td>' * 3 in card
         units = D[key]["units"]
+        n_kv = int(units["Тип объекта"].eq("Квартира").sum())
+        hist = PN.history_transfers(key, n_kv)
+        for year in (2024, 2025):
+            assert f'<th scope="row">{year}</th><td>{C.fmt_int(hist[year])}</td>' in card
+            # передачи прошлых лет есть ⇔ есть неустойка этих лет (те же ранее переданные очереди)
+            assert (hist[year] > 0) == (PN.history_factors(key)[year] > 0)
         dates = units["Дата принятия собственником"]
         total = (C.transferred_mask(units) & units["Тип объекта"].eq("Квартира")
                  & dates.dt.year.eq(2026) & dates.le(D[key]["calc_date"])).sum()
         assert f'<th scope="row">2026</th><td>{C.fmt_int(total)}</td>' in card
-        assert card.count('class="is-missing"') == 8
-    assert all(f'href="/?view={view}" data-pf-route class="exec-metric"' in project_cards
-               for view in ("segments", "money"))
+        assert f'<td class="r">{C.fmt_int(total)}</td>' in table.split(f'#card-{key}"', 1)[1].split("</tr>", 1)[0]
     assert "Произведённые выплаты" not in t and "Предъявленные требования" not in t
     _open(at, view="money")
     payout = next(expander for expander in at.expander if expander.label == "Сценарий будущих выплат по ЖК")
@@ -390,7 +390,6 @@ def test_first_screen_shows_annual_transfers_by_project(D):
     order = [p["name"] for p in PF.by_risk(PF.build(pf_demo.build(pf_data.PROJECTS), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])]
     indexes = [t.index(name, t.index("ЖК портфеля")) for name in order]
     assert indexes == sorted(indexes)
-
 
 def test_project_corpus_unit_links_and_matching_remarks(D):
     at = _login()
@@ -748,31 +747,32 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
     import pf_penalty as PN
     at = _login()
     t = _screen_text(at)
-    assert "Портфель ЖК · неустойка" not in t and 'id="penalty-summary"' not in " ".join(m.value for m in at.markdown)
-    summary = next(m.value for m in at.markdown if 'class="exec-projects"' in m.value)
-    # уровень 1: короткие заголовки и ключевая цифра; портфельный итог — третьей карточкой
-    assert summary.count('class="exec-metric"') == 3
-    assert '>Неустойка</span><strong>' in summary and ">В просрочке</span>" in summary and ">Неустойка в день</span>" in summary
-    for key, name in pf_data.PROJECTS:
-        card = summary.split(f'id="exec-project-{key}"', 1)[1].split("</article>", 1)[0]
-        # уровень 2 (свёрнуто): виды и годы; уровень 3 (вложено): основания
-        l2 = card.split('<details class="mx mx-l2"><summary><span class="mx-t">Неустойка</span>', 1)[1]
-        assert f'aria-label="Неустойка по годам, {name}"' in l2
-        assert ">Просрочка передачи</th>" in l2 and ">Недостатки</th>" in l2 and l2.count(">мораторий</th>") == 2
-        l3 = l2.split('<details class="mx mx-l3"><summary>Основания</summary>', 1)[1]
-        assert "Ч. 2 ст. 6 214-ФЗ" in l3 and "ПП РФ № 326" in l3 and "ПП № 2227" in l3
-        assert " open" not in card.split("<details", 1)[1].split(">", 1)[0]          # по умолчанию свёрнуто
-        assert "Передачи по годам" in card
-    # заголовки в карточках ЖК — не длиннее трёх слов
-    for h in re.findall(r'<(?:dt|th|span class="mx-t")[^>]*>([^<]+)<', summary):
+    raw = " ".join(m.value for m in at.markdown)
+    assert "Портфель ЖК · неустойка" not in t and 'id="penalty-summary"' not in raw
+    assert 'class="exec-metric"' not in raw            # верхние карточки заменены главной таблицей
+    pen = {r["key"]: r for r in PN.table(D, PF.build(D, dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])["rows"]}
+    table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    for h in re.findall(r"<th[^>]*>([^<]+)</th>", table):
         assert len(h.split()) <= 3, h
-    # таблица ЖК: короткие колонки, подробности — в подсказке и раскрытии ячейки
+    cards = {e.label.split(" · ")[0]: e for e in at.expander if " · в просрочке " in e.label}
+    assert set(cards) == {n for _, n in pf_data.PROJECTS}
+    for key, name in pf_data.PROJECTS:
+        row = table.split(f'#card-{key}"', 1)[1].split("</tr>", 1)[0]
+        tds = re.findall(r'<td class="r[^"]*">([^<]+)</td>', row)
+        assert len(tds) == 7
+        e = cards[name]
+        inner = " ".join(m.value for m in e.markdown)
+        assert e.get("plotly_chart")                                    # уровень 2 — диаграмма Ганта
+        for s in ("В просрочке", "Неустойка в день", "Критический этап"):
+            assert s in inner
+        # уровень 3: причины, передачи, неустойка по годам, основания, решения
+        for s in ("<summary>Причины</summary>", "<summary>Передачи по годам</summary>", "<summary>Неустойка по годам</summary>",
+                  "<summary>Основания</summary>", "<summary>Решения</summary>"):
+            assert s in inner, (key, s)
+        assert ">Просрочка передачи</th>" in inner and ">Недостатки</th>" in inner and "ПП № 2227" in inner
     seg = _open(at, view="segments")
     raw = " ".join(m.value for m in at.markdown)
-    assert "Неустойка" in seg and "Мораторий" in seg
-    assert 'title="Неустойка начислена за 2024–2026, млн ₽' in raw and 'title="Не начислено по ПП № 326' in raw
-    assert raw.count('<details class="mx mx-cell">') == len(pf_data.PROJECTS) + 1 and "передача " in seg and "недостатки " in seg
-    # страница ЖК: «Неустойка» → виды и годы → основания
+    assert "Неустойка" in seg and "Мораторий" in seg and 'title="Не начислено по ПП № 326' in raw
     for tab in ("overview", "money"):
         page = _open(at, jk="desn", tab=tab)
         for s in ("Неустойка", "Просрочка передачи", "Недостатки", "Основания", "Ч. 2 ст. 6 214-ФЗ", "Ч. 8 ст. 7 214-ФЗ в ред. 266-ФЗ",
@@ -780,7 +780,6 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
                   "22.03.2024 по 31.12.2025", "7,5%", "ПП № 2227", "31.12.2026"):
             assert s in page, (tab, s)
         assert not any(w in page for w in ("ориентир", "срок до"))
-
 
 def test_gantt_schedule_is_consistent_with_overdue_and_penalty(D, B):
     import pandas as pd
@@ -819,13 +818,15 @@ def test_gantt_schedule_is_consistent_with_overdue_and_penalty(D, B):
 
 def test_gantt_on_first_screen_and_project_page():
     at = _login()
-    t = _screen_text(at)
-    assert "Сроки" in t and "медиана задержки" in t
-    gantt = [e for e in at.expander if e.label == "Гант"]
-    assert len(gantt) == 1
-    inner = " ".join(m.value for m in gantt[0].markdown)
+    total = [e for e in at.expander if e.label.startswith("Итого портфель")]
+    assert len(total) == 1 and total[0].get("plotly_chart")
+    inner = " ".join(m.value for m in total[0].markdown)
     assert '<details class="mx mx-l3"><summary>Причины</summary>' in inner and all(n in inner for _, n in pf_data.PROJECTS)
     assert "Ч. 2 ст. 6" in inner and "Ч. 8 ст. 7" in inner
+    # строка таблицы раскрывает карточку ЖК
+    _open(at, card="desn")
+    opened = [e for e in at.expander if e.label.startswith("Деснаречье · ")]
+    assert len(opened) == 1 and opened[0].proto.expanded
     page = _open(at, jk="desn")
     assert "Сроки" in page and "критический этап" in page
     gantt = [e for e in at.expander if e.label == "Гант"]
@@ -833,3 +834,31 @@ def test_gantt_on_first_screen_and_project_page():
     inner = " ".join(m.value for m in gantt[0].markdown)
     assert "Причины" in inner and "по ч. 2 ст. 6" in inner and "Период моратория (ПП № 326)" in inner
     assert not any(w in inner for w in ("ориентир", "Нет данных", "срок до"))
+
+def test_main_table_totals_are_consistent(D):
+    """Главная таблица: Итого = сумма строк; неустойка = расчёт pf_penalty; просрочка = overdue_kv модели."""
+    import pf_penalty as PN
+    at = _login()
+    table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    num = lambda s: float(s.replace("\xa0", "").replace(" ", "").replace(",", "."))
+    rows = {}
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", table.split("<tbody>", 1)[1]):
+        name = re.search(r">([^<]+)</a>", tr).group(1)
+        rows[name] = [num(v) for v in re.findall(r'<td class="r[^"]*">([^<]+)</td>', tr)]
+    tot = rows.pop("Итого портфель")
+    assert set(rows) == {n for _, n in pf_data.PROJECTS}
+    for i in range(5):
+        assert tot[i] == sum(r[i] for r in rows.values())
+    for i in (5, 6):
+        assert tot[i] == pytest.approx(sum(r[i] for r in rows.values()), abs=0.15)
+    model = PF.build(D, dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"]
+    pen = {r["key"]: r for r in PN.table(D, model)["rows"]}
+    names = dict(pf_data.PROJECTS)
+    for p in model:
+        r = rows[names[p["key"]]]
+        assert r[4] == p["overdue_kv"]
+        assert r[5] == pytest.approx(sum(pen[p["key"]]["ddu"].values()) / 1e6, abs=0.051)
+        assert r[6] == pytest.approx(sum(pen[p["key"]]["remarks"].values()) / 1e6, abs=0.0051)
+        h = PN.history_factors(p["key"])
+        assert (r[0] > 0) == (h[2024] > 0) and (r[1] > 0) == (h[2025] > 0)
+        assert (r[0] > 0) <= (pen[p["key"]]["ddu"][2024] > 0)

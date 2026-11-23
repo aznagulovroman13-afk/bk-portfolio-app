@@ -28,7 +28,7 @@ PROJECT_VIEWS = {
     "money": "Финансы",
     "dynamics": "Динамика",
 }
-ROUTE_FIELDS = ("view", "jk", "tab", "corpus", "unit")
+ROUTE_FIELDS = ("view", "jk", "tab", "corpus", "unit", "card")
 
 
 def link(label, *, content=None, css="", current=False, **route):
@@ -36,6 +36,8 @@ def link(label, *, content=None, css="", current=False, **route):
     href = f"/?{query}" if query else "/"
     if "jk" in route:
         href += "#drill"
+    elif "card" in route:
+        href += f"#card-{route['card']}"
     attrs = f' class="{css}"' if css else ""
     if content is not None:
         attrs += f' aria-label="{html.escape(label)}"'
@@ -72,7 +74,7 @@ export default function ({data, setTriggerValue}) {
             try {
                 const address = new URL(window.parent.location.href);
                 const route = new URLSearchParams(data);
-                for (const key of ['view', 'jk', 'tab', 'corpus', 'unit']) {
+                for (const key of ['view', 'jk', 'tab', 'corpus', 'unit', 'card']) {
                     if (route.has(key)) address.searchParams.set(key, route.get(key));
                     else address.searchParams.delete(key);
                 }
@@ -83,10 +85,21 @@ export default function ({data, setTriggerValue}) {
             }
         }
         window.portfolioView = data;
-        requestAnimationFrame(() => {
-            document.querySelector('[data-testid="stMain"]')?.scrollTo(0, 0);
-            window.scrollTo(0, 0);
-        });
+        const card = new URLSearchParams(data).get('card');
+        if (card) {
+            let tries = 0;
+            const seek = () => {
+                const el = document.getElementById('card-' + card);
+                if (el) el.scrollIntoView({block: 'start'});
+                else if (tries++ < 40) setTimeout(seek, 100);
+            };
+            setTimeout(seek, 150);
+        } else {
+            requestAnimationFrame(() => {
+                document.querySelector('[data-testid="stMain"]')?.scrollTo(0, 0);
+                window.scrollTo(0, 0);
+            });
+        }
     }
     return () => {
         document.removeEventListener('click', onClick);

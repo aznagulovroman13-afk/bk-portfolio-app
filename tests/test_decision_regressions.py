@@ -130,19 +130,20 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
 
     report = " ".join(block.value for block in app.markdown)
     summary = report.split('id="summary"', 1)[1]
-    assert "Сводка по портфелю" in summary and summary.count('class="exec-metric"') == 3
-    zen = summary.split('id="exec-project-zen"', 1)[1].split("</article>", 1)[0]
-    bunino = summary.split('id="exec-project-bunino"', 1)[1].split("</article>", 1)[0]
-    assert '/?jk=zen#drill" data-pf-route>Дзен-кварталы' in zen
+    assert "Сводка по портфелю" in summary and 'class="fin main-table"' in summary
+    assert 'href="/?card=zen#card-zen" data-pf-route>Дзен-кварталы' in summary
+    zen = summary.split('id="exec-project-zen"', 1)[1].split("</table>", 1)[0]
+    bunino = summary.split('id="exec-project-bunino"', 1)[1].split("</table>", 1)[0]
+    assert '/?jk=zen#drill" data-pf-route>Страница ЖК' in summary
     assert "Что согласовать" not in summary and "Цель по остатку просрочки" not in summary
-    assert "Передачи по годам" in summary and "по 11.11.2026" in summary
+    assert "Передача по годам" in summary and "Передачи по годам" in summary and "Срез <b>11.11.2026</b>" in summary
     assert '<th scope="row">2026</th><td>3</td><td>0</td><td>3</td>' in zen
     assert '<th scope="row">2026</th><td>3</td><td>1</td><td>1</td>' in bunino
-    assert 'Результат указан по 2 из 3' in bunino
+    assert 'Результат указан по 2 из 3' in summary.split('id="exec-project-bunino"', 1)[1].split("</details>", 1)[0]
     assert report.count("Демо-данные") == 1
     assert "сравнение с <b>04.11.2026</b>" in summary
     assert "Утвердить бюджет" not in summary and "Возможные требования по сценарию" not in summary
-    assert ">Неустойка в день</span>" in summary and "<em>₽/день</em>" in summary
+    assert "Неустойка в день <strong>" in summary
     assert '<summary>Ещё</summary>' in report
     assert 'href="/?view=orders" data-pf-route>Поручения' in summary
 

@@ -17,7 +17,7 @@ import pandas as pd
 
 import pf_remstat
 
-PENALTY_SCHEMA = "p3"
+PENALTY_SCHEMA = "p4"
 YEARS = (2024, 2025, 2026)
 MORATORIUM = (pd.Timestamp("2024-03-22"), pd.Timestamp("2025-12-31"))   # ПП № 326, п. 1 (с продлениями)
 RATE_CAP = 7.5                                                            # ПП № 326, п. 2: ключевая ставка на 01.07.2023, %
@@ -67,6 +67,12 @@ def history_factors(key: str) -> dict:
     """Уровень начислений 2024 и 2025 годов (ранее переданные очереди) к 2026 году: ramp < 0 — давно строящийся ЖК, > 0 — новый."""
     ramp = pf_remstat.PROFILES.get(key, {}).get("ramp", 0.0)
     return {2024: round(min(1.0, max(0.0, 0.35 - 0.40 * ramp)), 3), 2025: round(min(1.4, max(0.12, 0.80 - 0.45 * ramp)), 3), 2026: 1.0}
+
+
+def history_transfers(key: str, units_kv: int) -> dict:
+    """Передано квартир ранее переданных очередей в 2024 и 2025 годах: тот же профиль ЖК, что и у неустойки этих лет."""
+    h = history_factors(key)
+    return {y: int(round(units_kv * h[y] * 0.9)) for y in (2024, 2025)}
 
 
 def ddu_2026(A: pd.DataFrame, price: float) -> float:

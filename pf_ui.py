@@ -154,6 +154,10 @@ details.mx-cell > summary::before { content: none; } details.mx-cell > summary::
   border: 1px solid var(--line); border-left: 3px solid var(--gold); background: var(--paper); border-radius: 5px; padding: 8px 12px; }
 .gantt-l1 .mx-t { font-weight: 650; } .gantt-l1 b { font-variant-numeric: tabular-nums; color: var(--risk); } .gantt-l1 .mx-s { color: var(--ink3); font-size: 12px; margin-left: auto; }
 .gantt-cause { font-size: 13px; color: var(--ink); margin: 6px 0 8px; } .gantt-causes td { font-size: 12.5px; }
+.main-table td:first-child a { font-weight: 650; } .main-table th.grp { text-align: center; }
+.card-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; } .card-anchor { scroll-margin-top: 60px; }
+.card-decisions { margin: 6px 0; padding-left: 18px; font-size: 13px; } .card-decisions .sub { display: block; color: var(--ink3); font-size: 12px; }
+.card-open { margin: 8px 0 0; font-size: 13px; }
 .fin th.tip { text-decoration: underline dotted #9AA6B8; text-underline-offset: 3px; cursor: help; } .fin th .sub { display: block; font-size: 10px; text-transform: none; letter-spacing: 0; color: var(--ink3); font-weight: 400; }
 .pen-bar { display: inline-block; width: 56px; height: 6px; background: #E6EAF0; margin-right: 8px; vertical-align: middle; } .pen-bar i { display: block; height: 100%; background: var(--navy); }
 a[data-pf-route] { color: #234F7A !important; text-decoration: underline; text-underline-offset: 3px; }

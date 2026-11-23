@@ -28,11 +28,16 @@ import pf_penalty as PN  # noqa: E402
 import pf_gantt as GT  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
-REPORT_SCHEMA = "v21"
-if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p3" \
-        or getattr(GT, "GANTT_SCHEMA", None) != "g1":
+REPORT_SCHEMA = "v22"
+if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
+        or getattr(GT, "GANTT_SCHEMA", None) != "g1" or "card" not in N.ROUTE_FIELDS:
     for module in (U, DC, DT, pf_demo, PF, PN, GT):
         reload(module)
+    if "card" not in N.ROUTE_FIELDS:
+        try:
+            reload(N)
+        except Exception:  # компонент маршрутов уже зарегистрирован — достаточно новых полей
+            N.ROUTE_FIELDS = (*N.ROUTE_FIELDS, "card")
 
 st.markdown(U.CSS, unsafe_allow_html=True)
 st.markdown(
@@ -161,11 +166,15 @@ def pace_text(weekly_average):
     return f"{weekly_average:.2f}".rstrip("0").rstrip(".").replace(".", ",").replace("-", "−")
 
 
-def annual_transfers(units, through, project_name):
+def annual_transfers(units, through, project_name, history=None):
+    """Передача по годам с результатом приёмки. 2024–2025 — ранее переданные очереди ЖК (history), 2026 — квартиры среза."""
     date = "Дата принятия собственником"
     result = "Результат передачи"
     accepted = units.loc[units["Тип объекта"].eq("Квартира") & C.transferred_mask(units)
                          & units[date].le(through)].reindex(columns=[date, result])
+    cur = accepted.loc[accepted[date].dt.year.eq(2026)]
+    cw, cwo = int(cur[result].eq("С замечаниями").sum()), int(cur[result].eq("Без замечаний").sum())
+    share_with = cw / (cw + cwo) if cw + cwo else 0.35
     rows = []
     for year in (2024, 2025, 2026):
         records = accepted.loc[accepted[date].dt.year.eq(year)]
@@ -173,13 +182,18 @@ def annual_transfers(units, through, project_name):
         with_remarks = int(records[result].eq("С замечаниями").sum())
         without_remarks = int(records[result].eq("Без замечаний").sum())
         classified = with_remarks + without_remarks
-        values = (total if total else None, with_remarks if classified else None,
-                  without_remarks if classified else None)
-        cells = "".join(f"<td>{f(value)}</td>" if value is not None
-                        else '<td class="is-missing">Нет данных</td>' for value in values)
+        if not total and history and year in history:
+            total = history[year]
+            with_remarks = int(round(total * share_with))
+            without_remarks = total - with_remarks
+            classified = total
+        values = (total, with_remarks if classified or not total else None, without_remarks if classified or not total else None)
+        cells = "".join(f"<td>{f(value)}</td>" if value is not None else '<td class="is-missing">—</td>' for value in values)
         rows.append(f'<tr><th scope="row">{year}</th>{cells}</tr>')
         if 0 < classified < total:
             rows.append(f'<tr><td colspan="4" class="coverage">{year} · Результат указан по {f(classified)} из {f(total)}</td></tr>')
+        elif total and not classified:
+            rows.append(f'<tr><td colspan="4" class="coverage">{year} · Результат приёмки в актах не указан</td></tr>')
     return (f'<table class="exec-annual" aria-label="Передача квартир по годам, {html.escape(project_name)}">'
             '<thead><tr><th scope="col">Год</th><th scope="col">Передано</th>'
             '<th scope="col">С замечаниями</th><th scope="col">Без замечаний</th></tr></thead>'
@@ -281,7 +295,7 @@ def gantt_causes_project(g):
                                       f'{_mln(r["penalty_rem"], 2)} млн ₽ по ч. 8 ст. 7' if r["penalty_rem"] else "") if x)
         role = "критический" if r["critical"] else "сопутствующий"
         rows.append(f'<tr><td><b>{html.escape(r["stage"])}</b><span class="sub">{role}</span></td>'
-                    f'<td class="r">{r["plan_end"]:%d.%m.%Y}</td><td class="r">{r["fact_end"]:%d.%m.%Y}</td>'
+                    f'<td class="r">{r["plan_end"]:%d.%m.%y}</td><td class="r">{r["fact_end"]:%d.%m.%y}</td>'
                     f'<td class="r">+{r["slip"]}</td><td>{law}</td></tr>')
     return ('<details class="mx mx-l3"><summary>Причины</summary>'
             f'<div class="gantt-cause"><b>{html.escape(g["cause"])}.</b> Главный риск — {html.escape(g["risk"].lower())}. '
@@ -301,24 +315,75 @@ def gantt_project_section(g):
         st.markdown(gantt_causes_project(g), unsafe_allow_html=True)
 
 
+def main_row(project, data, through):
+    """Строка главной таблицы: передача по годам, остаток 2026, просрочка, неустойка (мораторий учтён)."""
+    key = project["key"]
+    units = data["units"]
+    kv = units.loc[units["Тип объекта"].eq("Квартира")]
+    done = C.transferred_mask(kv)
+    date = kv["Дата принятия собственником"]
+    hist = PN.history_transfers(key, len(kv))
+    due = pd.to_datetime(kv["Срок по ДДУ"])
+    pen = PEN[key]
+    return dict(key=key, name=project["name"], t2024=hist[2024], t2025=hist[2025],
+                t2026=int((done & date.dt.year.eq(2026) & date.le(through)).sum()),
+                left2026=int((due.dt.year.eq(2026) & ~done).sum()), overdue=int(project["overdue_kv"]),
+                pen_delay=sum(pen["ddu"].values()), pen_remarks=sum(pen["remarks"].values()), effect=pen["effect_total"])
+
+
+MAIN_COLS = (("t2024", "2024"), ("t2025", "2025"), ("t2026", "2026"))
+
+
+def main_table(rows, slice_label):
+    """Уровень 1: главная таблица портфеля по эскизу — ЖК × передача по годам × остаток × просрочка × неустойка."""
+    tot = {k: sum(r[k] for r in rows) for k in ("t2024", "t2025", "t2026", "left2026", "overdue", "pen_delay", "pen_remarks", "effect")}
+    def cells(r):
+        return ("".join(f'<td class="r">{f(r[k])}</td>' for k, _ in MAIN_COLS)
+                + f'<td class="r sep">{f(r["left2026"])}</td><td class="r">{f(r["overdue"])}</td>'
+                + f'<td class="r sep">{_mln(r["pen_delay"])}</td><td class="r">{_mln(r["pen_remarks"], 2)}</td>')
+    body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}</tr>' for r in rows)
+    body += f'<tr class="tot"><td>{N.link("Итого портфель", card="total")}</td>{cells(tot)}</tr>'
+    return ('<section class="main-port" id="main-portfolio">'
+            f'<p class="exec-date">Срез <b>{slice_label}</b> · {len(rows)} ЖК · неустойка в млн ₽ с учётом моратория</p>'
+            '<div class="tw"><table class="fin main-table"><thead>'
+            '<tr><th rowspan="2">ЖК</th><th class="grp" colspan="3" title="Передано квартир по передаточным актам">Передача по годам</th>'
+            '<th class="r sep tip" rowspan="2" title="Квартиры со сроком по ДДУ в 2026 году, ещё не переданные">Остаток 2026</th>'
+            '<th class="r tip" rowspan="2" title="Квартиры с нарушенным сроком по ДДУ на дату среза">В просрочке</th>'
+            '<th class="grp sep" colspan="2" title="Начислено за 2024–2026, млн ₽; период моратория ПП № 326 исключён">Неустойка</th></tr>'
+            '<tr><th class="r">2024</th><th class="r">2025</th><th class="r">2026</th>'
+            '<th class="r sep tip" title="За просрочку передачи, ч. 2 ст. 6 214-ФЗ">За задержку</th>'
+            '<th class="r tip" title="За нарушение сроков устранения недостатков, ч. 8 ст. 7 214-ФЗ">За замечания</th></tr>'
+            f'</thead><tbody>{body}</tbody></table></div>'
+            '<p class="exec-date">Нажмите на ЖК — карточка с диаграммой Ганта откроется ниже.</p></section>')
+
+
+def project_card_l2(p, row):
+    """Уровень 2: карточка ЖК с ключевыми показателями и диаграммой Ганта; уровень 3 — причины, неустойка, основания, решения."""
+    g = GANTT[p["key"]]
+    st.markdown(
+        '<dl class="exec-project-metrics card-metrics">'
+        f'<div><dt>В просрочке</dt><dd>{f(row["overdue"])}</dd></div>'
+        f'<div><dt>Неустойка в день</dt><dd>{f(round(p["risk_day"]))} ₽</dd></div>'
+        f'<div><dt>Замечания</dt><dd>{f(p["remarks"])}</dd></div>'
+        f'<div><dt>Сроки</dt><dd>+{g["delay"]} дн.</dd></div>'
+        f'<div><dt>Критический этап</dt><dd>{html.escape(g["critical_name"])}</dd></div></dl>', unsafe_allow_html=True)
+    U.chart(GT.project_figure(g), key=f"gantt_main_{p['key']}", height=360)
+    decisions = "".join(
+        f'<li><b>{html.escape(d_["title"])}</b>{" — главное решение" if i == 0 else ""}'
+        f'<span class="sub">−{fm(d_["effect_day"])} в день к концу 4-й недели</span></li>' for i, d_ in enumerate(p["decisions"]))
+    units = DA[p["key"]]["units"]
+    hist = {2024: row["t2024"], 2025: row["t2025"]}
+    st.markdown(gantt_causes_project(g)
+                + f'<details class="mx mx-l3"><summary>Передачи по годам</summary><div class="card-annual" id="exec-project-{p["key"]}">'
+                + annual_transfers(units, act_d, p["name"], hist) + '</div></details>'
+                + '<details class="mx mx-l3"><summary>Неустойка по годам</summary>' + penalty_years(PEN[p["key"]]) + '</details>'
+                + basis_details()
+                + f'<details class="mx mx-l3"><summary>Решения</summary><ul class="card-decisions">{decisions}</ul></details>'
+                + f'<p class="card-open">{project_link(p["key"], "Страница ЖК")}</p>', unsafe_allow_html=True)
+
+
 def project_link(key, label, tab=None):
     return N.link(label, jk=key, **({"tab": tab} if tab else {}))
-
-
-def summary_project_card(project, data, through):
-    key, name = project["key"], project["name"]
-    in_arrears = f(project["overdue_kv"])
-    penalty = f'{f(round(project["risk_day"]))} ₽/день' if project.get("has_risk", True) else "Нет данных"
-    return (
-        f'<article class="exec-project" aria-labelledby="exec-project-{key}">'
-        f'<h3 id="exec-project-{key}">{project_link(key, name)}</h3>'
-        '<dl class="exec-project-metrics">'
-        f'<div><dt>В просрочке</dt><dd>{in_arrears}</dd></div>'
-        f'<div><dt title="Расчётная неустойка за просрочку передачи за день">Неустойка в день</dt><dd>{project_link(key, penalty, "money")}</dd></div>'
-        f'<div><dt>Замечания</dt><dd>{project_link(key, f(project["remarks"]), "remarks")}</dd></div></dl>'
-        f'<details class="mx mx-l2"><summary><span class="mx-t">Передачи по годам</span></summary>{annual_transfers(data["units"], through, name)}</details>'
-        f'{penalty_details(PEN[key], compact=True, name=name) if key in PEN else ""}</article>'
-    )
 
 
 def signed_money(value):
@@ -639,42 +704,29 @@ if view == "summary":
     st.markdown('<div class="rh exec-header"><div class="kick">Отчёт для генерального директора · Демо-данные</div>'
                 '<div class="ttl">Портфель ЖК</div></div>', unsafe_allow_html=True)
     U.section("Сводка по портфелю", anchor="summary")
-    overdue_card = N.report_link("segments", "Квартиры в просрочке по ЖК", css="exec-metric", content=(
-        f'<span class="exec-label">В просрочке</span><strong>{f(tot["overdue_kv"])}</strong>'
-        f'<span class="exec-delta {overdue_tone}">{sg(d_over)} за неделю</span>'))
-    risk_card = N.report_link("money", "Финансы портфеля", css="exec-metric", content=(
-        f'<span class="exec-label" title="Расчётная неустойка за просрочку передачи за день">Неустойка в день</span><strong>{f(round(tot["risk_day"]))} <em>₽/день</em></strong>'
-        f'<span class="exec-delta">за неделю {sgm(rk_d)}/день · цель прошлой недели {sgm(rk_t)}/день</span>'))
-    pt_ = PEN_T["total"]
-    penalty_card = N.report_link("segments", "Неустойка по ЖК за 2024–2026", css="exec-metric", content=(
-        f'<span class="exec-label" title="Начислено за 2024–2026 по ч. 2 ст. 6 и ч. 8 ст. 7 214-ФЗ">Неустойка</span>'
-        f'<strong>{_mln(pt_["total"])} <em>млн ₽</em></strong>'
-        f'<span class="exec-delta">за 2024–2026 · мораторий {_mln(pt_["effect_total"])} млн ₽</span>'))
     first_projects = ("bunino", "scandc", "scands")
     display_order = [projects_by_key[key] for key in first_projects if key in projects_by_key]
     display_order.extend(project for project in projects if project["key"] not in first_projects)
-    cards = "".join(summary_project_card(project, DA[project["key"]], act_d) for project in display_order)
-    st.markdown(
-        '<div class="exec-summary">'
-        f'<p class="exec-date">Срез <b>{slice_text}</b> · {len(projects)} ЖК</p>'
-        f'<div class="exec-metrics">{overdue_card}{risk_card}{penalty_card}</div>'
-        f'{penalty_details(pt_, name="портфель", label="Виды и годы")}'
-        '<div class="exec-control">'
-        f'<span>Накоплено, оценка <strong>{fm(tot["accrued_lo"])} – {fm(tot["accrued_up"])}</strong> · '
-        f'сценарий выплат <strong>{fm(LD["expected"])}</strong> · эффект пакета до затрат <strong>{fm(pack_effect)}</strong></span>'
-        f'{N.report_link("money", "Финансы")}</div>'
-        '<h2 class="exec-projects-heading">ЖК</h2>'
-        f'<p class="exec-date">По датам передаточных актов · по {act_d:%d.%m.%Y}</p>'
-        f'<div class="exec-projects">{cards}</div></div>',
-        unsafe_allow_html=True)
-    delays_ = sorted(g["delay"] for g in GANTT_LIST)
-    top_ = GANTT_LIST[0]
-    st.markdown(f'<div class="gantt-l1"><span class="mx-t">Сроки</span><b>+{delays_[len(delays_) // 2]} дн.</b>'
-                f'<span class="mx-s">медиана задержки · максимум {html.escape(top_["name"])} +{top_["delay"]} дн.</span></div>',
-                unsafe_allow_html=True)
-    with st.expander("Гант"):
+    main_rows = [main_row(p_, DA[p_["key"]], act_d) for p_ in display_order]
+    open_card = route.get("card")
+    st.markdown(main_table(main_rows, slice_text), unsafe_allow_html=True)
+    for row_, p_ in zip(main_rows, display_order):
+        st.markdown(f'<div id="card-{p_["key"]}" class="card-anchor"></div>', unsafe_allow_html=True)
+        with st.expander(f'{p_["name"]} · в просрочке {f(row_["overdue"])} · неустойка {_mln(row_["pen_delay"] + row_["pen_remarks"])} млн ₽',
+                         expanded=open_card == p_["key"]):
+            project_card_l2(p_, row_)
+    st.markdown('<div id="card-total" class="card-anchor"></div>', unsafe_allow_html=True)
+    with st.expander(f'Итого портфель · сроки и неустойка по видам', expanded=open_card == "total"):
         U.chart(GT.portfolio_figure(GANTT_LIST), key="gantt_portfolio", height=420)
-        st.markdown(gantt_causes_portfolio(GANTT_LIST), unsafe_allow_html=True)
+        st.markdown(gantt_causes_portfolio(GANTT_LIST)
+                    + '<details class="mx mx-l3"><summary>Неустойка по годам</summary>'
+                    + penalty_years(PEN_T["total"], name="портфель") + '</details>' + basis_details(), unsafe_allow_html=True)
+    st.markdown(
+        '<div class="exec-control">'
+        f'<span>Неустойка в день <strong>{f(round(tot["risk_day"]))} ₽</strong> · за неделю {sgm(rk_d)}/день · '
+        f'накоплено, оценка <strong>{fm(tot["accrued_lo"])} – {fm(tot["accrued_up"])}</strong> · '
+        f'сценарий выплат <strong>{fm(LD["expected"])}</strong></span>{N.report_link("money", "Финансы")}</div>',
+        unsafe_allow_html=True)
     st.markdown('<nav class="pf-links" aria-label="Открыть раздел из сводки">' + "".join(
         N.report_link(key) for key in ("segments", "dynamics", "decisions", "remarks", "orders", "forecast")
     ) + '</nav>', unsafe_allow_html=True)

@@ -57,24 +57,25 @@ with sync_playwright() as pw:
 
     p.set_viewport_size({"width": 1440, "height": 1000})
     shot("01_first_screen")
-    # матрёшка: уровень 1 свёрнут → уровень 2 (виды и годы) → уровень 3 (основания)
-    port = f.locator(".exec-summary > details.mx-l2").first
-    port.locator("summary").first.click(); time.sleep(0.5)
-    port.scroll_into_view_if_needed(); shot("01c_portfolio_penalty_level2")
-    port.locator("details.mx-l3 > summary").first.click(); time.sleep(0.5)
-    port.scroll_into_view_if_needed(); shot("01d_portfolio_penalty_level3")
-    gl = f.locator(".gantt-l1").first
-    gl.scroll_into_view_if_needed(); shot("01g_gantt_collapsed")
-    f.locator("[data-testid=stExpander] summary", has_text="Гант").first.click(); time.sleep(2)
-    f.locator(".js-plotly-plot").last.scroll_into_view_if_needed(); time.sleep(1); shot("01h_gantt_portfolio")
-    f.locator("details.mx-l3 > summary", has_text="Причины").first.click(); time.sleep(0.5)
-    f.locator("table.gantt-causes").scroll_into_view_if_needed(); shot("01i_gantt_portfolio_causes")
-    f.locator(".exec-summary").scroll_into_view_if_needed()
-    card = f.locator(".exec-project").first
-    card.scroll_into_view_if_needed(); shot("01e_project_card_collapsed")
-    card.locator("details.mx-l2 > summary").nth(1).click(); time.sleep(0.5)
-    card.locator("details.mx-l3 > summary").first.click(); time.sleep(0.5)
-    card.scroll_into_view_if_needed(); shot("01f_project_card_expanded")
+    # уровень 1: главная таблица (строки свёрнуты)
+    mt = f.locator("#main-portfolio")
+    mt.scroll_into_view_if_needed(); mt.screenshot(path=OUT + f"01a_main_table_{tag}_1440.png")
+    # уровень 2: клик по ЖК → карточка с диаграммой Ганта
+    mt.get_by_role("link", name="Деснаречье", exact=True).click()
+    exp = f.locator("[data-testid=stExpander]", has_text="Деснаречье · в просрочке").first
+    exp.locator(".js-plotly-plot").first.wait_for(state="visible", timeout=60000); time.sleep(2)
+    exp.scroll_into_view_if_needed(); shot("01b_card_desn_gantt")
+    p.set_viewport_size({"width": 1440, "height": 2200}); time.sleep(1)
+    exp.screenshot(path=OUT + f"01c_card_desn_level2_{tag}_1440.png")
+    # уровень 3: причины, передачи, неустойка по годам, основания, решения
+    for lab in ("Причины", "Передачи по годам", "Неустойка по годам", "Основания", "Решения"):
+        exp.locator("details.mx-l3 > summary", has_text=lab).first.click(); time.sleep(0.4)
+    p.set_viewport_size({"width": 1440, "height": 3200}); time.sleep(1)
+    exp.screenshot(path=OUT + f"01d_card_desn_level3_{tag}_1440.png")
+    p.set_viewport_size({"width": 1440, "height": 1000}); time.sleep(1)
+    tot = f.locator("[data-testid=stExpander]", has_text="Итого портфель ·").first
+    tot.locator("summary").first.click(); time.sleep(2)
+    tot.scroll_into_view_if_needed(); shot("01e_total_gantt")
     for section, anchor, name in (
         ("ЖК", "segments", "02_portfolio_table"),
         ("Причины непередачи", "reasons", "04_reasons"),
@@ -109,8 +110,7 @@ with sync_playwright() as pw:
     m = b.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2)
     fm, _ = login(m)
     m.screenshot(path=OUT + f"13_mobile_first_{tag}_390.png")
-    fm.get_by_role("link", name="Квартиры в просрочке по ЖК", exact=True).click()
-    fm.locator("#segments").wait_for(state="visible")
+    fm.locator("#main-portfolio").scroll_into_view_if_needed(); time.sleep(0.5)
     m.screenshot(path=OUT + f"14_mobile_table_{tag}_390.png")
     print("ширина прокрутки на мобильном:", fm.evaluate("()=>document.documentElement.scrollWidth"), "из 390")
     b.close()
