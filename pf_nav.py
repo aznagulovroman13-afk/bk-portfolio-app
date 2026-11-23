@@ -28,7 +28,7 @@ PROJECT_VIEWS = {
     "money": "Финансы",
     "dynamics": "Динамика",
 }
-ROUTE_FIELDS = ("view", "jk", "tab", "corpus", "unit", "card")
+ROUTE_FIELDS = ("view", "jk", "tab", "corpus", "unit", "card", "cell")
 
 
 def link(label, *, content=None, css="", current=False, **route):
@@ -74,7 +74,7 @@ export default function ({data, setTriggerValue}) {
             try {
                 const address = new URL(window.parent.location.href);
                 const route = new URLSearchParams(data);
-                for (const key of ['view', 'jk', 'tab', 'corpus', 'unit', 'card']) {
+                for (const key of ['view', 'jk', 'tab', 'corpus', 'unit', 'card', 'cell']) {
                     if (route.has(key)) address.searchParams.set(key, route.get(key));
                     else address.searchParams.delete(key);
                 }

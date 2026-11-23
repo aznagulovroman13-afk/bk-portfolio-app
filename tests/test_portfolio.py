@@ -19,6 +19,11 @@ import pf_demo  # noqa: E402
 import pf_model as PF  # noqa: E402
 import pf_stats  # noqa: E402
 
+def _plain_cells(table):
+    """Ячейки сводки — ссылки на панели детализации; для сверки чисел снимаем обёртку ссылки."""
+    return re.sub(r'<a href="[^"]*" data-pf-route class="cell">(.*?)</a>', r"\1", table)
+
+
 P0 = dict(price=C.ILLUSTR_PRICE, price_mm=C.MM_PRICE, price_nhp=C.NHP_PRICE)
 BAD = re.compile("(" + "|".join(["app" + "le", "айф" + "он", "iph" + "one", "а1" + "01", "a1" + "01", r"power\s*" + "bi", r"инн\b", r"\b\d{10,12}\b"]) + ")", re.I)
 # слова, которых не должно быть на экранах (собраны из частей, чтобы тест не находил сам себя)
@@ -364,7 +369,7 @@ def test_first_screen_shows_annual_transfers_by_project(D):
                   "Срез 20.11.2026", "Итого портфель", "Передачи по годам"):
         assert label in t, label
     assert "Что согласовать" not in t and "Нет данных" not in t
-    table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    table = _plain_cells(next(m.value for m in at.markdown if 'class="fin main-table"' in m.value))
     assert table.index("Бунинские кварталы") < table.index("Скандинавия Центр") < table.index("Дзен-кварталы")
     visible = re.findall(r'<tr><td><a [^>]*>([^<]+)</a>', table)
     assert visible == ["Бунинские кварталы", "Скандинавия Центр", "Дзен-кварталы"]
@@ -758,7 +763,7 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
     assert "Портфель ЖК · неустойка" not in t and 'id="penalty-summary"' not in raw
     assert 'class="exec-metric"' not in raw            # верхние карточки заменены главной таблицей
     pen = {r["key"]: r for r in PN.table(D, PF.build(D, dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])["rows"]}
-    table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    table = _plain_cells(next(m.value for m in at.markdown if 'class="fin main-table"' in m.value))
     for h in re.findall(r"<th[^>]*>([^<]+)</th>", table):
         assert len(h.split()) <= 3, h
     names = dict(pf_data.PROJECTS)
@@ -768,7 +773,7 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
         if name not in cards:                       # свёрнутые ЖК: карточка открывается кликом по строке
             _open(at, card=key)
             cards = {e.label.split(" · ")[0]: e for e in at.expander if " · в просрочке " in e.label}
-            table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+            table = _plain_cells(next(m.value for m in at.markdown if 'class="fin main-table"' in m.value))
             assert 'id="mt-more" class="mt-more" checked' in table and cards[name].proto.expanded
         row = table.split(f'#card-{key}"', 1)[1].split("</tr>", 1)[0]
         tds = re.findall(r'<td class="r[^"]*">([^<]+)</td>', row)
@@ -852,7 +857,7 @@ def test_main_table_totals_are_consistent(D):
     """Главная таблица: Итого = сумма строк; неустойка = расчёт pf_penalty; просрочка = overdue_kv модели."""
     import pf_penalty as PN
     at = _login()
-    table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    table = _plain_cells(next(m.value for m in at.markdown if 'class="fin main-table"' in m.value))
     num = lambda s: float(s.replace("\xa0", "").replace(" ", "").replace(",", "."))
     rows = {}
     for tr in re.findall(r"<tr(?! class=\"mt-toggle)[^>]*>(.*?)</tr>", table.split("<tbody>", 1)[1]):
@@ -892,7 +897,7 @@ def test_responsible_party_matches_gantt_critical_stage(D):
         if crit["owner"]["company"]:
             assert crit["owner"]["company"] in set(D[key]["contractors"]["Подрядчик"]) and crit["owner"]["company"].startswith("ООО")
     at = _login()
-    table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    table = _plain_cells(next(m.value for m in at.markdown if 'class="fin main-table"' in m.value))
     assert ">Ответственный</th>" in table
     names = dict(pf_data.PROJECTS)
     for key, g in G.items():
@@ -911,3 +916,72 @@ def test_responsible_party_matches_gantt_critical_stage(D):
         total = sum(r["penalty_ddu"] + r["penalty_rem"] for r in shown)
         # вся неустойка 2026 ЖК распределена по ответственным
         assert total == pytest.approx(pen[key]["ddu"][2026] + pen[key]["remarks"][2026], rel=1e-9)
+
+
+def test_drill_apartment_house_project_consistency(D):
+    """Матрёшка ЖК → дом → квартира: суммы квартир = дом, суммы домов = ЖК (сводка и pf_penalty)."""
+    import pf_penalty as PN, pf_gantt as GT, pf_drill as DR
+    model = PF.build(D, dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"]
+    pen = {r["key"]: r for r in PN.table(D, model)["rows"]}
+    G = {g["key"]: g for g in GT.portfolio(D, model, pen)}
+    for p in model:
+        k = p["key"]
+        dr = DR.build(D[k], G[k], p["price"], pen[k], p["decisions"][0]["key"] if p.get("decisions") else "")
+        kv = D[k]["units"][D[k]["units"]["Тип объекта"].eq("Квартира")]
+        assert sum(h["total_kv"] for h in dr["houses"]) == len(kv) == len(dr["apts"])
+        for h in dr["houses"]:
+            a = h["apts"]
+            assert h["over"] == sum(x["over"] for x in a) and h["left26"] == sum(x["left26"] for x in a)
+            assert h["ddu"] == pytest.approx(sum(x["ddu"] for x in a)) and h["rem"] == pytest.approx(sum(x["rem"] for x in a))
+            assert h["open"] == sum(x["open"] for x in a)
+            # ответственный дома — участник с наибольшей неустойкой квартир дома
+            by = {}
+            for x in a:
+                if x["stage"]:
+                    by[x["owner"]] = by.get(x["owner"], 0) + x["total"]
+            assert h["resp"] == (max(by, key=lambda o: (by[o], o == G[k]["responsible"]["short"])) if by else "—")
+            for x in a:
+                assert x["ddu"] == pytest.approx(p["price"] * x["rate"] / 100 / 150 * x["days26"], rel=1e-9, abs=1e-6)
+        t = dr["totals"]
+        assert t["over"] == p["overdue_kv"]
+        assert t["ddu"] == pytest.approx(pen[k]["ddu"][2026], rel=1e-9)
+        assert t["rem"] == pytest.approx(pen[k]["remarks"][2026], rel=1e-9)
+        assert t["open"] == p["remarks"]
+        import pandas as pd
+        due = pd.to_datetime(kv["Срок по ДДУ"])
+        assert t["left26"] == int((due.dt.year.eq(2026) & ~C.transferred_mask(kv)).sum())
+        # главная доля неустойки — у ответственного ЖК (критический этап Ганта)
+        by = {}
+        for x in dr["apts"]:
+            if x["stage"]:
+                by[x["owner"]] = by.get(x["owner"], 0) + x["total"]
+        assert max(by, key=by.get) == G[k]["responsible"]["short"]
+
+
+def test_every_main_table_cell_drills_down():
+    """Каждая ячейка сводки — ссылка на панель; панель ЖК раскрывается до домов и квартир, панель «Итого» — по ЖК."""
+    at = _login()
+    raw = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    cells = ("t2024", "t2025", "t2026", "left2026", "overdue", "pen_delay", "pen_remarks", "resp")
+    for key, _ in list(pf_data.PROJECTS) + [("total", "Итого")]:
+        for c in cells:
+            assert f'href="/?card={key}&amp;cell={c}#card-{key}" data-pf-route class="cell"' in raw, (key, c)
+    names = dict(pf_data.PROJECTS)
+    for c in cells:
+        _open(at, card="bunino", cell=c)
+        e = next(e for e in at.expander if e.label.startswith(names["bunino"] + " · "))
+        inner = " ".join(m.value for m in e.markdown)
+        assert f'id="cell-bunino-{c}"' in inner, c
+        if c in ("t2026", "left2026", "overdue", "pen_delay", "pen_remarks"):
+            assert 'class="dr-house"' in inner and 'class="dr-apt' in inner and 'class="dr-l4"' in inner
+        _open(at, card="total", cell=c)
+        e = next(e for e in at.expander if e.label.startswith("Итого портфель"))
+        tinner = " ".join(m.value for m in e.markdown)
+        assert f'id="cell-total-{c}"' in tinner and all(n in tinner for n in names.values())
+    # уровень «Дома» в карточке: все корпуса и итог ЖК
+    _open(at, card="bunino")
+    e = next(e for e in at.expander if e.label.startswith(names["bunino"] + " · "))
+    inner = " ".join(m.value for m in e.markdown)
+    assert "<summary>Дома · " in inner and "Итого ЖК" in inner and "Все квартиры" in inner
+    assert not re.search(r"\b\d{1,2}\.\d{2}\.\d{4}\b", inner.replace("22.03.2024", "").replace("31.12.2025", "").replace("31.12.2026", "")
+                         .replace("01.09.2024", "").replace("01.07.2023", "").replace("01.01.2025", "").replace("01.01.2026", ""))

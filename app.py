@@ -26,18 +26,19 @@ import pf_nav as N  # noqa: E402
 import pf_model as PF  # noqa: E402
 import pf_penalty as PN  # noqa: E402
 import pf_gantt as GT  # noqa: E402
+import pf_drill as DR  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
-REPORT_SCHEMA = "v24"
+REPORT_SCHEMA = "v25"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
-        or getattr(GT, "GANTT_SCHEMA", None) != "g2" or "card" not in N.ROUTE_FIELDS:
-    for module in (U, DC, DT, pf_demo, PF, PN, GT):
+        or getattr(GT, "GANTT_SCHEMA", None) != "g2" or getattr(DR, "DRILL_SCHEMA", None) != "d1" or "cell" not in N.ROUTE_FIELDS:
+    for module in (U, DC, DT, pf_demo, PF, PN, GT, DR):
         reload(module)
-    if "card" not in N.ROUTE_FIELDS:
+    if "cell" not in N.ROUTE_FIELDS:
         try:
             reload(N)
         except Exception:  # компонент маршрутов уже зарегистрирован — достаточно новых полей
-            N.ROUTE_FIELDS = (*N.ROUTE_FIELDS, "card")
+            N.ROUTE_FIELDS = tuple(dict.fromkeys((*N.ROUTE_FIELDS, "card", "cell")))
 
 st.markdown(U.CSS, unsafe_allow_html=True)
 st.markdown(
@@ -343,13 +344,16 @@ def main_table(rows, slice_label, open_more=False):
     Видны три ЖК (MAIN_TOP), остальные раскрываются строкой «Развернуть»; «Итого портфель» — всегда по всем ЖК."""
     tot = {k: sum(r[k] for r in rows) for k in ("t2024", "t2025", "t2026", "left2026", "overdue", "pen_delay", "pen_remarks", "effect")}
     def cells(r):
-        return ("".join(f'<td class="r">{f(r[k])}</td>' for k, _ in MAIN_COLS)
-                + f'<td class="r sep">{f(r["left2026"])}</td><td class="r">{f(r["overdue"])}</td>'
-                + f'<td class="r sep">{_mln(r["pen_delay"])}</td><td class="r">{_mln(r["pen_remarks"])}</td>')
+        key = r.get("key", "total")
+        a = lambda v, cell: N.link(v, css="cell", card=key, cell=cell)
+        return ("".join(f'<td class="r">{a(f(r[k]), k)}</td>' for k, _ in MAIN_COLS)
+                + f'<td class="r sep">{a(f(r["left2026"]), "left2026")}</td><td class="r">{a(f(r["overdue"]), "overdue")}</td>'
+                + f'<td class="r sep">{a(_mln(r["pen_delay"]), "pen_delay")}</td><td class="r">{a(_mln(r["pen_remarks"]), "pen_remarks")}</td>')
     def resp(r):
         o = r["resp"]
         sub = f'<span class="sub">{html.escape(o["company"])}</span>' if o["company"] else ""
-        return f'<td class="sep resp" title="Критический этап: {html.escape(r["resp_stage"])}">{html.escape(o["short"])}{sub}</td>'
+        return (f'<td class="sep resp" title="Критический этап: {html.escape(r["resp_stage"])}">'
+                f'{N.link(o["short"], css="cell", card=r["key"], cell="resp")}{sub}</td>')
     top = [r for r in rows if r["key"] in MAIN_TOP]
     more = [r for r in rows if r["key"] not in MAIN_TOP]
     body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}{resp(r)}</tr>' for r in top)
@@ -357,7 +361,7 @@ def main_table(rows, slice_label, open_more=False):
     if more:
         body += (f'<tr class="mt-toggle"><td colspan="9"><label for="mt-more">'
                  f'<span class="mt-open">▾ Развернуть · ещё {len(more)} ЖК</span><span class="mt-close">▴ Свернуть</span></label></td></tr>')
-    body += f'<tr class="tot"><td>{N.link("Итого портфель", card="total")}</td>{cells(tot)}<td class="sep"></td></tr>'
+    body += f'<tr class="tot"><td>{N.link("Итого портфель", card="total")}</td>{cells(tot)}<td class="sep resp">{N.link("По ЖК", css="cell", card="total", cell="resp")}</td></tr>'
     return ('<section class="main-port" id="main-portfolio">'
             f'<input type="checkbox" id="mt-more" class="mt-more"{" checked" if open_more else ""}>'
             f'<p class="exec-date">Срез <b>{slice_label}</b> · {len(rows)} ЖК · неустойка в млн ₽ с учётом моратория</p>'
@@ -392,9 +396,116 @@ def responsibility_table(g):
             f'<tbody>{body}</tbody></table></div>')
 
 
-def project_card_l2(p, row):
+CELL_TITLES = {"t2024": "Передача 2024", "t2025": "Передача 2025", "t2026": "Передача 2026", "left2026": "Остаток 2026",
+               "overdue": "В просрочке", "pen_delay": "Неустойка за задержку", "pen_remarks": "Неустойка за замечания",
+               "resp": "Ответственный"}
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def _drill_data(key: str, price: float, schema: str):
+    """Квартиры и дома ЖК (pf_drill) — считаются один раз на ЖК и цену ДДУ."""
+    p = projects_by_key[key]
+    cause = p["decisions"][0]["key"] if p.get("decisions") else ""
+    return DR.build(DA[key], GANTT[key], p["price"], PEN[key], cause)
+
+
+def drill_data(key, schema=REPORT_SCHEMA):
+    return _drill_data(key, float(projects_by_key[key]["price"]), schema)
+
+
+def _months_table(counts, label):
+    head = "".join(f'<th class="r">{m}</th>' for m in DR.MONTHS)
+    cells = "".join(f'<td class="r">{f(c) if c else "—"}</td>' for c in counts)
+    return (f'<div class="tw"><table class="fin cell-months" aria-label="{html.escape(label)}"><thead><tr><th>Месяц</th>{head}<th class="r">Год</th></tr></thead>'
+            f'<tbody><tr><td>Передано</td>{cells}<td class="r"><b>{f(sum(counts))}</b></td></tr></tbody></table></div>')
+
+
+def _year_pen_table(pen, kind):
+    """Неустойка вида kind по годам: начислено, мораторий; сумма лет = ячейка сводки."""
+    rows = "".join(f'<tr><td>{y}</td><td class="r">{_mln(pen[kind][y], 2 if kind == "remarks" else 1)}</td>'
+                   f'<td class="r">{_mln(pen["effect"][kind][y], 2 if kind == "remarks" else 1) if pen["effect"][kind][y] else "—"}</td>'
+                   f'<td>{"мораторий ПП № 326" if PN.year_in_moratorium(y) else ("частично мораторий" if y == 2024 else "по квартирам среза — ниже")}</td></tr>'
+                   for y in PN.YEARS)
+    tot = sum(pen[kind].values())
+    return ('<div class="tw"><table class="fin cell-years"><thead><tr><th>Год</th><th class="r">Начислено, млн ₽</th>'
+            '<th class="r tip" title="Не начислено в период моратория ПП № 326">Мораторий, млн ₽</th><th>Расчёт</th></tr></thead>'
+            f'<tbody>{rows}<tr class="tot"><td>Итого</td><td class="r">{_mln(tot, 2 if kind == "remarks" else 1)}</td><td></td><td></td></tr></tbody></table></div>')
+
+
+def orders_by_role(p):
+    data = DA[p["key"]]
+    items = []
+    for d_ in p.get("decisions", []):
+        stage = GT.CAUSES.get(d_["key"], GT.DEFAULT_CAUSE)[0]
+        o = GT.owner(stage, d_["key"], data)
+        items.append(f'<li><b>{html.escape(o["short"])}</b> — {html.escape(d_["title"])}</li>')
+    return f'<ul class="card-decisions">{"".join(items)}</ul>'
+
+
+def cell_panel(p, row, cell):
+    """Панель ячейки сводки: каждая цифра раскрывается до домов и квартир (суммы совпадают с ячейкой)."""
+    key = p["key"]
+    dr = drill_data(key, REPORT_SCHEMA)
+    pen = PEN[key]
+    g = GANTT[key]
+    title = CELL_TITLES[cell]
+    if cell in ("t2024", "t2025"):
+        y = int(cell[1:])
+        eff = pen["effect"]["ddu"][y] + pen["effect"]["remarks"][y]
+        pen_txt = (f'Неустойка {y} года не начислялась — мораторий ПП № 326 (не начислено {_mln(eff)} млн ₽)'
+                   if PN.year_in_moratorium(y) else
+                   f'Неустойка {y} года: за задержку {_mln(pen["ddu"][y])} млн ₽, за замечания {_mln(pen["remarks"][y], 2)} млн ₽; '
+                   f'с 22.03.2024 — мораторий ПП № 326 (не начислено {_mln(eff)} млн ₽)')
+        body = (f'<p class="cell-note">Ранее переданные очереди ЖК: передано {f(row[cell])} квартир. {pen_txt}.</p>'
+                + _months_table(DR.split_months(row[cell]), title))
+    elif cell == "t2026":
+        acc = [a for a in dr["apts"] if DR.MODES["t2026"][0](a)]
+        months = [sum(pd.Timestamp(a["accepted"]).month == m for a in acc) for m in range(1, 13)]
+        body = _months_table(months, title) + DR.houses_html(dr, "t2026", uid="c-")
+    elif cell == "left2026":
+        stages = {}
+        for a in dr["apts"]:
+            if a["left26"]:
+                stages[a["stage_name"]] = stages.get(a["stage_name"], 0) + 1
+        st_line = " · ".join(f"{html.escape(k)} {f(v)}" for k, v in sorted(stages.items(), key=lambda x: -x[1]))
+        body = f'<p class="cell-note">По этапам: {st_line}.</p>' + DR.houses_html(dr, "left2026", uid="c-")
+    elif cell == "overdue":
+        body = (f'<p class="cell-note">Не переданы, срок по ДДУ нарушен. Причина ЖК: {html.escape(g["cause"])}.</p>'
+                + DR.houses_html(dr, "over", uid="c-"))
+    elif cell == "pen_delay":
+        body = (_year_pen_table(pen, "ddu") + f'<p class="cell-note">2026 по квартирам: цена ДДУ × ставка / 150 × дни; ч. 2 ст. 6 214-ФЗ, '
+                f'отсрочка уплаты по ПП № 2227 до 31.12.2026.</p>' + DR.houses_html(dr, "ddu", uid="c-"))
+    elif cell == "pen_remarks":
+        body = (_year_pen_table(pen, "remarks") + '<p class="cell-note">2026 по квартирам с просроченными замечаниями; ч. 8 ст. 7 214-ФЗ '
+                'в ред. 266-ФЗ: 1/150 ставки от стоимости устранения, не более 3% цены договора.</p>' + DR.houses_html(dr, "rem", uid="c-"))
+    else:
+        body = (responsibility_table(g) + '<div class="card-resp-ttl">Поручения по ролям</div>' + orders_by_role(p))
+    return (f'<section class="cell-panel" id="cell-{key}-{cell}"><div class="cell-ttl">{html.escape(title)} · '
+            f'<b>{html.escape(p["name"])}</b></div>{body}</section>')
+
+
+def total_cell_panel(rows, cell):
+    """Ячейка строки «Итого портфель»: разбивка по ЖК, каждая строка ведёт к ячейке ЖК."""
+    title = CELL_TITLES[cell]
+    if cell == "resp":
+        body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"], cell="resp")}</td><td>{html.escape(r["resp"]["label"])}</td>'
+                       f'<td>{html.escape(r["resp_stage"])}</td><td class="r">+{GANTT[r["key"]]["delay"]}</td></tr>' for r in rows)
+        head = '<th>ЖК</th><th>Ответственный</th><th>Критический этап</th><th class="r">Дней</th>'
+    else:
+        val = (lambda r: _mln(r[cell], 1)) if cell.startswith("pen") else (lambda r: f(r[cell]))
+        body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"], cell=cell)}</td><td class="r">{val(r)}</td></tr>' for r in rows)
+        tv = sum(r[cell] for r in rows)
+        body += f'<tr class="tot"><td>Итого портфель</td><td class="r">{_mln(tv) if cell.startswith("pen") else f(tv)}</td></tr>'
+        head = f'<th>ЖК</th><th class="r">{html.escape(title)}</th>'
+    return (f'<section class="cell-panel" id="cell-total-{cell}"><div class="cell-ttl">{html.escape(title)} · <b>Итого портфель</b></div>'
+            f'<div class="tw"><table class="fin cell-total"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div></section>')
+
+
+def project_card_l2(p, row, cell=None):
     """Уровень 2: карточка ЖК с ключевыми показателями и диаграммой Ганта; уровень 3 — причины, неустойка, основания, решения."""
     g = GANTT[p["key"]]
+    if cell in CELL_TITLES:
+        st.markdown(cell_panel(p, row, cell), unsafe_allow_html=True)
     st.markdown(
         '<dl class="exec-project-metrics card-metrics">'
         f'<div><dt>В просрочке</dt><dd>{f(row["overdue"])}</dd></div>'
@@ -403,8 +514,9 @@ def project_card_l2(p, row):
         f'<div><dt>Сроки</dt><dd>+{g["delay"]} дн.</dd></div>'
         f'<div><dt>Критический этап</dt><dd>{html.escape(g["critical_name"])}</dd></div></dl>', unsafe_allow_html=True)
     U.chart(GT.project_figure(g), key=f"gantt_main_{p['key']}", height=540)
-    st.markdown('<div class="card-resp"><div class="card-resp-ttl">Ответственные за задержку</div>' + responsibility_table(g) + '</div>',
-                unsafe_allow_html=True)
+    st.markdown('<div class="card-resp"><div class="card-resp-ttl">Ответственные за задержку</div>' + responsibility_table(g) + '</div>'
+                + f'<details class="mx mx-l2 dr-sec"><summary>Дома · {len(drill_data(p["key"], REPORT_SCHEMA)["houses"])}</summary>'
+                + DR.houses_html(drill_data(p["key"], REPORT_SCHEMA), "all") + '</details>', unsafe_allow_html=True)
     decisions = "".join(
         f'<li><b>{html.escape(d_["title"])}</b>{" — главное решение" if i == 0 else ""}'
         f'<span class="sub">−{fm(d_["effect_day"])} в день к концу 4-й недели</span></li>' for i, d_ in enumerate(p["decisions"]))
@@ -756,9 +868,11 @@ if view == "summary":
         st.markdown(f'<div id="card-{p_["key"]}" class="card-anchor"></div>', unsafe_allow_html=True)
         with st.expander(f'{p_["name"]} · в просрочке {f(row_["overdue"])} · неустойка {_mln(row_["pen_delay"] + row_["pen_remarks"])} млн ₽',
                          expanded=open_card == p_["key"]):
-            project_card_l2(p_, row_)
+            project_card_l2(p_, row_, route.get("cell") if open_card == p_["key"] else None)
     st.markdown('<div id="card-total" class="card-anchor"></div>', unsafe_allow_html=True)
     with st.expander(f'Итого портфель · сроки и неустойка по видам', expanded=open_card == "total"):
+        if open_card == "total" and route.get("cell") in CELL_TITLES:
+            st.markdown(total_cell_panel(main_rows, route["cell"]), unsafe_allow_html=True)
         U.chart(GT.portfolio_figure(GANTT_LIST), key="gantt_portfolio", height=520)
         st.markdown(gantt_causes_portfolio(GANTT_LIST)
                     + '<details class="mx mx-l3"><summary>Неустойка по годам</summary>'

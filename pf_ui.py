@@ -158,6 +158,40 @@ details.mx-cell > summary::before { content: none; } details.mx-cell > summary::
 .main-table td.resp { font-size: 12px; white-space: nowrap; } .main-table td.resp .sub, .resp-table .sub { display: block; color: #5b6778; font-size: 11px; }
 .card-resp { margin: 6px 0 10px; } .card-resp-ttl { font-size: 12px; font-weight: 650; color: #14243b; margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; }
 .resp-table tr.crit td:first-child b { color: #b3261e; }
+.main-table a.cell { color: inherit; text-decoration: none; border-bottom: 1px dotted #9aa8bb; }
+.main-table a.cell:hover { color: #23406e; border-bottom-color: #23406e; background: #eef2f8; }
+.main-table td.resp a.cell { font-weight: 600; }
+.cell-panel { border: 1px solid #c9d2df; border-left: 3px solid #23406e; background: #f7f9fc; padding: 10px 12px; margin: 4px 0 12px; }
+.cell-ttl { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #5b6778; margin-bottom: 6px; }
+.cell-ttl b { color: #14243b; } .cell-note { font-size: 12.5px; color: #3a4658; margin: 4px 0 8px; }
+.cell-months th, .cell-months td { padding: 4px 6px; font-size: 12px; }
+.dr-houses, .dr-apts { font-size: 12.5px; } .dr-houses { margin: 6px 0; }
+.dr-row { display: grid; grid-template-columns: 1.3fr repeat(calc(var(--hcols) - 1), 1fr); gap: 6px; align-items: center; padding: 6px 8px; border-bottom: 1px solid #e1e6ee; }
+.dr-row span.r { text-align: right; } .dr-row span.resp { padding-left: 14px; } .dr-row i { display: block; font-style: normal; color: #5b6778; font-size: 11px; }
+.dr-h { background: #eef2f8; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #3a4658; }
+.dr-h b { font-weight: 650; } .dr-tot { border-top: 2px solid #14243b; background: #f3f5f9; }
+.dr-house > summary, .dr-apt > summary { list-style: none; cursor: pointer; } .dr-house > summary::-webkit-details-marker, .dr-apt > summary::-webkit-details-marker { display: none; }
+.dr-house > summary .dr-row > span:first-child { font-weight: 650; color: #23406e; }
+.dr-house > summary .dr-row > span:first-child::before { content: "▸ "; color: #8a97aa; } .dr-house[open] > summary .dr-row > span:first-child::before { content: "▾ "; }
+.dr-house > summary:hover, .dr-apt > summary:hover { background: #eef2f8; }
+.dr-house[open] > summary { background: #e8edf5; }
+.dr-apts { margin: 0 0 8px 18px; border-left: 2px solid #c9d2df; }
+.dr-apts .dr-row { grid-template-columns: repeat(var(--cols), 1fr); padding: 4px 8px; }
+.dr-apt > summary .dr-row > span:first-child { color: #23406e; font-weight: 600; }
+.dr-apt.ok { display: none; } .dr-all { display: none; } .dr-all:checked ~ .dr-list .dr-apt.ok { display: block; }
+.dr-tog { display: inline-block; cursor: pointer; font-size: 12px; font-weight: 600; color: #23406e; padding: 4px 8px; }
+.dr-tog .c { display: none; } .dr-all:checked + .dr-tog .o { display: none; } .dr-all:checked + .dr-tog .c { display: inline; }
+.dr-l4 { margin: 2px 8px 8px 16px; padding: 8px 10px; background: #fff; border: 1px solid #e1e6ee; font-size: 12px; }
+.dr-tl { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; padding: 0; margin: 0 0 6px; }
+.dr-tl li span { color: #5b6778; margin-right: 4px; } .dr-tl li + li::before { content: "→ "; color: #8a97aa; }
+.dr-l4 p { margin: 3px 0; } .dr-empty { color: #5b6778; font-size: 12px; }
+.dr-row > span:first-child { white-space: nowrap; }
+@media (max-width: 640px) {
+  .dr-houses { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .dr-houses .dr-row { min-width: calc(var(--hcols) * 84px); font-size: 11.5px; gap: 4px; padding: 5px 6px; }
+  .dr-apts .dr-row { min-width: calc(var(--cols) * 92px); }
+  .dr-apts { margin-left: 4px; } .dr-l4 { position: sticky; left: 0; max-width: 320px; }
+}
 .mt-more { display: none; } .main-table tr.mt-hidden { display: none; } .mt-more:checked ~ .tw .main-table tr.mt-hidden { display: table-row; }
 .main-table tr.mt-toggle td { padding: 0; border-bottom: 1px solid #d5dbe5; }
 .main-table tr.mt-toggle label { display: block; cursor: pointer; padding: 7px 10px; color: #23406e; font-size: 12px; font-weight: 600; letter-spacing: .02em; }

@@ -77,10 +77,33 @@ with sync_playwright() as pw:
         exp.locator("details.mx-l3 > summary", has_text=lab).first.click(); time.sleep(0.4)
     p.set_viewport_size({"width": 1440, "height": 3200}); time.sleep(1)
     exp.screenshot(path=OUT + f"01d_card_bunino_level3_{tag}_1440.png")
+    # матрёшка ЖК → дома → квартиры → квартира
+    sec = exp.locator("details.dr-sec").first
+    sec.locator("summary").first.click(); time.sleep(0.5)
+    sec.screenshot(path=OUT + f"01f_bunino_houses_{tag}_1440.png")
+    house = sec.locator("details.dr-house").first
+    house.locator("summary").first.click(); time.sleep(0.5)
+    house.screenshot(path=OUT + f"01g_bunino_house_apartments_{tag}_1440.png")
+    apt = house.locator("details.dr-apt").first
+    apt.locator("summary").first.click(); time.sleep(0.5)
+    house.screenshot(path=OUT + f"01h_bunino_apartment_{tag}_1440.png")
+    # активные ячейки сводки
+    for cell, label in (("t2025", "2025"), ("overdue", "overdue"), ("pen_delay", "pen_delay"), ("resp", "resp")):
+        f.locator(f'#main-portfolio a[href*="card=bunino&cell={cell}"]').first.click()
+        panel = f.locator(f"#cell-bunino-{cell}")
+        panel.wait_for(state="visible", timeout=60000); time.sleep(1)
+        if panel.locator("details.dr-house").count():
+            panel.locator("details.dr-house > summary").first.click(); time.sleep(0.4)
+        panel.screenshot(path=OUT + f"01i_cell_bunino_{label}_{tag}_1440.png")
+    f.locator('#main-portfolio a[href*="card=total&cell=pen_delay"]').first.click()
+    tp = f.locator("#cell-total-pen_delay"); tp.wait_for(state="visible", timeout=60000); time.sleep(1)
+    tp.screenshot(path=OUT + f"01j_cell_total_pen_delay_{tag}_1440.png")
     p.set_viewport_size({"width": 1440, "height": 1000}); time.sleep(1)
     tot = f.locator("[data-testid=stExpander]", has_text="Итого портфель ·").first
-    tot.locator("summary").first.click(); time.sleep(2)
-    tot.scroll_into_view_if_needed(); shot("01e_total_gantt")
+    if not tot.locator("details[open]").count():
+        tot.locator("summary").first.click()
+    time.sleep(2)
+    tot.locator(".js-plotly-plot").first.scroll_into_view_if_needed(); shot("01e_total_gantt")
     for section, anchor, name in (
         ("ЖК", "segments", "02_portfolio_table"),
         ("Причины непередачи", "reasons", "04_reasons"),
