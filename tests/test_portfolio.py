@@ -1013,11 +1013,9 @@ def test_v23_decision_column_strip_card_and_roles(D):
     import pf_roles as R
     at = _login()
     raw = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
-    strip = next(m.value for m in at.markdown if 'class="gd-strip"' in m.value)
-    n = len(re.findall(r"<li>", strip))
-    assert 2 <= n <= 3 and f"Нужно решение ГД · {n}" in strip and f"Нужно решение ГД: {n}" in raw
-    assert all(t.startswith("Утвердить") for t in re.findall(r'<b>([^<]+)</b>', strip))
-    assert strip.count("млн ₽ за 4 нед.") == n and strip.count("cell=decide") == n
+    assert not any('class="gd-strip"' in m.value for m in at.markdown)       # полоса над таблицей убрана
+    m_ = re.search(r"Нужно решение ГД: (\d+)", raw)
+    assert m_ and 2 <= int(m_.group(1)) <= 3
     assert ">Что решить" in raw and "начислено 2024–2026" in raw
     names = dict(pf_data.PROJECTS)
     decs = re.findall(r'cell=decide#card-(\w+)" data-pf-route class="cell" aria-label="([^"]+)"><b>[^<]+</b><span class="sub">−[\d,]+ млн ₽ за 4 нед\. · −\d+ дн\.</span>', raw)
@@ -1060,5 +1058,7 @@ def test_v23_total_decide_panel_lists_every_project():
     text = _open(at, card="total", cell="decide")
     raw = " ".join(m.value for m in at.markdown)
     assert 'id="cell-total-decide"' in raw
+    n = int(re.search(r"Нужно решение ГД · (\d+)", raw).group(1))
+    assert raw.split('class="gd-list"', 1)[1].split("</ol>", 1)[0].count("<li>") == n
     for key in dict(pf_data.PROJECTS):
         assert f"card={key}&amp;cell=decide" in raw

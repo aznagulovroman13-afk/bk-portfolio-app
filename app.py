@@ -977,7 +977,6 @@ if view == "summary":
     st.markdown('<div class="rh exec-header"><div class="kick">Отчёт для генерального директора · Демо-данные</div>'
                 '<div class="ttl">Портфель ЖК</div></div>', unsafe_allow_html=True)
     U.section("Сводка по портфелю", anchor="summary")
-    st.markdown(U.gloss(gd_strip()), unsafe_allow_html=True)
     first_projects = ("bunino", "scandc", "scands")
     display_order = [projects_by_key[key] for key in first_projects if key in projects_by_key]
     display_order.extend(project for project in projects if project["key"] not in first_projects)
