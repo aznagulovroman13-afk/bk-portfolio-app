@@ -192,6 +192,8 @@ details.mx-cell > summary::before { content: none; } details.mx-cell > summary::
   .dr-apts .dr-row { min-width: calc(var(--cols) * 92px); }
   .dr-apts { margin-left: 4px; } .dr-l4 { position: sticky; left: 0; max-width: 320px; }
 }
+.main-table th .unit { display: block; font-weight: 500; text-transform: none; letter-spacing: 0; color: #5b6778; }
+.dr-row i.dr-over { display: block; font-style: normal; color: #b3261e; font-size: 11px; }
 .mt-more { display: none; } .main-table tr.mt-hidden { display: none; } .mt-more:checked ~ .tw .main-table tr.mt-hidden { display: table-row; }
 .main-table tr.mt-toggle td { padding: 0; border-bottom: 1px solid #d5dbe5; }
 .main-table tr.mt-toggle label { display: block; cursor: pointer; padding: 7px 10px; color: #23406e; font-size: 12px; font-weight: 600; letter-spacing: .02em; }

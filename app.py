@@ -29,9 +29,9 @@ import pf_gantt as GT  # noqa: E402
 import pf_drill as DR  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
-REPORT_SCHEMA = "v25"
+REPORT_SCHEMA = "v26"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
-        or getattr(GT, "GANTT_SCHEMA", None) != "g2" or getattr(DR, "DRILL_SCHEMA", None) != "d1" or "cell" not in N.ROUTE_FIELDS:
+        or getattr(GT, "GANTT_SCHEMA", None) != "g2" or getattr(DR, "DRILL_SCHEMA", None) != "d2" or "cell" not in N.ROUTE_FIELDS:
     for module in (U, DC, DT, pf_demo, PF, PN, GT, DR):
         reload(module)
     if "cell" not in N.ROUTE_FIELDS:
@@ -368,7 +368,7 @@ def main_table(rows, slice_label, open_more=False):
             '<div class="tw"><table class="fin main-table"><thead>'
             '<tr><th rowspan="2">ЖК</th><th class="grp" colspan="3" title="Передано квартир по передаточным актам">Передача по годам</th>'
             '<th class="r sep tip" rowspan="2" title="Квартиры со сроком по ДДУ в 2026 году, ещё не переданные">Остаток 2026</th>'
-            '<th class="r tip" rowspan="2" title="Квартиры с нарушенным сроком по ДДУ на дату среза">В просрочке</th>'
+            '<th class="r tip" rowspan="2" title="Квартиры, не переданные по передаточному акту, у которых наступил и нарушен срок передачи по ДДУ, на дату среза">Нарушен срок передачи<span class="unit">кв.</span></th>'
             '<th class="grp sep" colspan="2" title="Начислено за 2024–2026; период моратория ПП № 326 исключён">Неустойка, млн ₽</th>'
             '<th class="sep tip" rowspan="2" title="Участник, отвечающий за критический этап задержки (по диаграмме Ганта)">Ответственный</th></tr>'
             '<tr><th class="r">2024</th><th class="r">2025</th><th class="r">2026</th>'
@@ -397,7 +397,7 @@ def responsibility_table(g):
 
 
 CELL_TITLES = {"t2024": "Передача 2024", "t2025": "Передача 2025", "t2026": "Передача 2026", "left2026": "Остаток 2026",
-               "overdue": "В просрочке", "pen_delay": "Неустойка за задержку", "pen_remarks": "Неустойка за замечания",
+               "overdue": "Нарушен срок передачи, кв.", "pen_delay": "Неустойка за задержку", "pen_remarks": "Неустойка за замечания",
                "resp": "Ответственный"}
 
 
@@ -496,7 +496,7 @@ def total_cell_panel(rows, cell):
         body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"], cell=cell)}</td><td class="r">{val(r)}</td></tr>' for r in rows)
         tv = sum(r[cell] for r in rows)
         body += f'<tr class="tot"><td>Итого портфель</td><td class="r">{_mln(tv) if cell.startswith("pen") else f(tv)}</td></tr>'
-        head = f'<th>ЖК</th><th class="r">{html.escape(title)}{", млн ₽" if cell.startswith("pen") else ", квартир"}</th>'
+        head = f'<th>ЖК</th><th class="r">{html.escape(title)}{", млн ₽" if cell.startswith("pen") else ("" if cell == "overdue" else ", кв.")}</th>'
     return (f'<section class="cell-panel" id="cell-total-{cell}"><div class="cell-ttl">{html.escape(title)} · <b>Итого портфель</b></div>'
             f'<div class="tw"><table class="fin cell-total"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div></section>')
 
@@ -508,7 +508,7 @@ def project_card_l2(p, row, cell=None):
         st.markdown(cell_panel(p, row, cell), unsafe_allow_html=True)
     st.markdown(
         '<dl class="exec-project-metrics card-metrics">'
-        f'<div><dt>В просрочке</dt><dd>{f(row["overdue"])}</dd></div>'
+        f'<div><dt>Нарушен срок передачи, кв.</dt><dd>{f(row["overdue"])}</dd></div>'
         f'<div><dt>Неустойка в день</dt><dd>{f(round(p["risk_day"]))} ₽</dd></div>'
         f'<div><dt>Замечания</dt><dd>{f(p["remarks"])}</dd></div>'
         f'<div><dt>Сроки</dt><dd>+{g["delay"]} дн.</dd></div>'
@@ -655,7 +655,7 @@ if project_key in projects_by_key:
             fig = go.Figure(go.Bar(y=bk["k"], x=bk["n"], orientation="h", marker_color=U.NAVY,
                                    text=[f"{f(n)} {pl(n)} · {fm(r)}/день" for n, r in zip(bk["n"], bk["risk"])], textposition="outside", cliponaxis=False,
                                    hovertemplate="корпус %{y}: %{x} квартир<extra></extra>"))
-            fig.update_layout(title="Корпуса: квартиры в просрочке и неустойка за день", margin=dict(l=8, r=150, t=34, b=8), bargap=.4)
+            fig.update_layout(title="Корпуса: нарушен срок передачи, кв., и неустойка за день", margin=dict(l=8, r=150, t=34, b=8), bargap=.4)
             fig.update_xaxes(showticklabels=False)
             U.chart(fig, key=f"pf_korp_{p['key']}", height=max(200, 36 * len(bk) + 64))
         U.section("Корпуса", "Откройте корпус, чтобы посмотреть шахматку.")
@@ -866,7 +866,7 @@ if view == "summary":
         if p_["key"] not in MAIN_TOP and open_card != p_["key"]:
             continue      # карточки свёрнутых ЖК появляются по клику на строку после «Развернуть»
         st.markdown(f'<div id="card-{p_["key"]}" class="card-anchor"></div>', unsafe_allow_html=True)
-        with st.expander(f'{p_["name"]} · в просрочке {f(row_["overdue"])} · неустойка {_mln(row_["pen_delay"] + row_["pen_remarks"])} млн ₽',
+        with st.expander(f'{p_["name"]} · нарушен срок передачи {f(row_["overdue"])} кв. · неустойка {_mln(row_["pen_delay"] + row_["pen_remarks"])} млн ₽',
                          expanded=open_card == p_["key"]):
             project_card_l2(p_, row_, route.get("cell") if open_card == p_["key"] else None)
     st.markdown('<div id="card-total" class="card-anchor"></div>', unsafe_allow_html=True)
@@ -1004,10 +1004,10 @@ if view == "segments":
     tb.append(["Итого по портфелю", f'{f(tot["overdue_kv"])}<span class="sub">{arrow(d_over)} {sg(d_over)} за неделю</span>', f(tot["ready"]), f(round(tot["risk_day"])), "100%",
                f'<span class="nw">{U.spark([sum(p_["trend"][i] for p_ in projects) for i in range(len(trend_dates))], portfolio_lag, dates=trend_dates, target=portfolio_target)}</span>',
                f(tot["rem"]["left_cum"]), pen_cell(PEN_T["total"]), _mln(PEN_T["total"]["effect_total"]), ""])
-    U.fin_table(["ЖК", "Просрочка", "Готовы", "Неустойка в день", "Доля", "Динамика", "Замечания",
+    U.fin_table(["ЖК", "Нарушен срок, кв.", "Готовы", "Неустойка в день", "Доля", "Динамика", "Замечания",
                  "Неустойка", "Мораторий", "Решение"],
                 tb, right=(1, 2, 3, 4, 6, 7, 8), total_last=True, cls="pt3", hide=(2, 4, 6, 8, 9),
-                tips={1: "Просрочка по ДДУ, квартир", 2: "Готовы к передаче, квартир", 3: "Расчётная неустойка за просрочку передачи, ₽ в день",
+                tips={1: "Не переданы, срок передачи по ДДУ нарушен, квартир", 2: "Готовы к передаче, квартир", 3: "Расчётная неустойка за просрочку передачи, ₽ в день",
                       4: "Доля в дневной неустойке портфеля", 5: "Динамика просрочки за 12 недель", 6: "Остаток замечаний",
                       7: "Неустойка начислена за 2024–2026, млн ₽ (ч. 2 ст. 6 и ч. 8 ст. 7 214-ФЗ); нажмите на сумму — по видам",
                       8: "Не начислено по ПП № 326 за 22.03.2024–31.12.2025, млн ₽", 9: "Главное решение и ожидаемый эффект"})
@@ -1218,7 +1218,7 @@ if view == "dynamics":
             pa_headers = ["ЖК", "Двусторонние ПА", "Односторонние ПА", "Тип ПА не указан", "Всего квартир по ПА", "Передано из просрочки на начало недели"]
         U.fin_table(pa_headers, pa_rows, right=range(1, len(pa_headers)), total_last=True)
         st.caption(f"Даты ПА с {dd(period_start + pd.Timedelta(days=1))} по {dd(act_d)} включительно. "
-                   "Одна квартира учитывается один раз. В последней колонке — квартиры, уже находившиеся в просрочке на начало недели.")
+                   "Одна квартира учитывается один раз. В последней колонке — квартиры, у которых срок передачи уже был нарушен на начало недели.")
     lf = go.Figure()
     for p in projects:
         w = p["weekly"]
@@ -1375,7 +1375,7 @@ if view == "orders":
                  for row in plan]
     plan_rows.append(["Итого", f(tot["overdue_kv"]), f(plan_ready), f(plan_pending), f(plan_total), f(plan_new),
                       f(plan_base), f(plan_closing), fm(plan_risk_base), fm(plan_risk)])
-    U.fin_table(["ЖК", "Было в просрочке", "База с записью", "Резерв после проверки", "С резервом", "Новые просрочки",
+    U.fin_table(["ЖК", "Было с нарушенным сроком", "База с записью", "Резерв после проверки", "С резервом", "Новые просрочки",
                  "Остаток, база", "Остаток с резервом", "База, ₽/день", "С резервом, ₽/день"],
                 plan_rows, right=range(1, 10), total_last=True)
     st.caption(f"База: {f(tot['overdue_kv'])} − {f(plan_ready)} + {f(plan_new)} = {f(plan_base)} квартир. "

@@ -67,7 +67,7 @@ with sync_playwright() as pw:
     mt.locator("tr.mt-toggle label").click(); time.sleep(0.3)
     # уровень 2: клик по ЖК → карточка с диаграммой Ганта
     mt.get_by_role("link", name="Бунинские кварталы", exact=True).click()
-    exp = f.locator("[data-testid=stExpander]", has_text="Бунинские кварталы · в просрочке").first
+    exp = f.locator("[data-testid=stExpander]", has_text="Бунинские кварталы · нарушен срок передачи").first
     exp.locator(".js-plotly-plot").first.wait_for(state="visible", timeout=60000); time.sleep(2)
     exp.scroll_into_view_if_needed(); shot("01b_card_bunino_gantt")
     p.set_viewport_size({"width": 1440, "height": 2200}); time.sleep(1)

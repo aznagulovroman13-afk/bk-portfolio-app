@@ -365,7 +365,7 @@ def test_first_screen_shows_annual_transfers_by_project(D):
     at = _login()
     t = _screen_text(at)
     raw = " ".join(m.value for m in at.markdown)
-    for label in ("Передача по годам", "Остаток 2026", "В просрочке", "Неустойка", "За задержку", "За замечания",
+    for label in ("Передача по годам", "Остаток 2026", "Нарушен срок передачи", "Неустойка", "За задержку", "За замечания",
                   "Срез 20.11.2026", "Итого портфель", "Передачи по годам"):
         assert label in t, label
     assert "Что согласовать" not in t and "Нет данных" not in t
@@ -767,12 +767,12 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
     for h in re.findall(r"<th[^>]*>([^<]+)</th>", table):
         assert len(h.split()) <= 3, h
     names = dict(pf_data.PROJECTS)
-    cards = {e.label.split(" · ")[0]: e for e in at.expander if " · в просрочке " in e.label}
+    cards = {e.label.split(" · ")[0]: e for e in at.expander if " · нарушен срок передачи " in e.label}
     assert set(cards) == {names[k] for k in ("bunino", "scandc", "zen")}
     for key, name in pf_data.PROJECTS:
         if name not in cards:                       # свёрнутые ЖК: карточка открывается кликом по строке
             _open(at, card=key)
-            cards = {e.label.split(" · ")[0]: e for e in at.expander if " · в просрочке " in e.label}
+            cards = {e.label.split(" · ")[0]: e for e in at.expander if " · нарушен срок передачи " in e.label}
             table = _plain_cells(next(m.value for m in at.markdown if 'class="fin main-table"' in m.value))
             assert 'id="mt-more" class="mt-more" checked' in table and cards[name].proto.expanded
         row = table.split(f'#card-{key}"', 1)[1].split("</tr>", 1)[0]
@@ -781,7 +781,7 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
         e = cards[name]
         inner = " ".join(m.value for m in e.markdown)
         assert e.get("plotly_chart")                                    # уровень 2 — диаграмма Ганта
-        for s in ("В просрочке", "Неустойка в день", "Критический этап"):
+        for s in ("Нарушен срок передачи, кв.", "Неустойка в день", "Критический этап"):
             assert s in inner
         # уровень 3: причины, передачи, неустойка по годам, основания, решения
         for s in ("<summary>Причины</summary>", "<summary>Передачи по годам</summary>", "<summary>Неустойка по годам</summary>",
@@ -985,3 +985,19 @@ def test_every_main_table_cell_drills_down():
     assert "<summary>Дома · " in inner and "Итого ЖК" in inner and "Все квартиры" in inner
     assert not re.search(r"\b\d{1,2}\.\d{2}\.\d{4}\b", inner.replace("22.03.2024", "").replace("31.12.2025", "").replace("31.12.2026", "")
                          .replace("01.09.2024", "").replace("01.07.2023", "").replace("01.01.2025", "").replace("01.01.2026", ""))
+
+
+def test_overdue_column_wording_and_semantics(D):
+    """«Нарушен срок передачи, кв.» = квартиры, не переданные по акту, срок передачи по ДДУ которых наступил и нарушен."""
+    at = _login()
+    raw = " ".join(m.value for m in at.markdown)
+    assert "Нарушен срок передачи<span class=\"unit\">кв.</span>" in raw and "В просрочке" not in raw
+    assert all(" · нарушен срок передачи " in e.label for e in at.expander if " · неустойка " in e.label)
+    model = {p["key"]: p for p in PF.build(D, dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"]}
+    for key, p in model.items():
+        A = D[key]["units"]
+        kv = A[A["Тип объекта"].eq("Квартира")]
+        assert p["overdue_kv"] == int((kv["Просрочка ДДУ"].eq(C.NT_OVERDUE) & ~C.transferred_mask(kv)).sum())
+    _open(at, card="bunino", cell="overdue")
+    inner = " ".join(m.value for m in at.markdown)
+    assert "Нарушен срок передачи, кв." in inner and "Нарушен срок, кв." in inner and "Срок передачи нарушен" in inner
