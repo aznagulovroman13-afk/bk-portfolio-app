@@ -654,7 +654,8 @@ def test_screens_have_no_service_labels_placeholders_or_emphasis_on_one_project(
         assert not [w for w in bad if w in text], (name, [w for w in bad if w in text])
     _open(at, view="orders")
     orders = next(m.value for m in at.markdown if "Было → цель" in m.value and "<table" in m.value)
-    assert "Ответственный" in orders and "27.11.2026" in orders
+    assert "Ответственный" in orders and "Следующий срез" in orders and ">Контроль<" in orders
+    assert not re.findall(r"\b\d{1,2}\.\d{2}\.\d{4}\b", re.sub(r"<[^>]+>", " ", orders))
     _open(at, view="segments")
     mains = html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", next(m.value for m in at.markdown if "Главное решение и ожидаемый эффект" in m.value))))
     shorts = [p["decisions"][0]["short"] for p in ranked]
@@ -785,7 +786,7 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
             assert s in inner
         # уровень 3: причины, передачи, неустойка по годам, основания, решения
         for s in ("<summary>Причины</summary>", "<summary>Передачи по годам</summary>", "<summary>Неустойка по годам</summary>",
-                  "<summary>Основания</summary>", "<summary>Решения</summary>"):
+                  "<summary>Основания</summary>", "<summary>Другие меры</summary>"):
             assert s in inner, (key, s)
         assert ">Просрочка передачи</th>" in inner and ">Недостатки</th>" in inner and "ПП № 2227" in inner
     seg = _open(at, view="segments")
@@ -888,12 +889,14 @@ def test_responsible_party_matches_gantt_critical_stage(D):
     model = PF.build(D, dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"]
     pen = {r["key"]: r for r in PN.table(D, model)["rows"]}
     G = {g["key"]: g for g in GT.portfolio(D, model, pen)}
-    parties = {"Проектная группа", "Генподрядчик", "Отдел передачи", "Подрядчик", "Юридический отдел", "Гарантийный отдел"}
+    import pf_roles as R
+    by_key = {p["key"]: p for p in model}
     for key, g in G.items():
         crit = next(r for r in g["rows"] if r["critical"])
-        assert g["responsible"] == crit["owner"] and crit["owner"]["party"] in parties
-        assert crit["owner"]["party"] == ("Подрядчик" if crit["key"] == "fix" or (crit["key"] == "ready" and g["cause"].startswith("Отделка"))
-                                         else GT.STAGE_OWNER[crit["key"]])
+        assert g["responsible"] == crit["owner"] and crit["owner"]["party"] in R.ROLES
+        dkey = by_key[key]["decisions"][0]["key"]
+        assert crit["owner"]["party"] == R.DECISION_ROLE.get(dkey, GT.STAGE_OWNER[crit["key"]])
+        assert all(r["owner"]["party"] in R.ROLES for r in g["rows"])
         if crit["owner"]["company"]:
             assert crit["owner"]["company"] in set(D[key]["contractors"]["Подрядчик"]) and crit["owner"]["company"].startswith("ООО")
     at = _login()
@@ -1001,3 +1004,61 @@ def test_overdue_column_wording_and_semantics(D):
     _open(at, card="bunino", cell="overdue")
     inner = " ".join(m.value for m in at.markdown)
     assert "Нарушен срок передачи, кв." in inner and "Нарушен срок, кв." in inner and "Срок передачи нарушен" in inner
+
+
+
+def test_v23_decision_column_strip_card_and_roles(D):
+    """«Что решить» в сводке, «Нужно решение ГД» = итоговая ячейка, решение — первый блок карточки, единый справочник ролей."""
+    import html as H
+    import pf_roles as R
+    at = _login()
+    raw = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    strip = next(m.value for m in at.markdown if 'class="gd-strip"' in m.value)
+    n = len(re.findall(r"<li>", strip))
+    assert 2 <= n <= 3 and f"Нужно решение ГД · {n}" in strip and f"Нужно решение ГД: {n}" in raw
+    assert all(t.startswith("Утвердить") for t in re.findall(r'<b>([^<]+)</b>', strip))
+    assert strip.count("млн ₽ за 4 нед.") == n and strip.count("cell=decide") == n
+    assert ">Что решить" in raw and "начислено 2024–2026" in raw
+    names = dict(pf_data.PROJECTS)
+    decs = re.findall(r'cell=decide#card-(\w+)" data-pf-route class="cell" aria-label="([^"]+)"><b>[^<]+</b><span class="sub">−[\d,]+ млн ₽ за 4 нед\. · −\d+ дн\.</span>', raw)
+    assert len(decs) == len(names) and len({d for _, d in decs}) == len(decs)      # у каждого ЖК своё решение
+    assert all(3 <= len(H.unescape(d).split()) <= 5 for _, d in decs)
+    for role in re.findall(r'cell=resp#card-(?!total)\w+" data-pf-route class="cell">([^<]+)</a>', raw):
+        assert role in R.ROLES
+    # сумма неустойки в заголовке карточки = сумма ячеек таблицы
+    cells = _plain_cells(raw)
+    for e in at.expander:
+        m = re.search(r"неустойка 2024–2026 ([\d ,]+) млн ₽", e.label)
+        if not m:
+            continue
+        key = next(k for k, v in names.items() if e.label.startswith(v))
+        row = cells.split(f'#card-{key}"', 1)[1].split("</tr>", 1)[0]
+        tds = re.findall(r'<td class="r[^"]*">([^<]+)</td>', row)
+        shown = float(tds[5].replace(" ", "").replace(",", ".")) + float(tds[6].replace(" ", "").replace(",", "."))
+        assert abs(float(m.group(1).replace(" ", "").replace(",", ".")) - shown) < 0.051, (key, e.label, tds)
+        inner = " ".join(x.value for x in e.markdown)
+        assert inner.lstrip().startswith('<section class="dec-block"'), key
+        assert "Задержка передачи, медиана" in inner and "Почему это решение" in inner and " → " in inner
+        assert "Сроки</dt>" not in inner
+    assert "<abbr title=" in " ".join(m.value for m in at.markdown)
+
+
+def test_v23_decisions_and_orders_have_no_dates_and_one_role_vocabulary():
+    import pf_roles as R
+    at = _login()
+    for view in ("decisions", "orders"):
+        _open(at, view=view)
+        body = " ".join(m.value for m in at.markdown if "<table" in m.value or "approval" in m.value or "subline" in m.value)
+        plain = re.sub(r"<[^>]+>", " ", body)
+        assert not re.findall(r"\b(Срок|Контроль|Проверка)\s+\d{1,2}\.\d{2}\.\d{4}", plain), view
+        for alias in R.ALIASES:
+            assert alias not in plain, (view, alias)
+
+
+def test_v23_total_decide_panel_lists_every_project():
+    at = _login()
+    text = _open(at, card="total", cell="decide")
+    raw = " ".join(m.value for m in at.markdown)
+    assert 'id="cell-total-decide"' in raw
+    for key in dict(pf_data.PROJECTS):
+        assert f"card={key}&amp;cell=decide" in raw

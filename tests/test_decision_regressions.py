@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -142,7 +143,8 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     assert 'Результат указан по 2 из 3' in summary.split('id="exec-project-bunino"', 1)[1].split("</details>", 1)[0]
     assert report.count("Демо-данные") == 1
     assert "сравнение с <b>04.11.2026</b>" in summary
-    assert "Утвердить бюджет" not in summary and "Возможные требования по сценарию" not in summary
+    no_strip = re.sub(r'<section class="gd-strip".*?</section>', "", summary, flags=re.S)
+    assert "Утвердить бюджет" in summary and "Утвердить бюджет" not in no_strip and "Возможные требования по сценарию" not in summary
     assert "Неустойка в день <strong>" in summary
     assert '<summary>Ещё</summary>' in report
     assert 'href="/?view=orders" data-pf-route>Поручения' in summary
@@ -165,7 +167,7 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     assert ">Поручения</div>" in orders
     for section in (decisions, orders):
         assert "Нужно решение ГД" in section and "В рабочем порядке" in section
-        assert "18.11.2026" in section
+        assert "18.11.2026" not in section and "следующем срезе" in section   # v23: без дат в поручениях и решениях
 
     assert open_screen(view="contribution").count('class="contrib-row') == 10
     matrix = open_screen(view="matrix")

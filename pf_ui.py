@@ -8,6 +8,9 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import streamlit as st
 
+import pf_roles as _R
+import re as _re
+
 NAVY, INK, INK2, INK3 = "#0B1F3A", "#14213D", "#4A5568", "#596577"
 LINE, GOLD, RISK, GOOD = "#D5DBE3", "#A67C00", "#B3261E", "#2E7D32"
 SILVER, GRAPH = "#9AA5B4", "#3F4A5A"
@@ -194,6 +197,24 @@ details.mx-cell > summary::before { content: none; } details.mx-cell > summary::
 }
 .main-table th .unit { display: block; font-weight: 500; text-transform: none; letter-spacing: 0; color: #5b6778; }
 .dr-row i.dr-over { display: block; font-style: normal; color: #b3261e; font-size: 11px; }
+.gd-strip { border: 1px solid #c9d2df; border-left: 4px solid #a67c00; background: #fffaf0; padding: 8px 12px; margin: 6px 0 10px; }
+.gd-ttl { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #14243b; margin-bottom: 4px; }
+.gd-strip ol, .gd-list { margin: 0; padding-left: 18px; } .gd-strip li { margin: 3px 0; font-size: 13px; }
+.gd-strip li > span { margin-left: 10px; color: #3a4658; font-size: 12px; } .gd-strip .gd-num { color: #14243b; font-weight: 650; }
+.gd-note { font-size: 11px; color: #5b6778; margin-top: 4px; }
+.main-table td.decide { min-width: 170px; font-size: 12px; } .main-table td.decide .sub { display: block; color: #3a4658; font-size: 11px; }
+.main-table td.decide a.cell { border-bottom: none; } .main-table td.decide a.cell b { border-bottom: 1px dotted #9aa8bb; }
+.dec-block { border: 1px solid #c9d2df; border-left: 4px solid #23406e; background: #f7f9fc; padding: 10px 12px; margin: 2px 0 12px; }
+.db-ttl { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #5b6778; }
+.db-gd { margin-left: 8px; padding: 1px 6px; background: #a67c00; color: #fff; border-radius: 2px; font-size: 10px; letter-spacing: .03em; }
+.db-main { font-size: 16px; font-weight: 700; color: #14243b; margin: 4px 0 2px; }
+.db-desc { font-size: 12px; color: #3a4658; margin: 0 0 8px; line-height: 1.4; }
+.db-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 16px; }
+.db-grid > div { font-size: 13px; } .db-grid .db-l { display: block; font-size: 11px; color: #5b6778; text-transform: uppercase; letter-spacing: .03em; }
+.db-grid b { display: block; font-size: 15px; color: #14243b; } .db-grid .sub { display: block; font-size: 11px; color: #5b6778; }
+.db-why { font-size: 12.5px; color: #3a4658; margin: 4px 0; line-height: 1.45; }
+abbr[title] { text-decoration: underline dotted #8a97aa; cursor: help; }
+@media (max-width: 640px) { .db-grid { grid-template-columns: 1fr 1fr; } dl.card-metrics { grid-template-columns: 1fr 1fr !important; } dl.card-metrics dt { word-break: normal; hyphens: auto; } .gd-strip li > span { display: block; margin-left: 0; } }
 .mt-more { display: none; } .main-table tr.mt-hidden { display: none; } .mt-more:checked ~ .tw .main-table tr.mt-hidden { display: table-row; }
 .main-table tr.mt-toggle td { padding: 0; border-bottom: 1px solid #d5dbe5; }
 .main-table tr.mt-toggle label { display: block; cursor: pointer; padding: 7px 10px; color: #23406e; font-size: 12px; font-weight: 600; letter-spacing: .02em; }
@@ -313,7 +334,7 @@ def fin_table(head, rows, right=(), total_last=False, cls="", hide=(), tips=None
             txt = c if str(c).startswith("<") or "<span" in str(c) else html.escape(str(c))
             cells.append(f'<td class="{"r" if i in right else ""}{hm(i)}"{style}>{txt}</td>')
         body.append(f"<tr{tr}>{''.join(cells)}</tr>")
-    st.markdown(f'<div class="tw"><table class="fin {cls}"><thead><tr>{th}</tr></thead><tbody>{"".join(body)}</tbody></table></div>', unsafe_allow_html=True)
+    st.markdown(gloss(f'<div class="tw"><table class="fin {cls}"><thead><tr>{th}</tr></thead><tbody>{"".join(body)}</tbody></table></div>'), unsafe_allow_html=True)
 
 
 def spark(values, bad=False, w=108, h=30, *, scale=None, dates=None, target=None) -> str:
@@ -337,3 +358,24 @@ def spark(values, bad=False, w=108, h=30, *, scale=None, dates=None, target=None
 
 def sources(notes_html: str):
     st.markdown(f'<div class="src">{notes_html}</div>', unsafe_allow_html=True)
+
+
+_GLOSS_RE = _re.compile(r"(?<![\w])(" + "|".join(_re.escape(k) for k in sorted(_R.GLOSSARY, key=len, reverse=True)) + r")(?![\w])")
+
+
+def gloss(markup: str) -> str:
+    """Подсказки к сокращениям (РВЭ, АПП, ОЗ, ч. 6 ст. 8 …): только в тексте, не в атрибутах и не внутри <abbr>, <style>, <script>."""
+    out, skip = [], 0
+    for part in _re.split(r"(<[^>]+>)", markup):
+        if part.startswith("<"):
+            tag = part[1:].split()[0].rstrip(">").lower() if len(part) > 1 else ""
+            if tag in ("abbr", "style", "script", "summary"):
+                skip += 1
+            elif tag in ("/abbr", "/style", "/script", "/summary"):
+                skip = max(0, skip - 1)
+            out.append(part)
+        elif skip or not part.strip():
+            out.append(part)
+        else:
+            out.append(_GLOSS_RE.sub(lambda m: f'<abbr title="{html.escape(_R.GLOSSARY[m.group(1)])}">{m.group(1)}</abbr>', part))
+    return "".join(out)

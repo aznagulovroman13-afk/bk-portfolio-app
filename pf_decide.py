@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 import pf_core as C
+import pf_roles as R
 
 # ---- расчётные коэффициенты сценария (претензии, иски, выплаты и стоимость мер задаются допущениями)
 DEFAULT_K = dict(claim=0.35,   # доля неустойки, по которой собственники предъявляют претензии и иски
@@ -165,11 +166,11 @@ FAMILIES = {"capacity": "Мощность приёмки", "legal": "Право�
             "contractor": "Подрядчики и устранение замечаний", "settle": "Досудебное урегулирование"}
 
 PACKAGE_SPECS = (
-    ("unilateral", "ready", "expired", "Односторонняя передача после правовой проверки", "Юридический департамент"),
-    ("realloc", "ready", "queue", "Предложить более ранние даты приёмки", "Директор по заселению"),
-    ("onestop", "ready", "refused", "Подписать акты после повторной приёмки", "Директор по заселению"),
-    ("brigades", "remarks", None, "Устранить замечания в открытых к передаче квартирах", "Операционный директор"),
-    ("calls", "ready", "silent", "Обзвонить собственников без записи и вызова", "Руководитель клиентского сервиса"),
+    ("unilateral", "ready", "expired", "Односторонняя передача после правовой проверки", R.DECISION_ROLE["unilateral"]),
+    ("realloc", "ready", "queue", "Предложить более ранние даты приёмки", R.DECISION_ROLE["realloc"]),
+    ("onestop", "ready", "refused", "Подписать акты после повторной приёмки", R.DECISION_ROLE["onestop"]),
+    ("brigades", "remarks", None, "Устранить замечания в открытых к передаче квартирах", R.DECISION_ROLE["brigades"]),
+    ("calls", "ready", "silent", "Обзвонить собственников без записи и вызова", R.DECISION_ROLE["calls"]),
 )
 PACKAGE_OWNERS = {key: owner for key, _, _, _, owner in PACKAGE_SPECS}
 
@@ -179,11 +180,14 @@ def four_week_effect(daily_effect):
 
 
 def _cand(c: list, key, fam, pool, title, short, roles, eff_day, basis, mech, metric):
+    """Мера ЖК. roles: первая — роль справочника pf_roles, получающая поручение; needs_gd — мера требует решения ГД."""
     if eff_day <= 0:
         return
-    if key in PACKAGE_OWNERS:
-        roles = [PACKAGE_OWNERS[key]]
-    c.append(dict(key=key, family=fam, kind=FAMILIES[fam], pool=pool, title=title, short=short, roles=roles, effect_day=float(eff_day),
+    needs_gd = R.CEO in roles
+    main = R.DECISION_ROLE.get(key, PACKAGE_OWNERS.get(key, R.role(roles[0])))
+    roles = [main] + [x for x in dict.fromkeys(R.role(r) for r in roles) if x not in (main, R.CEO)]
+    c.append(dict(key=key, family=fam, kind=FAMILIES[fam], pool=pool, title=title, short=short, short3=R.DECISION_SHORT.get(key, short),
+                  roles=roles, needs_gd=needs_gd, effect_day=float(eff_day),
                   effect=four_week_effect(eff_day), basis=basis, mechanism=mech, metric=metric))
 
 

@@ -27,12 +27,14 @@ import pf_model as PF  # noqa: E402
 import pf_penalty as PN  # noqa: E402
 import pf_gantt as GT  # noqa: E402
 import pf_drill as DR  # noqa: E402
+import pf_roles as R  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
-REPORT_SCHEMA = "v26"
+REPORT_SCHEMA = "v27"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
-        or getattr(GT, "GANTT_SCHEMA", None) != "g2" or getattr(DR, "DRILL_SCHEMA", None) != "d2" or "cell" not in N.ROUTE_FIELDS:
-    for module in (U, DC, DT, pf_demo, PF, PN, GT, DR):
+        or getattr(GT, "GANTT_SCHEMA", None) != "g3" or getattr(DR, "DRILL_SCHEMA", None) != "d3" \
+        or getattr(R, "ROLES_SCHEMA", None) != "r1" or not hasattr(U, "gloss") or "cell" not in N.ROUTE_FIELDS:
+    for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR):
         reload(module)
     if "cell" not in N.ROUTE_FIELDS:
         try:
@@ -330,7 +332,42 @@ def main_row(project, data, through):
                 t2026=int((done & date.dt.year.eq(2026) & date.le(through)).sum()),
                 left2026=int((due.dt.year.eq(2026) & ~done).sum()), overdue=int(project["overdue_kv"]),
                 pen_delay=sum(pen["ddu"].values()), pen_remarks=sum(pen["remarks"].values()), effect=pen["effect_total"],
-                resp=GANTT[key]["responsible"], resp_stage=GANTT[key]["critical_name"])
+                resp=GANTT[key]["responsible"], resp_stage=GANTT[key]["critical_name"], dec=decision_info(project))
+
+
+def pen_shown(r):
+    """Неустойка ЖК 2024–2026 так, как она складывается из ячеек сводки (за задержку + за замечания, по 1 знаку)."""
+    return _mln(round(r["pen_delay"] / 1e5) * 1e5 + round(r["pen_remarks"] / 1e5) * 1e5)
+
+
+def decision_info(p):
+    """Главное решение ЖК: что решить, роль, эффект за 4 недели (млн ₽) и в днях медианной задержки, контроль «было → цель»."""
+    if not p.get("decisions"):
+        return None
+    d = p["decisions"][0]
+    g = GANTT[p["key"]]
+    share = min(1.0, d["effect_day"] / p["risk_day"]) if p["risk_day"] else 0.0
+    days = max(1, round(g["delay"] * share))
+    target = max(0, p["overdue_kv"] - max(1, round(p["overdue_kv"] * share)))
+    crit = next(r for r in g["rows"] if r["critical"])
+    better = sorted([c for c in p["cands"] if c["effect_day"] > d["effect_day"] and c["key"] != d["key"] and c["key"] in MAIN_OWNER],
+                    key=lambda c: -c["effect_day"])
+    why = (f'Критический этап — «{g["critical_name"]}» (+{crit["slip"]} дн., {_mln(crit["penalty_ddu"] + crit["penalty_rem"])} млн ₽ неустойки 2026): '
+           f'решение снимает задержку этого этапа. Наибольший эффект среди мер ЖК')
+    if better:
+        b = better[0]
+        why += (f', кроме «{b["short3"]}» (−{fm(b["effect_day"])}/день): эта мера — главная в ЖК {MAIN_OWNER[b["key"]]}, '
+                'главные решения ЖК не повторяются')
+    why += "."
+    return dict(key=d["key"], short=d["short3"], title=d["title"], role=g["responsible"]["short"],
+                company=g["responsible"]["company"], works=g["responsible"]["works"],
+                effect=d["effect"], effect_day=d["effect_day"], days=days, why=why, metric=d["metric"], basis=d["basis"],
+                was=p["overdue_kv"], target=target, needs_gd=d.get("needs_gd", False))
+
+
+def _mln_s(v):
+    """Млн ₽ для эффекта: до 1 млн — два знака."""
+    return _mln(v, 2 if abs(v) < 1e6 else 1)
 
 
 MAIN_COLS = (("t2024", "2024"), ("t2025", "2025"), ("t2026", "2026"))
@@ -349,19 +386,27 @@ def main_table(rows, slice_label, open_more=False):
         return ("".join(f'<td class="r">{a(f(r[k]), k)}</td>' for k, _ in MAIN_COLS)
                 + f'<td class="r sep">{a(f(r["left2026"]), "left2026")}</td><td class="r">{a(f(r["overdue"]), "overdue")}</td>'
                 + f'<td class="r sep">{a(_mln(r["pen_delay"]), "pen_delay")}</td><td class="r">{a(_mln(r["pen_remarks"]), "pen_remarks")}</td>')
+    def decide(r):
+        d = r["dec"]
+        if not d:
+            return '<td class="sep">—</td>'
+        content = (f'<b>{html.escape(d["short"])}</b><span class="sub">−{_mln_s(d["effect"])} млн ₽ за 4 нед. · −{d["days"]} дн.</span>')
+        return f'<td class="sep decide">{N.link(d["short"], content=content, css="cell", card=r["key"], cell="decide")}</td>'
     def resp(r):
         o = r["resp"]
-        sub = f'<span class="sub">{html.escape(o["company"])}</span>' if o["company"] else ""
+        sub = f'<span class="sub">{html.escape(o["works"] + " " + o["company"]).strip()}</span>' if o["company"] else ""
         return (f'<td class="sep resp" title="Критический этап: {html.escape(r["resp_stage"])}">'
                 f'{N.link(o["short"], css="cell", card=r["key"], cell="resp")}{sub}</td>')
     top = [r for r in rows if r["key"] in MAIN_TOP]
     more = [r for r in rows if r["key"] not in MAIN_TOP]
-    body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}{resp(r)}</tr>' for r in top)
-    body += "".join(f'<tr class="mt-hidden"><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}{resp(r)}</tr>' for r in more)
+    body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}{decide(r)}{resp(r)}</tr>' for r in top)
+    body += "".join(f'<tr class="mt-hidden"><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}{decide(r)}{resp(r)}</tr>' for r in more)
     if more:
-        body += (f'<tr class="mt-toggle"><td colspan="9"><label for="mt-more">'
+        body += (f'<tr class="mt-toggle"><td colspan="10"><label for="mt-more">'
                  f'<span class="mt-open">▾ Развернуть · ещё {len(more)} ЖК</span><span class="mt-close">▴ Свернуть</span></label></td></tr>')
-    body += f'<tr class="tot"><td>{N.link("Итого портфель", card="total")}</td>{cells(tot)}<td class="sep resp">{N.link("По ЖК", css="cell", card="total", cell="resp")}</td></tr>'
+    gd_lbl = f"Нужно решение ГД: {len(GD_ITEMS)}"
+    body += (f'<tr class="tot"><td>{N.link("Итого портфель", card="total")}</td>{cells(tot)}<td class="sep decide">{N.link(gd_lbl, css="cell", card="total", cell="decide")}</td>'
+             f'<td class="sep resp">{N.link("По ЖК", css="cell", card="total", cell="resp")}</td></tr>')
     return ('<section class="main-port" id="main-portfolio">'
             f'<input type="checkbox" id="mt-more" class="mt-more"{" checked" if open_more else ""}>'
             f'<p class="exec-date">Срез <b>{slice_label}</b> · {len(rows)} ЖК · неустойка в млн ₽ с учётом моратория</p>'
@@ -369,8 +414,9 @@ def main_table(rows, slice_label, open_more=False):
             '<tr><th rowspan="2">ЖК</th><th class="grp" colspan="3" title="Передано квартир по передаточным актам">Передача по годам</th>'
             '<th class="r sep tip" rowspan="2" title="Квартиры со сроком по ДДУ в 2026 году, ещё не переданные">Остаток 2026</th>'
             '<th class="r tip" rowspan="2" title="Квартиры, не переданные по передаточному акту, у которых наступил и нарушен срок передачи по ДДУ, на дату среза">Нарушен срок передачи<span class="unit">кв.</span></th>'
-            '<th class="grp sep" colspan="2" title="Начислено за 2024–2026; период моратория ПП № 326 исключён">Неустойка, млн ₽</th>'
-            '<th class="sep tip" rowspan="2" title="Участник, отвечающий за критический этап задержки (по диаграмме Ганта)">Ответственный</th></tr>'
+            '<th class="grp sep" colspan="2" title="Начислено за 2024–2026; период моратория ПП № 326 исключён">Неустойка, млн ₽<span class="unit">начислено 2024–2026</span></th>'
+            '<th class="sep tip" rowspan="2" title="Главное решение ЖК: эффект за 4 недели до затрат и сокращение медианной задержки передачи">Что решить</th>'
+            '<th class="sep tip" rowspan="2" title="Роль, получающая поручение по главному решению; отвечает за критический этап задержки (диаграмма Ганта)">Ответственный</th></tr>'
             '<tr><th class="r">2024</th><th class="r">2025</th><th class="r">2026</th>'
             '<th class="r sep tip" title="За просрочку передачи, ч. 2 ст. 6 214-ФЗ">За задержку</th>'
             '<th class="r tip" title="За нарушение сроков устранения недостатков, ч. 8 ст. 7 214-ФЗ">За замечания</th></tr>'
@@ -398,7 +444,7 @@ def responsibility_table(g):
 
 CELL_TITLES = {"t2024": "Передача 2024", "t2025": "Передача 2025", "t2026": "Передача 2026", "left2026": "Остаток 2026",
                "overdue": "Нарушен срок передачи, кв.", "pen_delay": "Неустойка за задержку", "pen_remarks": "Неустойка за замечания",
-               "resp": "Ответственный"}
+               "resp": "Ответственный", "decide": "Что решить"}
 
 
 @st.cache_data(show_spinner=False, max_entries=64)
@@ -487,6 +533,20 @@ def cell_panel(p, row, cell):
 def total_cell_panel(rows, cell):
     """Ячейка строки «Итого портфель»: разбивка по ЖК, каждая строка ведёт к ячейке ЖК."""
     title = CELL_TITLES[cell]
+    if cell == "decide":
+        gd = "".join(f'<li>{N.link(it["title"], card=it["card"], cell=it["cell"])} · {html.escape(it["role"])} · '
+                     f'−{_mln_s(it["effect"])} млн ₽ за 4 нед.{" · затраты " + _mln_s(it["cost"]) + " млн ₽" if it["cost"] else ""}</li>' for it in GD_ITEMS)
+        body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"], cell="decide")}</td><td>{html.escape(r["dec"]["short"])}</td>'
+                       f'<td>{html.escape(r["dec"]["role"])}</td><td class="r">−{_mln_s(r["dec"]["effect"])}</td><td class="r">−{r["dec"]["days"]}</td></tr>'
+                       for r in rows if r["dec"])
+        tv = sum(r["dec"]["effect"] for r in rows if r["dec"])
+        body += f'<tr class="tot"><td>Итого портфель</td><td></td><td></td><td class="r">−{_mln_s(tv)}</td><td></td></tr>'
+        return (f'<section class="cell-panel" id="cell-total-decide"><div class="cell-ttl">Что решить · <b>Итого портфель</b></div>'
+                f'<div class="card-resp-ttl">Нужно решение ГД · {len(GD_ITEMS)}</div><ol class="gd-list">{gd}</ol>'
+                '<div class="tw"><table class="fin cell-total"><thead><tr><th>ЖК</th><th>Главное решение</th><th>Поручение</th>'
+                '<th class="r" title="Эффект за 4 недели до затрат">Эффект, млн ₽</th><th class="r" title="Сокращение медианной задержки передачи">Дней</th></tr></thead>'
+                f'<tbody>{body}</tbody></table></div><p class="cell-note">Сумма главных решений ЖК не равна бюджету пакета: пакет на странице «Решения» '
+                'считается по группам квартир и с учётом пересечения мер.</p></section>')
     if cell == "resp":
         body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"], cell="resp")}</td><td>{html.escape(r["resp"]["label"])}</td>'
                        f'<td>{html.escape(r["resp_stage"])}</td><td class="r">+{GANTT[r["key"]]["delay"]}</td></tr>' for r in rows)
@@ -501,24 +561,47 @@ def total_cell_panel(rows, cell):
             f'<div class="tw"><table class="fin cell-total"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div></section>')
 
 
+def decision_block(p, row):
+    """Первый блок карточки ЖК: решение → роль → эффект ₽ и дни → контроль «было → цель» → почему это решение."""
+    d = row["dec"]
+    if not d:
+        return ""
+    who = html.escape(d["role"]) + (f'<span class="sub">{html.escape((d["works"] + " " + d["company"]).strip())}</span>' if d["company"] else "")
+    pkg = ""
+    if priority_package and d["key"] == "unilateral" and any(it["project"]["key"] == p["key"] for it in priority_package["items"]):
+        pkg = f'; к утверждению ГД — первая очередь {f(priority_package["eligible"])} кв., −{_mln_s(priority_package["scenario_effect"])} млн ₽'
+    gd = '<span class="db-gd">нужно решение ГД</span>' if d["needs_gd"] or any(it["card"] == p["key"] for it in GD_ITEMS) else ""
+    return (f'<section class="dec-block" id="decide-{p["key"]}"><div class="db-ttl">Что решить{gd}</div>'
+            f'<div class="db-main">{html.escape(d["short"])}</div><div class="db-desc">{html.escape(d["title"])}</div>'
+            '<div class="db-grid">'
+            f'<div><span class="db-l">Поручение</span><b>{who}</b></div>'
+            f'<div><span class="db-l">Эффект за 4 недели</span><b>−{_mln_s(d["effect"])} млн ₽</b><span class="sub">−{fm(d["effect_day"])} в день к 4-й неделе, до затрат{pkg}</span></div>'
+            f'<div><span class="db-l">Задержка передачи</span><b>−{d["days"]} дн.</b><span class="sub">медиана {GANTT[p["key"]]["delay"]} → {GANTT[p["key"]]["delay"] - d["days"]} дн.</span></div>'
+            f'<div><span class="db-l">Контроль · следующий срез</span><b>{f(d["was"])} → {f(d["target"])} кв.</b><span class="sub">квартиры с нарушенным сроком; показатель меры — {html.escape(d["metric"].lower())}</span></div>'
+            '</div>'
+            f'<details class="mx mx-l3"><summary>Почему это решение</summary><div class="db-why">{html.escape(d["why"])} {html.escape(d["basis"])}.</div></details>'
+            '</section>')
+
+
 def project_card_l2(p, row, cell=None):
     """Уровень 2: карточка ЖК с ключевыми показателями и диаграммой Ганта; уровень 3 — причины, неустойка, основания, решения."""
     g = GANTT[p["key"]]
-    if cell in CELL_TITLES:
-        st.markdown(cell_panel(p, row, cell), unsafe_allow_html=True)
+    st.markdown(U.gloss(decision_block(p, row)), unsafe_allow_html=True)
+    if cell in CELL_TITLES and cell != "decide":
+        st.markdown(U.gloss(cell_panel(p, row, cell)), unsafe_allow_html=True)
     st.markdown(
         '<dl class="exec-project-metrics card-metrics">'
         f'<div><dt>Нарушен срок передачи, кв.</dt><dd>{f(row["overdue"])}</dd></div>'
         f'<div><dt>Неустойка в день</dt><dd>{f(round(p["risk_day"]))} ₽</dd></div>'
         f'<div><dt>Замечания</dt><dd>{f(p["remarks"])}</dd></div>'
-        f'<div><dt>Сроки</dt><dd>+{g["delay"]} дн.</dd></div>'
+        f'<div><dt>Задержка передачи, медиана</dt><dd>+{g["delay"]} дн.</dd></div>'
         f'<div><dt>Критический этап</dt><dd>{html.escape(g["critical_name"])}</dd></div></dl>', unsafe_allow_html=True)
     U.chart(GT.project_figure(g), key=f"gantt_main_{p['key']}", height=540)
     st.markdown('<div class="card-resp"><div class="card-resp-ttl">Ответственные за задержку</div>' + responsibility_table(g) + '</div>'
                 + f'<details class="mx mx-l2 dr-sec"><summary>Дома · {len(drill_data(p["key"], REPORT_SCHEMA)["houses"])}</summary>'
                 + DR.houses_html(drill_data(p["key"], REPORT_SCHEMA), "all") + '</details>', unsafe_allow_html=True)
     decisions = "".join(
-        f'<li><b>{html.escape(d_["title"])}</b>{" — главное решение" if i == 0 else ""}'
+        f'<li><b>{html.escape(d_["title"])}</b>{" — главное решение, см. «Что решить»" if i == 0 else ""}'
         f'<span class="sub">−{fm(d_["effect_day"])} в день к концу 4-й недели</span></li>' for i, d_ in enumerate(p["decisions"]))
     units = DA[p["key"]]["units"]
     hist = {2024: row["t2024"], 2025: row["t2025"]}
@@ -527,7 +610,7 @@ def project_card_l2(p, row, cell=None):
                 + annual_transfers(units, act_d, p["name"], hist) + '</div></details>'
                 + '<details class="mx mx-l3"><summary>Неустойка по годам</summary>' + penalty_years(PEN[p["key"]]) + '</details>'
                 + basis_details()
-                + f'<details class="mx mx-l3"><summary>Решения</summary><ul class="card-decisions">{decisions}</ul></details>'
+                + f'<details class="mx mx-l3"><summary>Другие меры</summary><ul class="card-decisions">{decisions}</ul></details>'
                 + f'<p class="card-open">{project_link(p["key"], "Страница ЖК")}</p>', unsafe_allow_html=True)
 
 
@@ -574,6 +657,7 @@ PEN_T = PN.table(DA, projects)
 PEN = {r["key"]: r for r in PEN_T["rows"]}
 GANTT_LIST = GT.portfolio(DA, projects, PEN)
 GANTT = {g["key"]: g for g in GANTT_LIST}
+MAIN_OWNER = {p["decisions"][0]["key"]: p["name"] for p in projects if p.get("decisions")}   # мера → ЖК, где она главная
 
 
 route = N.read_route()
@@ -808,7 +892,7 @@ if priority_package and (not priority_measure or priority_measure["key"] != "uni
     package.remove(priority_package)
     priority_package = None
 priority_owner = priority_package["owner"] if priority_package else next((role for role in pri["roles"] if role != "Генеральный директор"), "Директор по заселению")
-priority_request = "Утвердить оформление односторонних актов только по квартирам, по которым юрдепартамент подтвердит основания" if priority_package else f"Утвердить проверку применимости меры «{priority_measure['short']}»" if priority_measure else "Принять к сведению статус портфеля"
+priority_request = "Утвердить оформление односторонних актов только по квартирам, по которым юридический департамент подтвердит основания" if priority_package else f"Утвердить проверку применимости меры «{priority_measure['short']}»" if priority_measure else "Принять к сведению статус портфеля"
 priority_due = dd(review_date)
 package_path = DC.incremental_package_forecast(projects, package)
 package_end = {row["key"]: row for row in package_path if row["week"] == DC.MONTH_W}
@@ -840,7 +924,7 @@ priority_check = (f"{f(priority_package['week_units'])} {C.plural(priority_packa
                   if priority_package else "проверить применимость меры")
 priority_check_detail = (
     f'За неделю по {act_d:%d.%m} оформлено {f(focus["week_pa_unilateral"])}. В работу по пилоту — {f(priority_package["eligible"])} из {f(RSN["expired"]["n"])} '
-    'квартир с истёкшим сроком вызова. Юрдепартамент проверяет основания и риск оспаривания.'
+    'квартир с истёкшим сроком вызова. Юридический департамент проверяет основания и риск оспаривания.'
     if priority_package else "")
 plan_readiness = (
     f'<div class="exec-plan-readiness"><strong>{f(plan_ready)} в базовом плане</strong>'
@@ -849,10 +933,51 @@ plan_readiness = (
 if not priority_package and priority_measure:
     priority_effect += ", потенциал вне пакета"
 overdue_tone = "good" if d_over < 0 else "bad" if d_over > 0 else "flat"
+
+
+def gd_items():
+    """«Нужно решение ГД»: те же пункты, что на страницах «Решения» и «Поручения», плюс главные решения ЖК, требующие решения ГД."""
+    items = []
+    if priority_package:
+        keys = [it["project"]["key"] for it in priority_package["items"]]
+        items.append(dict(title=f"Утвердить односторонние акты по {f(priority_package['eligible'])} кв. после проверки", role=priority_package["owner"],
+                          effect=priority_package["scenario_effect"], cost=priority_package["cost"],
+                          scope=", ".join(projects_by_key[k]["name"] for k in keys), card=keys[0] if keys else "total", cell="decide"))
+    elif priority_measure:
+        items.append(dict(title=f"Утвердить меру «{priority_measure['short3']}»", role=priority_owner, effect=priority_measure["effect"],
+                          cost=0.0, scope=focus["name"], card=focus["key"], cell="decide"))
+    items.append(dict(title=f"Утвердить бюджет мер по {f(pack_units)} квартирам", role=plan_owner, effect=pack_effect, cost=pack_cost,
+                      scope="портфель", card="total", cell="decide"))
+    done = {it["card"] for it in items}
+    for p_ in sorted(projects, key=lambda x: -(x["decisions"][0]["effect"] if x.get("decisions") else 0)):
+        d_ = p_["decisions"][0] if p_.get("decisions") else None
+        if len(items) >= 3:
+            break
+        if d_ and d_.get("needs_gd") and p_["key"] not in done:
+            items.append(dict(title=f"Утвердить: {d_['short3'].lower()}", role=R.DECISION_ROLE.get(d_["key"], d_["roles"][0]),
+                              effect=d_["effect"], cost=0.0, scope=p_["name"], card=p_["key"], cell="decide"))
+    return items
+
+
+GD_ITEMS = gd_items()
+
+
+def gd_strip():
+    def title(it):
+        return N.link(it["title"], content="<b>" + html.escape(it["title"]) + "</b>", card=it["card"], cell=it["cell"])
+    rows = "".join(
+        f'<li>{title(it)}'
+        f'<span class="gd-role">{html.escape(it["role"])} · {html.escape(it["scope"])}</span>'
+        f'<span class="gd-num">−{_mln_s(it["effect"])} млн ₽ за 4 нед.</span>'
+        f'<span class="gd-cost">{("затраты " + _mln_s(it["cost"]) + " млн ₽") if it["cost"] else "без отдельного бюджета"}</span></li>'
+        for it in GD_ITEMS)
+    return (f'<section class="gd-strip" id="gd-strip"><div class="gd-ttl">Нужно решение ГД · {len(GD_ITEMS)}</div>'
+            f'<ol>{rows}</ol><div class="gd-note">Эффект — снижение неустойки за 4 недели до затрат; контроль — на следующем срезе.</div></section>')
 if view == "summary":
     st.markdown('<div class="rh exec-header"><div class="kick">Отчёт для генерального директора · Демо-данные</div>'
                 '<div class="ttl">Портфель ЖК</div></div>', unsafe_allow_html=True)
     U.section("Сводка по портфелю", anchor="summary")
+    st.markdown(U.gloss(gd_strip()), unsafe_allow_html=True)
     first_projects = ("bunino", "scandc", "scands")
     display_order = [projects_by_key[key] for key in first_projects if key in projects_by_key]
     display_order.extend(project for project in projects if project["key"] not in first_projects)
@@ -860,19 +985,19 @@ if view == "summary":
                   + [p_ for p_ in display_order if p_["key"] not in MAIN_TOP])
     main_rows = [main_row(p_, DA[p_["key"]], act_d) for p_ in main_order]
     open_card = route.get("card")
-    st.markdown(main_table(main_rows, slice_text, open_more=bool(open_card) and open_card not in MAIN_TOP and open_card != "total"),
+    st.markdown(U.gloss(main_table(main_rows, slice_text, open_more=bool(open_card) and open_card not in MAIN_TOP and open_card != "total")),
                 unsafe_allow_html=True)
     for row_, p_ in zip(main_rows, main_order):
         if p_["key"] not in MAIN_TOP and open_card != p_["key"]:
             continue      # карточки свёрнутых ЖК появляются по клику на строку после «Развернуть»
         st.markdown(f'<div id="card-{p_["key"]}" class="card-anchor"></div>', unsafe_allow_html=True)
-        with st.expander(f'{p_["name"]} · нарушен срок передачи {f(row_["overdue"])} кв. · неустойка {_mln(row_["pen_delay"] + row_["pen_remarks"])} млн ₽',
+        with st.expander(f'{p_["name"]} · нарушен срок передачи {f(row_["overdue"])} кв. · неустойка 2024–2026 {pen_shown(row_)} млн ₽',
                          expanded=open_card == p_["key"]):
             project_card_l2(p_, row_, route.get("cell") if open_card == p_["key"] else None)
     st.markdown('<div id="card-total" class="card-anchor"></div>', unsafe_allow_html=True)
     with st.expander(f'Итого портфель · сроки и неустойка по видам', expanded=open_card == "total"):
         if open_card == "total" and route.get("cell") in CELL_TITLES:
-            st.markdown(total_cell_panel(main_rows, route["cell"]), unsafe_allow_html=True)
+            st.markdown(U.gloss(total_cell_panel(main_rows, route["cell"])), unsafe_allow_html=True)
         U.chart(GT.portfolio_figure(GANTT_LIST), key="gantt_portfolio", height=520)
         st.markdown(gantt_causes_portfolio(GANTT_LIST)
                     + '<details class="mx mx-l3"><summary>Неустойка по годам</summary>'
@@ -880,7 +1005,8 @@ if view == "summary":
     st.markdown(
         '<div class="exec-control">'
         f'<span>Неустойка в день <strong>{f(round(tot["risk_day"]))} ₽</strong> · за неделю {sgm(rk_d)}/день · '
-        f'накоплено, оценка <strong>{fm(tot["accrued_lo"])} – {fm(tot["accrued_up"])}</strong> · '
+        f'начислено 2024–2026 <strong>{_mln(PEN_T["total"]["total"])} млн ₽</strong>, в т. ч. 2026 — '
+        f'<strong>{_mln(PEN_T["total"]["ddu"][2026] + PEN_T["total"]["remarks"][2026])} млн ₽</strong> · '
         f'сценарий выплат <strong>{fm(LD["expected"])}</strong></span>{N.report_link("money", "Финансы")}</div>',
         unsafe_allow_html=True)
     st.markdown('<nav class="pf-links" aria-label="Открыть раздел из сводки">' + "".join(
@@ -908,22 +1034,29 @@ if view == "decisions":
             f'<span class="subline">к концу 4-й недели · −{fm(measure["scenario_effect"])} за 4 недели к текущему темпу</span></div>'
             f'<div><span class="label">{cost_label}</span>{fm(measure["cost"])}. План за 4 недели — {f(measure["units"])} квартир.</div>'
             f'<div class="approval"><span class="label">{status}</span><strong>{html.escape(measure["owner"])}</strong>'
-            f'<span class="subline">Контроль {priority_due} · {result_text(measure)}. {measure_control}</span></div></div></article>')
+            f'<span class="subline">Контроль на следующем срезе · {result_text(measure)}. {measure_control}</span></div></div></article>')
     n_direct = 1 if priority_package else 0
     priority_card = "".join(week_cards[:n_direct])
     if not priority_package and priority_measure:
         priority_card = (f'<article class="item"><h3>{html.escape(priority_request)}</h3><div class="fields">'
                          f'<div>{project_link(focus["key"], focus["name"])}</div><div>{priority_effect}</div>'
-                         f'<div>{html.escape(priority_owner)}</div><div class="approval">Контроль {priority_due} · '
+                         f'<div>{html.escape(priority_owner)}</div><div class="approval">Контроль на следующем срезе · '
                          f'{priority_check}</div></div></article>')
     portal_budget = (f'<article class="item"><h3>{html.escape(budget_title)}</h3><div class="fields">'
                      f'<div>Эффект до затрат {fm(pack_effect)}</div><div>{plan_owner}</div>'
-                     f'<div class="approval">Срок {dd(package_date)} · {N.report_link("orders", "Вехи контроля")}</div></div></article>')
+                     f'<div class="approval">Цикл 4 недели, контроль на каждом срезе · {N.report_link("orders", "Было → цель")}</div></div></article>')
     portal_plan = (f'<article class="item"><h3>{plan_title}</h3><div class="fields">'
-                   f'<div>{plan_history}</div><div>{plan_owner}</div><div class="approval">Контроль {priority_due} '
+                   f'<div>{plan_history}</div><div>{plan_owner}</div><div class="approval">Контроль на следующем срезе '
                    f'· {N.report_link("orders", "План по ЖК")}</div></div></article>')
+    gd_extra = ""
+    for it in GD_ITEMS[2:]:
+        d_ = decision_info(projects_by_key[it["card"]]) if it["card"] in projects_by_key else None
+        gd_extra += (f'<article class="item"><h3>{html.escape(it["title"])}</h3><div class="fields">'
+                     f'<div>{project_link(it["card"], it["scope"])}</div><div>Эффект до затрат −{_mln_s(it["effect"])} млн ₽ за 4 недели</div>'
+                     f'<div>{html.escape(it["role"])}</div><div class="approval">Контроль на следующем срезе'
+                     + (f' · нарушен срок, кв.: {f(d_["was"])} → {f(d_["target"])}' if d_ else "") + '</div></div></article>')
     st.markdown('<section class="weekly" id="weekly-decisions"><h2>Решения недели по портфелю · расчёт до учёта затрат</h2>'
-                '<h3>Нужно решение ГД</h3>' + priority_card + portal_budget
+                '<h3>Нужно решение ГД</h3>' + priority_card + portal_budget + gd_extra
                 + '<h3>В рабочем порядке</h3>' + portal_plan + "".join(week_cards[n_direct:])
                 + f'<div class="intro"><strong>Итого за 4 недели</strong> · снижение {fm(pack_effect)}, затраты {fm(pack_cost)}, '
                 f'разница {fm(pack_effect - pack_cost)} расчётного эффекта за вычетом затрат.</div>'
@@ -1143,7 +1276,7 @@ if view == "decisions":
                 f'после обзвона приходит {C.fmt_pct(DC.CALL_RESPONSE)} собственников; односторонние акты — по {C.fmt_pct(DC.UNILATERAL_SHARE)} вызовов с истёкшим сроком (при соблюдении условий ч. 6 ст. 8 214-ФЗ); '
                 f'удержания и претензионная работа снимают {C.fmt_pct(DC.PRESSURE_SHARE)} дневной неустойки по квартирам с замечаниями подрядчика. '
                 'Снижение за 4 недели = снижение в день к концу 4-й недели × 28 / 2, предполагается линейное нарастание. '
-                'Даты исполнения выбранного пакета указаны в поручениях.</div>', unsafe_allow_html=True)
+                'Контроль исполнения пакета — на каждом срезе, см. «Поручения».</div>', unsafe_allow_html=True)
 
 if view == "contribution":
     # ---------------------------------------------------------------- 3. Вклад сегментов в риск
@@ -1331,7 +1464,7 @@ if view == "money":
         payout_rows = [[project_link(p_["key"], p_["name"], "money"), fm(p_["ladder"]["claimed"]), fm(p_["ladder"]["expected"])] for p_ in projects]
         payout_rows.append(["Итого по портфелю", fm(LD["claimed"]), fm(LD["expected"])])
         U.fin_table(["ЖК", "Возможные требования по сценарию", "Ожидаемые выплаты по сценарию"], payout_rows, right=(1, 2), total_last=True)
-    st.markdown(f"**Сценарий накопленной неустойки к {dd(package_date)}**")
+    st.markdown(f"**Сценарий накопленной неустойки через 4 недели**")
     baseline_accrual = tot["accrued_up"] + pack_future_base
     freeze_accrual = tot["accrued_up"] + tot["risk_day"] * DC.MONTH_W * 7
     U.fin_table(["Условия сценария", "Верхняя оценка на дату, ₽"], [
@@ -1344,30 +1477,35 @@ if view == "money":
 
 if view == "orders":
     # ---------------------------------------------------------------- 9. Поручения
-    U.section("Поручения", f"Единая контрольная дата — {priority_due}. Плановые показатели за новый цикл начинаются с нуля.", anchor="orders")
-    order_head = ["Действие", "Поручение и ЖК", "Ответственный", "Проверка", "Было → цель", "Расчёт за 4 недели", "Затраты за 4 недели"]
+    U.section("Поручения", "Контроль — на следующем срезе по показателю «было → цель». Плановые показатели за новый цикл начинаются с нуля.", anchor="orders")
+    order_head = ["Действие", "Поручение и ЖК", "Ответственный", "Контроль", "Было → цель", "Расчёт за 4 недели", "Затраты за 4 недели"]
     def order_row(measure, requires_approval):
         instruction = priority_request if requires_approval else measure["title"]
         scope = f'<span>{html.escape(instruction)}<br>{measure_links(measure)}</span>'
         check = f'{result_text(measure)}. {priority_check_detail}' if requires_approval else result_text(measure)
         cost = f'{f(measure["cost"])} ₽ в составе пакета' if requires_approval else fm(measure["cost"])
-        return ["Утвердить" if requires_approval else "Принять к сведению", scope, measure["owner"], priority_due,
+        return ["Утвердить" if requires_approval else "Принять к сведению", scope, measure["owner"], "Следующий срез",
                 check, f"−{fm(measure['scenario_effect'])}", cost]
 
     st.markdown("**Нужно решение ГД**")
     approval_rows = [order_row(priority_package, True)] if priority_package else []
     if not priority_package and priority_measure:
         approval_rows.append(["Утвердить", f'{html.escape(priority_request)}<br>{project_link(focus["key"], focus["name"])}',
-                              priority_owner, priority_due, "Проверка применимости 0 → 1", "Вне пакета", "Без отдельного бюджета"])
-    approval_rows.append(["Утвердить", budget_title, plan_owner, dd(package_date),
-                          f"Охват 0 → {f(pack_units)} квартир. Проверка исполнения на недельных вехах",
+                              priority_owner, "Следующий срез", "Проверка применимости 0 → 1", "Вне пакета", "Без отдельного бюджета"])
+    approval_rows.append(["Утвердить", budget_title, plan_owner, "Каждый срез, 4 недели",
+                          f"Охват 0 → {f(pack_units)} квартир. Исполнение — на каждом срезе",
                           f"−{fm(pack_effect)}", f"{f(pack_cost)} ₽"])
+    for it in GD_ITEMS[2:]:          # главные решения ЖК из полосы «Нужно решение ГД» на сводке
+        d_ = decision_info(projects_by_key[it["card"]]) if it["card"] in projects_by_key else None
+        was_t = f'Нарушен срок, кв.: {f(d_["was"])} → {f(d_["target"])}' if d_ else "—"
+        approval_rows.append(["Утвердить", f'<span>{html.escape(it["title"])}<br>{project_link(it["card"], it["scope"])}</span>', it["role"],
+                              "Следующий срез", was_t, f'−{_mln_s(it["effect"])} млн ₽', "Без отдельного бюджета"])
     U.fin_table(order_head, approval_rows, right=(5, 6))
     st.markdown("**В рабочем порядке**")
-    operation_rows = [["Выполнить", plan_title, plan_owner, priority_due, plan_history, "Отдельно от бюджета", "—"]]
+    operation_rows = [["Выполнить", plan_title, plan_owner, "Следующий срез", plan_history, "Отдельно от бюджета", "—"]]
     operation_rows.extend(order_row(measure, False) for measure in package if measure is not priority_package)
     U.fin_table(order_head, operation_rows, right=(5, 6))
-    st.markdown(f"**Недельный план передач из текущей просрочки по ЖК · контроль {priority_due}**")
+    st.markdown("**Недельный план передач по квартирам с нарушенным сроком · контроль на следующем срезе**")
     st.markdown(plan_readiness, unsafe_allow_html=True)
     plan_rows = [[project_link(row["project"]["key"], row["project"]["name"]), f(row["baseline"]),
                   f(row["booked"]), f(row["reserve"]), f(row["total"]), f(row["new"]),
@@ -1384,7 +1522,7 @@ if view == "orders":
     st.markdown("**Недельные вехи пакета**")
     U.fin_table(["Контроль", "Будущая неустойка при текущем темпе, нарастающим итогом",
                  "С пакетом, нарастающим итогом", "Эффект до затрат"],
-                [[dd(act_d + pd.Timedelta(days=7 * week)),
+                [[f"Срез, неделя {week}",
                   fm(sum(row["base"] for row in package_path if row["week"] == week)),
                   fm(sum(row["base"]-row["effect"] for row in package_path if row["week"] == week)),
                   fm(sum(row["effect"] for row in package_path if row["week"] == week))]
@@ -1430,7 +1568,7 @@ if view == "notes":
     U.fin_table(["Что задано", "Значение или правило"], [
         ["ПА базового среза", f"Односторонний акт присваивается каждому {pf_demo.UNILATERAL_ACT_INTERVAL}-му номеру объекта со сдвигом по ЖК при наличии даты ПА."],
         ["ПА за 14–20 ноября", f"Синтетические акты по готовым квартирам. По Бунинским добавлены {pf_demo.BK_WEEK_UNILATERAL} односторонних акта с истёкшим сроком вызова. Остальные акты за неделю двусторонние. Часть несостоявшихся приёмок перенесена на новые даты."],
-        ["Даты", f"Срез {slice_text}; сравнение с {dd(period_start)}; контроль {priority_due}; горизонт мер до {dd(package_date)}."],
+        ["Даты", f"Срез {slice_text}; сравнение с {dd(period_start)}; контроль на следующем срезе; горизонт мер 4 недели."],
         ["Бунинские кварталы", f"{pf_demo.BK_EXPIRED_POOL} квартир с истёкшим сроком вызова в базовом срезе; дополнение к первоначальной группе — из готовых без записи и вызова. Возраст уведомлений в добавленной группе — {pf_demo.BK_NOTICE_AGE} дней. Цель = группа × {C.fmt_pct(DC.UNILATERAL_SHARE)}, с округлением."],
         ["Охват остальных мер", f"Ранние слоты {C.fmt_pct(DC.SLOT_SHARE)}, повторная приёмка {C.fmt_pct(DC.REFUSAL_RESOLVED)}, устранение замечаний {C.fmt_pct(DC.REMARKS_HANDOVER_SHARE)}, обзвон {C.fmt_pct(DC.CALL_RESPONSE)}. Целое число округляется по ЖК."],
         ["Цели", "На неделю — четверть планового результата меры с округлением вверх по мере. Остаток просрочки = текущий остаток − план передач + новый приток."],

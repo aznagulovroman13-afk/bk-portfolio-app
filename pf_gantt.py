@@ -11,8 +11,9 @@ import pandas as pd
 
 import pf_core as C
 import pf_penalty as PN
+import pf_roles as R
 
-GANTT_SCHEMA = "g2"
+GANTT_SCHEMA = "g3"
 
 # этап → (начало, окончание) плана в днях относительно срока по ДДУ
 STAGES = (
@@ -41,16 +42,8 @@ CAUSES = {
 }
 DEFAULT_CAUSE = ("app", "inspect", "Передача актов идёт ниже планового темпа")
 
-# этап → зона ответственности (подразделение или внешний участник)
-STAGE_OWNER = {
-    "rnv": "Проектная группа",
-    "keys": "Генподрядчик",
-    "ready": "Генподрядчик",
-    "notice": "Отдел передачи",
-    "inspect": "Отдел передачи",
-    "fix": "Подрядчик",           # + гарантийный отдел: контроль регламента устранения
-    "app": "Юридический отдел",
-}
+# этап → роль (единый справочник pf_roles); подрядчик — контрагент роли, управляющей подрядчиками
+STAGE_OWNER = R.STAGE_ROLE
 # причина → вид работ, если задержку создаёт конкретный подрядчик
 CAUSE_WORKS = {"cross": "Двери", "brigades": "Отделка"}
 
@@ -71,18 +64,18 @@ def _contractor(d: dict, group: str | None):
 
 
 def owner(stage: str, cause_key: str, d: dict) -> dict:
-    """Ответственный за задержку этапа: тип участника, название (компания — только для подрядчика), соисполнитель."""
-    party = STAGE_OWNER[stage]
-    works = CAUSE_WORKS.get(cause_key)
-    if stage == "ready" and works:                     # отделка не завершена — подрядчик по отделке
-        party = "Подрядчик"
-    if party == "Подрядчик":
-        company, group = _contractor(d, works)
-        short = f"Подрядчик · {group.lower()}" if group else "Подрядчик"
-        return dict(party=party, short=short, company=company or "",
-                    co="Гарантийный отдел" if stage == "fix" else "Генподрядчик",
-                    label=f"{short}, {company}" if company else short)
-    return dict(party=party, short=party, company="", co="", label=party)
+    """Роль, отвечающая за задержку этапа. На критическом этапе — роль, получающая поручение по главному решению ЖК.
+    Для этапов подрядчика (устранение, готовность при незавершённой отделке, решения по подрядчику) — название компании-контрагента."""
+    crit = CAUSES.get(cause_key, DEFAULT_CAUSE)[0]
+    party = R.DECISION_ROLE.get(cause_key, R.STAGE_ROLE[stage]) if stage == crit else R.STAGE_ROLE[stage]
+    contractor_stage = stage == "fix" or (stage == crit and (cause_key in R.CONTRACTOR_DECISIONS))
+    company, group = _contractor(d, CAUSE_WORKS.get(cause_key)) if contractor_stage else (None, None)
+    co = R.QUALITY if stage == "fix" and party != R.QUALITY else ""
+    works = f"подрядчик · {group.lower()}" if group else ""
+    label = party + (f", {works} {company}" if company else "")
+    return dict(party=party, short=party, company=company or "", works=works, co=co, label=label)
+
+
 CRITICAL_SHARE = 0.7
 
 
