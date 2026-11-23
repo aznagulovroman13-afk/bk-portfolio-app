@@ -59,7 +59,12 @@ with sync_playwright() as pw:
     shot("01_first_screen")
     # уровень 1: главная таблица (строки свёрнуты)
     mt = f.locator("#main-portfolio")
-    mt.scroll_into_view_if_needed(); mt.screenshot(path=OUT + f"01a_main_table_{tag}_1440.png")
+    mt.scroll_into_view_if_needed(); mt.screenshot(path=OUT + f"01a_main_table_collapsed_{tag}_1440.png")
+    mt.locator("tr.mt-toggle label").click(); time.sleep(0.5)
+    mt.screenshot(path=OUT + f"01a2_main_table_expanded_{tag}_1440.png")
+    mt.locator("tr.mt-toggle label").click(); time.sleep(0.3)
+    mt.screenshot(path=OUT + f"01a3_main_table_collapsed_again_{tag}_1440.png")
+    mt.locator("tr.mt-toggle label").click(); time.sleep(0.3)
     # уровень 2: клик по ЖК → карточка с диаграммой Ганта
     mt.get_by_role("link", name="Деснаречье", exact=True).click()
     exp = f.locator("[data-testid=stExpander]", has_text="Деснаречье · в просрочке").first

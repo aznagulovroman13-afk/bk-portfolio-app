@@ -28,7 +28,7 @@ import pf_penalty as PN  # noqa: E402
 import pf_gantt as GT  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
-REPORT_SCHEMA = "v22"
+REPORT_SCHEMA = "v23"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
         or getattr(GT, "GANTT_SCHEMA", None) != "g1" or "card" not in N.ROUTE_FIELDS:
     for module in (U, DC, DT, pf_demo, PF, PN, GT):
@@ -334,22 +334,33 @@ def main_row(project, data, through):
 MAIN_COLS = (("t2024", "2024"), ("t2025", "2025"), ("t2026", "2026"))
 
 
-def main_table(rows, slice_label):
-    """Уровень 1: главная таблица портфеля по эскизу — ЖК × передача по годам × остаток × просрочка × неустойка."""
+MAIN_TOP = ("bunino", "scandc", "zen")     # три ЖК главного экрана по эскизу (БК, СК, ДЗ); остальные — по «Развернуть»
+
+
+def main_table(rows, slice_label, open_more=False):
+    """Уровень 1: главная таблица портфеля по эскизу — ЖК × передача по годам × остаток × просрочка × неустойка.
+    Видны три ЖК (MAIN_TOP), остальные раскрываются строкой «Развернуть»; «Итого портфель» — всегда по всем ЖК."""
     tot = {k: sum(r[k] for r in rows) for k in ("t2024", "t2025", "t2026", "left2026", "overdue", "pen_delay", "pen_remarks", "effect")}
     def cells(r):
         return ("".join(f'<td class="r">{f(r[k])}</td>' for k, _ in MAIN_COLS)
                 + f'<td class="r sep">{f(r["left2026"])}</td><td class="r">{f(r["overdue"])}</td>'
-                + f'<td class="r sep">{_mln(r["pen_delay"])}</td><td class="r">{_mln(r["pen_remarks"], 2)}</td>')
-    body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}</tr>' for r in rows)
+                + f'<td class="r sep">{_mln(r["pen_delay"])}</td><td class="r">{_mln(r["pen_remarks"])}</td>')
+    top = [r for r in rows if r["key"] in MAIN_TOP]
+    more = [r for r in rows if r["key"] not in MAIN_TOP]
+    body = "".join(f'<tr><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}</tr>' for r in top)
+    body += "".join(f'<tr class="mt-hidden"><td>{N.link(r["name"], card=r["key"])}</td>{cells(r)}</tr>' for r in more)
+    if more:
+        body += (f'<tr class="mt-toggle"><td colspan="8"><label for="mt-more">'
+                 f'<span class="mt-open">▾ Развернуть · ещё {len(more)} ЖК</span><span class="mt-close">▴ Свернуть</span></label></td></tr>')
     body += f'<tr class="tot"><td>{N.link("Итого портфель", card="total")}</td>{cells(tot)}</tr>'
     return ('<section class="main-port" id="main-portfolio">'
+            f'<input type="checkbox" id="mt-more" class="mt-more"{" checked" if open_more else ""}>'
             f'<p class="exec-date">Срез <b>{slice_label}</b> · {len(rows)} ЖК · неустойка в млн ₽ с учётом моратория</p>'
             '<div class="tw"><table class="fin main-table"><thead>'
             '<tr><th rowspan="2">ЖК</th><th class="grp" colspan="3" title="Передано квартир по передаточным актам">Передача по годам</th>'
             '<th class="r sep tip" rowspan="2" title="Квартиры со сроком по ДДУ в 2026 году, ещё не переданные">Остаток 2026</th>'
             '<th class="r tip" rowspan="2" title="Квартиры с нарушенным сроком по ДДУ на дату среза">В просрочке</th>'
-            '<th class="grp sep" colspan="2" title="Начислено за 2024–2026, млн ₽; период моратория ПП № 326 исключён">Неустойка</th></tr>'
+            '<th class="grp sep" colspan="2" title="Начислено за 2024–2026; период моратория ПП № 326 исключён">Неустойка, млн ₽</th></tr>'
             '<tr><th class="r">2024</th><th class="r">2025</th><th class="r">2026</th>'
             '<th class="r sep tip" title="За просрочку передачи, ч. 2 ст. 6 214-ФЗ">За задержку</th>'
             '<th class="r tip" title="За нарушение сроков устранения недостатков, ч. 8 ст. 7 214-ФЗ">За замечания</th></tr>'
@@ -707,10 +718,15 @@ if view == "summary":
     first_projects = ("bunino", "scandc", "scands")
     display_order = [projects_by_key[key] for key in first_projects if key in projects_by_key]
     display_order.extend(project for project in projects if project["key"] not in first_projects)
-    main_rows = [main_row(p_, DA[p_["key"]], act_d) for p_ in display_order]
+    main_order = ([projects_by_key[k] for k in MAIN_TOP if k in projects_by_key]
+                  + [p_ for p_ in display_order if p_["key"] not in MAIN_TOP])
+    main_rows = [main_row(p_, DA[p_["key"]], act_d) for p_ in main_order]
     open_card = route.get("card")
-    st.markdown(main_table(main_rows, slice_text), unsafe_allow_html=True)
-    for row_, p_ in zip(main_rows, display_order):
+    st.markdown(main_table(main_rows, slice_text, open_more=bool(open_card) and open_card not in MAIN_TOP and open_card != "total"),
+                unsafe_allow_html=True)
+    for row_, p_ in zip(main_rows, main_order):
+        if p_["key"] not in MAIN_TOP and open_card != p_["key"]:
+            continue      # карточки свёрнутых ЖК появляются по клику на строку после «Развернуть»
         st.markdown(f'<div id="card-{p_["key"]}" class="card-anchor"></div>', unsafe_allow_html=True)
         with st.expander(f'{p_["name"]} · в просрочке {f(row_["overdue"])} · неустойка {_mln(row_["pen_delay"] + row_["pen_remarks"])} млн ₽',
                          expanded=open_card == p_["key"]):

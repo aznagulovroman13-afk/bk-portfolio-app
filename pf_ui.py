@@ -154,7 +154,12 @@ details.mx-cell > summary::before { content: none; } details.mx-cell > summary::
   border: 1px solid var(--line); border-left: 3px solid var(--gold); background: var(--paper); border-radius: 5px; padding: 8px 12px; }
 .gantt-l1 .mx-t { font-weight: 650; } .gantt-l1 b { font-variant-numeric: tabular-nums; color: var(--risk); } .gantt-l1 .mx-s { color: var(--ink3); font-size: 12px; margin-left: auto; }
 .gantt-cause { font-size: 13px; color: var(--ink); margin: 6px 0 8px; } .gantt-causes td { font-size: 12.5px; }
-.main-table td:first-child a { font-weight: 650; } .main-table th.grp { text-align: center; }
+.main-table td:first-child a { font-weight: 650; }
+.mt-more { display: none; } .main-table tr.mt-hidden { display: none; } .mt-more:checked ~ .tw .main-table tr.mt-hidden { display: table-row; }
+.main-table tr.mt-toggle td { padding: 0; border-bottom: 1px solid #d5dbe5; }
+.main-table tr.mt-toggle label { display: block; cursor: pointer; padding: 7px 10px; color: #23406e; font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.main-table tr.mt-toggle label:hover { background: #eef2f8; }
+.mt-close { display: none; } .mt-more:checked ~ .tw .mt-open { display: none; } .mt-more:checked ~ .tw .mt-close { display: inline; } .main-table th.grp { text-align: center; }
 .card-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; } .card-anchor { scroll-margin-top: 60px; }
 .card-decisions { margin: 6px 0; padding-left: 18px; font-size: 13px; } .card-decisions .sub { display: block; color: var(--ink3); font-size: 12px; }
 .card-open { margin: 8px 0 0; font-size: 13px; }

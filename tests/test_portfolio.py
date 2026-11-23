@@ -365,9 +365,16 @@ def test_first_screen_shows_annual_transfers_by_project(D):
         assert label in t, label
     assert "Что согласовать" not in t and "Нет данных" not in t
     table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
-    assert table.index("Бунинские кварталы") < table.index("Скандинавия Центр")
+    assert table.index("Бунинские кварталы") < table.index("Скандинавия Центр") < table.index("Дзен-кварталы")
+    visible = re.findall(r'<tr><td><a [^>]*>([^<]+)</a>', table)
+    assert visible == ["Бунинские кварталы", "Скандинавия Центр", "Дзен-кварталы"]
+    assert table.count('<tr class="mt-hidden">') == 7 and "▾ Развернуть · ещё 7 ЖК" in table and "▴ Свернуть" in table
+    assert table.index("Развернуть") < table.index("Итого портфель")
     for key, name in pf_data.PROJECTS:
         assert f'href="/?card={key}#card-{key}" data-pf-route>{name}</a>' in table
+        if f'id="exec-project-{key}"' not in raw:          # свёрнутый ЖК: карточка по клику на строку
+            _open(at, card=key)
+            raw = " ".join(m.value for m in at.markdown)
         card = raw.split(f'id="exec-project-{key}"', 1)[1].split("</table>", 1)[0]
         assert re.findall(r'<th scope="row">(20\d{2})</th>', card) == ["2024", "2025", "2026"]
         units = D[key]["units"]
@@ -754,9 +761,15 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
     table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
     for h in re.findall(r"<th[^>]*>([^<]+)</th>", table):
         assert len(h.split()) <= 3, h
+    names = dict(pf_data.PROJECTS)
     cards = {e.label.split(" · ")[0]: e for e in at.expander if " · в просрочке " in e.label}
-    assert set(cards) == {n for _, n in pf_data.PROJECTS}
+    assert set(cards) == {names[k] for k in ("bunino", "scandc", "zen")}
     for key, name in pf_data.PROJECTS:
+        if name not in cards:                       # свёрнутые ЖК: карточка открывается кликом по строке
+            _open(at, card=key)
+            cards = {e.label.split(" · ")[0]: e for e in at.expander if " · в просрочке " in e.label}
+            table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+            assert 'id="mt-more" class="mt-more" checked' in table and cards[name].proto.expanded
         row = table.split(f'#card-{key}"', 1)[1].split("</tr>", 1)[0]
         tds = re.findall(r'<td class="r[^"]*">([^<]+)</td>', row)
         assert len(tds) == 7
@@ -842,7 +855,7 @@ def test_main_table_totals_are_consistent(D):
     table = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
     num = lambda s: float(s.replace("\xa0", "").replace(" ", "").replace(",", "."))
     rows = {}
-    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", table.split("<tbody>", 1)[1]):
+    for tr in re.findall(r"<tr(?! class=\"mt-toggle)[^>]*>(.*?)</tr>", table.split("<tbody>", 1)[1]):
         name = re.search(r">([^<]+)</a>", tr).group(1)
         rows[name] = [num(v) for v in re.findall(r'<td class="r[^"]*">([^<]+)</td>', tr)]
     tot = rows.pop("Итого портфель")
@@ -858,7 +871,7 @@ def test_main_table_totals_are_consistent(D):
         r = rows[names[p["key"]]]
         assert r[4] == p["overdue_kv"]
         assert r[5] == pytest.approx(sum(pen[p["key"]]["ddu"].values()) / 1e6, abs=0.051)
-        assert r[6] == pytest.approx(sum(pen[p["key"]]["remarks"].values()) / 1e6, abs=0.0051)
+        assert r[6] == pytest.approx(sum(pen[p["key"]]["remarks"].values()) / 1e6, abs=0.051)
         h = PN.history_factors(p["key"])
         assert (r[0] > 0) == (h[2024] > 0) and (r[1] > 0) == (h[2025] > 0)
         assert (r[0] > 0) <= (pen[p["key"]]["ddu"][2024] > 0)
