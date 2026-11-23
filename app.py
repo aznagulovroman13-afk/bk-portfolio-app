@@ -24,13 +24,15 @@ import pf_penalty as PN  # noqa: E402
 import pf_gantt as GT  # noqa: E402
 import pf_drill as DR  # noqa: E402
 import pf_roles as R  # noqa: E402
+import pf_portfolio2 as P2  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
 REPORT_SCHEMA = "v27"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
         or getattr(GT, "GANTT_SCHEMA", None) != "g3" or getattr(DR, "DRILL_SCHEMA", None) != "d3" \
-        or getattr(R, "ROLES_SCHEMA", None) != "r1" or not hasattr(U, "gloss") or "cell" not in N.ROUTE_FIELDS:
-    for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR):
+        or getattr(R, "ROLES_SCHEMA", None) != "r1" or not hasattr(U, "gloss") or "cell" not in N.ROUTE_FIELDS \
+        or getattr(P2, "P2_SCHEMA", None) != "q1":
+    for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR, P2):
         reload(module)
     if "cell" not in N.ROUTE_FIELDS:
         try:
@@ -659,9 +661,9 @@ MAIN_OWNER = {p["decisions"][0]["key"]: p["name"] for p in projects if p.get("de
 route = N.read_route()
 project_key = route.get("jk")
 view = route.get("view", "summary")
-if view not in N.REPORT_VIEWS:
+if view not in N.REPORT_VIEWS and view != P2.VIEW:
     view = "summary"
-st.markdown(N.menu(None if project_key in projects_by_key else view), unsafe_allow_html=True)
+st.markdown(P2.menu(None if project_key in projects_by_key else view), unsafe_allow_html=True)
 
 sg = lambda v: ("+" if v > 0 else "−" if v < 0 else "") + f(abs(v))
 tr_, to_ = max(tot["risk_day"], 1), max(tot["overdue_kv"], 1)
@@ -969,6 +971,11 @@ def gd_strip():
         for it in GD_ITEMS)
     return (f'<section class="gd-strip" id="gd-strip"><div class="gd-ttl">Нужно решение ГД · {len(GD_ITEMS)}</div>'
             f'<ol>{rows}</ol><div class="gd-note">Эффект — снижение неустойки за 4 недели до затрат; контроль — на следующем срезе.</div></section>')
+if view == P2.VIEW:            # «Портфель 2» — альтернативная версия на тех же данных и расчётах
+    P2.render(dict(projects=projects, totals=tot, DA=DA, PEN=PEN, GANTT=GANTT, slice_text=slice_text, route=route,
+                   main_row=lambda p_: main_row(p_, DA[p_["key"]], act_d), drill=drill_data))
+    st.stop()
+
 if view == "summary":
     st.markdown('<div class="rh exec-header"><div class="kick">Отчёт для генерального директора · Демо-данные</div>'
                 '<div class="ttl">Портфель ЖК</div></div>', unsafe_allow_html=True)
