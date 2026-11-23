@@ -744,15 +744,30 @@ def test_penalty_summary_is_consistent_with_portfolio(D, B):
     assert 0 < sum(tot["remarks"].values()) < 0.2 * sum(tot["ddu"].values())
 
 
-def test_penalty_summary_on_first_screen():
+def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
+    import pf_penalty as PN
     at = _login()
-    t = _txt(at)
-    assert "Портфель ЖК · неустойка с учётом моратория, млн ₽" in t
-    for s in ("Начислено за просрочку передачи по ДДУ", "Начислено за замечания (сроки устранения недостатков)", "Итого начислено 2024–2026",
-              "Доля портфеля", "Итого по портфелю", "Начислено за 2024–2026 гг.", "Не начислено в период моратория (ПП № 326)",
-              "Расчёт без учёта моратория", "ПП РФ от 18.03.2024 № 326", "22.03.2024 по 31.12.2025", "7,5%", "266-ФЗ"):
-        assert s in t, s
-    assert all(n in t for _, n in pf_data.PROJECTS)
-    block = t[t.index("Портфель ЖК · неустойка с учётом моратория"):t.index("ЖК упорядочены по сумме начисленной неустойки")]
-    assert not any(w in block for w in ("Нет данных", "ориентир", "демо", "Демо", "срок до"))
-    assert t.index("Портфель ЖК · неустойка с учётом моратория") < t.index("Квартир в просрочке")
+    t = _screen_text(at)
+    assert "Портфель ЖК · неустойка" not in t and 'id="penalty-summary"' not in " ".join(m.value for m in at.markdown)
+    summary = next(m.value for m in at.markdown if 'class="exec-projects"' in m.value)
+    # портфельный итог — третьей карточкой в ряду показателей
+    assert summary.count('class="exec-metric"') == 3 and "Неустойка начислена за 2024–2026" in summary
+    for key, name in pf_data.PROJECTS:
+        card = summary.split(f'id="exec-project-{key}"', 1)[1].split("</article>", 1)[0]
+        assert f'aria-label="Неустойка по годам, {name}"' in card
+        for s in ("Неустойка за просрочку передачи (ч. 2 ст. 6 214-ФЗ)",
+                  "Неустойка за нарушение сроков устранения недостатков (ч. 8 ст. 7 214-ФЗ)", "не начислено по ПП № 326", "мораторий"):
+            assert s in card, (key, s)
+        assert card.count("не начислено по ПП № 326") == 2
+    # таблица «Структура портфеля по ЖК»: начислено и не начислено по каждому ЖК
+    seg = _open(at, view="segments")
+    for s in ("Неустойка начислена 2024–2026, млн ₽", "Не начислено по ПП № 326, млн ₽", "передача (ч. 2 ст. 6)", "недостатки (ч. 8 ст. 7)"):
+        assert s in seg, s
+    # карточка ЖК: годы, две меры и правовое основание
+    for tab in ("overview", "money"):
+        page = _open(at, jk="desn", tab=tab)
+        for s in ("Неустойка ЖК по годам: начислено и не начислено по ПП № 326", "Ч. 2 ст. 6 214-ФЗ", "Ч. 8 ст. 7 214-ФЗ в ред. 266-ФЗ",
+                  "1/150", "не более этой стоимости", "1% в день", "Ч. 4 ст. 10 в ред. 482-ФЗ", "3% цены договора", "ПП РФ № 326",
+                  "22.03.2024 по 31.12.2025", "7,5%", "ПП № 2227", "31.12.2026"):
+            assert s in page, (tab, s)
+        assert not any(w in page for w in ("ориентир", "срок до"))

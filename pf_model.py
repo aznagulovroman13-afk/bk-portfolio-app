@@ -15,7 +15,7 @@ import pf_remstat as RS
 import pf_stats
 
 DASH = "—"
-REPORT_SCHEMA = "v18"
+REPORT_SCHEMA = "v19"
 PLAN_UPLIFT = 1.10       # план передачи за неделю = средний факт 4 предыдущих недель × 1,10
 RISK_MATERIAL = 0.02     # изменение риска за 7 дней от 2% считаем существенным
 WEEK0 = pd.Timestamp("2026-08-17")     # первая из 12 недель динамики (понедельник)

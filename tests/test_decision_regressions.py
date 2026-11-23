@@ -130,7 +130,7 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
 
     report = " ".join(block.value for block in app.markdown)
     summary = report.split('id="summary"', 1)[1]
-    assert "Сводка по портфелю" in summary and summary.count('class="exec-metric"') == 2
+    assert "Сводка по портфелю" in summary and summary.count('class="exec-metric"') == 3
     zen = summary.split('id="exec-project-zen"', 1)[1].split("</article>", 1)[0]
     bunino = summary.split('id="exec-project-bunino"', 1)[1].split("</article>", 1)[0]
     assert '/?jk=zen#drill" data-pf-route>Дзен-кварталы' in zen

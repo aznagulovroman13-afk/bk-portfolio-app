@@ -59,8 +59,8 @@ with sync_playwright() as pw:
     shot("01_first_screen")
     p.set_viewport_size({"width": 1440, "height": 1900})
     time.sleep(1)
-    f.locator("#penalty-summary").scroll_into_view_if_needed()
-    p.screenshot(path=OUT + f"01b_penalty_summary_{tag}_1440.png", full_page=False)
+    f.locator(".exec-projects").scroll_into_view_if_needed()
+    p.screenshot(path=OUT + f"01b_project_cards_penalty_{tag}_1440.png", full_page=False)
     p.set_viewport_size({"width": 1440, "height": 1000})
     time.sleep(1)
     for section, anchor, name in (
@@ -78,6 +78,8 @@ with sync_playwright() as pw:
     f.locator(".pt3").get_by_role("link", name="Деснаречье", exact=True).click()
     f.locator("#drill").wait_for(state="visible")
     shot("09_project_desn")
+    f.get_by_text("Неустойка ЖК по годам", exact=False).first.scroll_into_view_if_needed()
+    shot("09b_project_desn_penalty")
     menu = f.get_by_role("navigation", name="Разделы ЖК")
     for tab, name in (("Шахматка", "10_chess_desn"), ("Замечания", "11_remarks_desn"), ("Подрядчики", "12_contractors_desn")):
         link = menu.get_by_role("link", name=tab, exact=True)

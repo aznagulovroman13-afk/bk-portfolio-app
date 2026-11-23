@@ -132,6 +132,10 @@ table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px
 .pen-table td.r, .pen-table th.r { white-space: nowrap; }
 .pen-head .pen-eff, .fin td.pen-eff, .fin tr.pen-eff td { color: var(--ink3); } .fin tr.sub-tot td { font-weight: 700; border-top: 1px solid var(--navy); }
 .pen-note { font-size: 12.5px; color: var(--ink2); background: #F3F5F8; border: 1px solid var(--line); padding: 9px 14px; margin: 0 0 10px; line-height: 1.5; }
+.pen-years { margin-top: 12px; } .pen-years th .sub { display: block; font-size: 10px; font-weight: 400; color: var(--ink3); }
+.pen-years tbody th { font-weight: 600; color: var(--ink); font-size: 12px; line-height: 1.3; } .pen-years tr.pen-eff th, .pen-years tr.pen-eff td { color: var(--ink3); font-weight: 400; padding-left: 14px; }
+.pen-years tr.pen-tot th, .pen-years tr.pen-tot td { font-weight: 700; border-top: 2px solid var(--navy); } .pen-years.compact { font-size: 12px; } .pen-years.compact th, .pen-years.compact td { padding: 5px; }
+.pen-basis { font-size: 12.5px; color: var(--ink2); background: #F3F5F8; border: 1px solid var(--line); padding: 8px 14px; margin: 10px 0 16px; line-height: 1.5; } .pen-basis p { margin: 3px 0; }
 .pen-bridge { margin-bottom: 10px; } .fin th .sub { display: block; font-size: 10px; text-transform: none; letter-spacing: 0; color: var(--ink3); font-weight: 400; }
 .pen-bar { display: inline-block; width: 56px; height: 6px; background: #E6EAF0; margin-right: 8px; vertical-align: middle; } .pen-bar i { display: block; height: 100%; background: var(--navy); }
 a[data-pf-route] { color: #234F7A !important; text-decoration: underline; text-underline-offset: 3px; }
