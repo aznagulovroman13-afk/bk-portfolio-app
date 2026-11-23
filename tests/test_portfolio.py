@@ -780,3 +780,56 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
                   "22.03.2024 по 31.12.2025", "7,5%", "ПП № 2227", "31.12.2026"):
             assert s in page, (tab, s)
         assert not any(w in page for w in ("ориентир", "срок до"))
+
+
+def test_gantt_schedule_is_consistent_with_overdue_and_penalty(D, B):
+    import pandas as pd
+    import pf_gantt as GT
+    import pf_penalty as PN
+    pen = {r["key"]: r for r in PN.table(D, B["projects"])["rows"]}
+    scheds = GT.portfolio(D, B["projects"], pen)
+    assert {s["key"] for s in scheds} == set(FOLDERS)
+    assert len({s["cause"] for s in scheds}) == len(scheds), "причины у ЖК должны различаться"
+    for s in scheds:
+        rows = s["rows"]
+        assert [r["key"] for r in rows] == list(GT.STAGE_KEYS)
+        # порядок этапов: план каждого этапа начинается не раньше предыдущего, последний заканчивается в срок ДДУ
+        assert all(a["plan_start"] <= b["plan_start"] for a, b in zip(rows, rows[1:]))
+        assert all(r["plan_start"] < r["plan_end"] and r["fact_start"] < r["fact_end"] for r in rows)
+        assert rows[-1]["plan_end"] == s["anchor"] and rows[-1]["fact_end"] == s["anchor"] + pd.Timedelta(days=s["delay"])
+        # факт не раньше плана, сдвиг накапливается по этапам, сумма задержек этапов = итоговая задержка
+        assert all(r["fact_start"] >= r["plan_start"] and r["fact_end"] >= r["plan_end"] for r in rows)
+        assert sum(r["slip"] for r in rows) == s["delay"] and all(r["slip"] >= 0 for r in rows)
+        assert [r["shift"] for r in rows] == [sum(x["slip"] for x in rows[:i]) for i in range(len(rows))]
+        # задержка и неустойка одного знака; неустойка по этапам складывается в неустойку 2026 года
+        p = next(p for p in B["projects"] if p["key"] == s["key"])
+        assert (s["delay"] > 0) == (pen[s["key"]]["ddu"][2026] > 0) == (p["overdue_kv"] > 0)
+        assert sum(r["penalty_ddu"] for r in rows) == pytest.approx(pen[s["key"]]["ddu"][2026])
+        assert sum(r["penalty_rem"] for r in rows) == pytest.approx(pen[s["key"]]["remarks"][2026])
+        crit = next(r for r in rows if r["critical"])
+        assert crit["slip"] == max(r["slip"] for r in rows) > 0 and crit["penalty_ddu"] > 0
+        # причина согласована с главным решением ЖК
+        assert GT.CAUSES[p["decisions"][0]["key"]][2] == s["cause"]
+        # медианная просрочка просроченных квартир
+        a = D[s["key"]]["units"]
+        o = a[a["Тип объекта"].eq("Квартира") & a["Просрочка ДДУ"].isin([C.NT_OVERDUE, C.LATE])]
+        assert s["delay"] == round(o["Просрочка ДДУ факт, дн."].median())
+    assert [s["delay"] for s in scheds] == sorted((s["delay"] for s in scheds), reverse=True)
+
+
+def test_gantt_on_first_screen_and_project_page():
+    at = _login()
+    t = _screen_text(at)
+    assert "Сроки" in t and "медиана задержки" in t
+    gantt = [e for e in at.expander if e.label == "Гант"]
+    assert len(gantt) == 1
+    inner = " ".join(m.value for m in gantt[0].markdown)
+    assert '<details class="mx mx-l3"><summary>Причины</summary>' in inner and all(n in inner for _, n in pf_data.PROJECTS)
+    assert "Ч. 2 ст. 6" in inner and "Ч. 8 ст. 7" in inner
+    page = _open(at, jk="desn")
+    assert "Сроки" in page and "критический этап" in page
+    gantt = [e for e in at.expander if e.label == "Гант"]
+    assert len(gantt) == 1 and gantt[0].get("plotly_chart")
+    inner = " ".join(m.value for m in gantt[0].markdown)
+    assert "Причины" in inner and "по ч. 2 ст. 6" in inner and "Период моратория (ПП № 326)" in inner
+    assert not any(w in inner for w in ("ориентир", "Нет данных", "срок до"))

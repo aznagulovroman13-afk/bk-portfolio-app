@@ -63,6 +63,13 @@ with sync_playwright() as pw:
     port.scroll_into_view_if_needed(); shot("01c_portfolio_penalty_level2")
     port.locator("details.mx-l3 > summary").first.click(); time.sleep(0.5)
     port.scroll_into_view_if_needed(); shot("01d_portfolio_penalty_level3")
+    gl = f.locator(".gantt-l1").first
+    gl.scroll_into_view_if_needed(); shot("01g_gantt_collapsed")
+    f.locator("[data-testid=stExpander] summary", has_text="Гант").first.click(); time.sleep(2)
+    f.locator(".js-plotly-plot").last.scroll_into_view_if_needed(); time.sleep(1); shot("01h_gantt_portfolio")
+    f.locator("details.mx-l3 > summary", has_text="Причины").first.click(); time.sleep(0.5)
+    f.locator("table.gantt-causes").scroll_into_view_if_needed(); shot("01i_gantt_portfolio_causes")
+    f.locator(".exec-summary").scroll_into_view_if_needed()
     card = f.locator(".exec-project").first
     card.scroll_into_view_if_needed(); shot("01e_project_card_collapsed")
     card.locator("details.mx-l2 > summary").nth(1).click(); time.sleep(0.5)
@@ -88,6 +95,10 @@ with sync_playwright() as pw:
     pen.locator("summary").first.click(); time.sleep(0.5)
     pen.locator("details.mx-l3 > summary").first.click(); time.sleep(0.5)
     pen.scroll_into_view_if_needed(); shot("09c_project_desn_penalty_expanded")
+    f.locator("[data-testid=stExpander] summary", has_text="Гант").first.click(); time.sleep(2)
+    f.locator(".js-plotly-plot").first.scroll_into_view_if_needed(); time.sleep(1); shot("09d_project_desn_gantt")
+    f.locator("details.mx-l3 > summary", has_text="Причины").last.click(); time.sleep(0.5)
+    f.locator(".gantt-cause").scroll_into_view_if_needed(); shot("09e_project_desn_gantt_causes")
     menu = f.get_by_role("navigation", name="Разделы ЖК")
     for tab, name in (("Шахматка", "10_chess_desn"), ("Замечания", "11_remarks_desn"), ("Подрядчики", "12_contractors_desn")):
         link = menu.get_by_role("link", name=tab, exact=True)

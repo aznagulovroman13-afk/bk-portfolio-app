@@ -25,11 +25,13 @@ import pf_demo  # noqa: E402
 import pf_nav as N  # noqa: E402
 import pf_model as PF  # noqa: E402
 import pf_penalty as PN  # noqa: E402
+import pf_gantt as GT  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
-REPORT_SCHEMA = "v20"
-if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p3":
-    for module in (U, DC, DT, pf_demo, PF, PN):
+REPORT_SCHEMA = "v21"
+if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p3" \
+        or getattr(GT, "GANTT_SCHEMA", None) != "g1":
+    for module in (U, DC, DT, pf_demo, PF, PN, GT):
         reload(module)
 
 st.markdown(U.CSS, unsafe_allow_html=True)
@@ -256,6 +258,49 @@ def penalty_section(r):
                 unsafe_allow_html=True)
 
 
+def gantt_causes_portfolio(scheds):
+    """Уровень 3 портфельного Ганта: причины по ЖК."""
+    rows = "".join(
+        f'<tr><td>{project_link(g["key"], g["name"])}</td><td>{html.escape(g["critical_name"])}</td><td class="r">+{g["delay"]}</td>'
+        f'<td>{html.escape(g["cause"])}</td><td class="r">{_mln(g["penalty_ddu"])}</td><td class="r">{_mln(g["penalty_rem"], 2)}</td>'
+        f'<td>{html.escape(g["risk"])}</td></tr>' for g in scheds)
+    return ('<details class="mx mx-l3"><summary>Причины</summary><div class="tw"><table class="fin gantt-causes"><thead><tr>'
+            '<th>ЖК</th><th>Этап</th><th class="r" title="Медианная задержка массовой передачи, дней">Дни</th><th>Причина</th>'
+            '<th class="r" title="Неустойка 2026 года за просрочку передачи, ч. 2 ст. 6 214-ФЗ, млн ₽">Ч. 2 ст. 6</th>'
+            '<th class="r" title="Неустойка 2026 года за нарушение сроков устранения недостатков, ч. 8 ст. 7 214-ФЗ, млн ₽">Ч. 8 ст. 7</th>'
+            f'<th>Риск</th></tr></thead><tbody>{rows}</tbody></table></div></details>')
+
+
+def gantt_causes_project(g):
+    """Уровень 3 Ганта ЖК: критический путь — этапы с задержкой и порождённая неустойка."""
+    rows = []
+    for r in g["rows"]:
+        if not r["slip"]:
+            continue
+        law = " · ".join(x for x in (f'{_mln(r["penalty_ddu"])} млн ₽ по ч. 2 ст. 6' if r["penalty_ddu"] else "",
+                                      f'{_mln(r["penalty_rem"], 2)} млн ₽ по ч. 8 ст. 7' if r["penalty_rem"] else "") if x)
+        role = "критический" if r["critical"] else "сопутствующий"
+        rows.append(f'<tr><td><b>{html.escape(r["stage"])}</b><span class="sub">{role}</span></td>'
+                    f'<td class="r">{r["plan_end"]:%d.%m.%Y}</td><td class="r">{r["fact_end"]:%d.%m.%Y}</td>'
+                    f'<td class="r">+{r["slip"]}</td><td>{law}</td></tr>')
+    return ('<details class="mx mx-l3"><summary>Причины</summary>'
+            f'<div class="gantt-cause"><b>{html.escape(g["cause"])}.</b> Главный риск — {html.escape(g["risk"].lower())}. '
+            f'Мера — {html.escape(g["decision"])}.</div>'
+            '<div class="tw"><table class="fin"><thead><tr><th>Этап</th><th class="r">План</th><th class="r">Факт</th>'
+            '<th class="r">Дни</th><th>Неустойка 2026</th></tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>'
+            '<div class="pen-basis"><p>Задержка этапа сдвигает последующие этапы; итоговая задержка равна медианной просрочке по ДДУ '
+            'просроченных квартир ЖК. Неустойка по ч. 2 ст. 6 214-ФЗ распределена между этапами пропорционально их задержке, '
+            'по ч. 8 ст. 7 — отнесена к устранению замечаний. Период моратория (ПП № 326) неустойку не порождает.</p></div></details>')
+
+
+def gantt_project_section(g):
+    st.markdown(f'<div class="gantt-l1"><span class="mx-t">Сроки</span><b>+{g["delay"]} дн.</b>'
+                f'<span class="mx-s">критический этап — {html.escape(g["critical_name"])}</span></div>', unsafe_allow_html=True)
+    with st.expander("Гант"):
+        U.chart(GT.project_figure(g), key=f"gantt_{g['key']}", height=380)
+        st.markdown(gantt_causes_project(g), unsafe_allow_html=True)
+
+
 def project_link(key, label, tab=None):
     return N.link(label, jk=key, **({"tab": tab} if tab else {}))
 
@@ -313,6 +358,8 @@ names = [p["name"] for p in projects]
 projects_by_key = {p["key"]: p for p in projects}
 PEN_T = PN.table(DA, projects)
 PEN = {r["key"]: r for r in PEN_T["rows"]}
+GANTT_LIST = GT.portfolio(DA, projects, PEN)
+GANTT = {g["key"]: g for g in GANTT_LIST}
 
 
 route = N.read_route()
@@ -365,6 +412,7 @@ if project_key in projects_by_key:
             dict(label="Замечания", value=f(p["remarks"]), delta=("", "flat"), foot=f"открытых, критических {f(p['critical'])}"),
         ])
         penalty_section(PEN[project_key])
+        gantt_project_section(GANTT[project_key])
         st.markdown('<div class="dec-h" style="font-size:17px">Решения по ЖК</div>', unsafe_allow_html=True)
         for i, d_ in enumerate(p["decisions"], 1):
             roles_ = "".join(f'<span class="pf-role">{html.escape(r)}</span>' for r in d_["roles"])
@@ -619,6 +667,14 @@ if view == "summary":
         f'<p class="exec-date">По датам передаточных актов · по {act_d:%d.%m.%Y}</p>'
         f'<div class="exec-projects">{cards}</div></div>',
         unsafe_allow_html=True)
+    delays_ = sorted(g["delay"] for g in GANTT_LIST)
+    top_ = GANTT_LIST[0]
+    st.markdown(f'<div class="gantt-l1"><span class="mx-t">Сроки</span><b>+{delays_[len(delays_) // 2]} дн.</b>'
+                f'<span class="mx-s">медиана задержки · максимум {html.escape(top_["name"])} +{top_["delay"]} дн.</span></div>',
+                unsafe_allow_html=True)
+    with st.expander("Гант"):
+        U.chart(GT.portfolio_figure(GANTT_LIST), key="gantt_portfolio", height=420)
+        st.markdown(gantt_causes_portfolio(GANTT_LIST), unsafe_allow_html=True)
     st.markdown('<nav class="pf-links" aria-label="Открыть раздел из сводки">' + "".join(
         N.report_link(key) for key in ("segments", "dynamics", "decisions", "remarks", "orders", "forecast")
     ) + '</nav>', unsafe_allow_html=True)
