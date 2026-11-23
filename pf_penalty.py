@@ -17,7 +17,7 @@ import pandas as pd
 
 import pf_remstat
 
-PENALTY_SCHEMA = "p2"
+PENALTY_SCHEMA = "p3"
 YEARS = (2024, 2025, 2026)
 MORATORIUM = (pd.Timestamp("2024-03-22"), pd.Timestamp("2025-12-31"))   # ПП № 326, п. 1 (с продлениями)
 RATE_CAP = 7.5                                                            # ПП № 326, п. 2: ключевая ставка на 01.07.2023, %

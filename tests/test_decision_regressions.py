@@ -135,14 +135,14 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     bunino = summary.split('id="exec-project-bunino"', 1)[1].split("</article>", 1)[0]
     assert '/?jk=zen#drill" data-pf-route>Дзен-кварталы' in zen
     assert "Что согласовать" not in summary and "Цель по остатку просрочки" not in summary
-    assert "Передача квартир по годам и ЖК" in summary and "по 11.11.2026" in summary
+    assert "Передачи по годам" in summary and "по 11.11.2026" in summary
     assert '<th scope="row">2026</th><td>3</td><td>0</td><td>3</td>' in zen
     assert '<th scope="row">2026</th><td>3</td><td>1</td><td>1</td>' in bunino
     assert 'Результат указан по 2 из 3' in bunino
     assert report.count("Демо-данные") == 1
     assert "сравнение с <b>04.11.2026</b>" in summary
     assert "Утвердить бюджет" not in summary and "Возможные требования по сценарию" not in summary
-    assert "Расчётная неустойка за просрочку передачи</span>" in summary and "<em>₽/день</em>" in summary
+    assert ">Неустойка в день</span>" in summary and "<em>₽/день</em>" in summary
     assert '<summary>Ещё</summary>' in report
     assert 'href="/?view=orders" data-pf-route>Поручения' in summary
 
@@ -161,7 +161,7 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     assert f'/?jk={priority["key"]}#drill" data-pf-route>{priority["name"]}' in summary
     assert "один дополнительный день просрочки" in decisions
     orders = open_screen(view="orders")
-    assert "Поручения к согласованию" in orders
+    assert ">Поручения</div>" in orders
     for section in (decisions, orders):
         assert "Нужно решение ГД" in section and "В рабочем порядке" in section
         assert "18.11.2026" in section

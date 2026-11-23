@@ -136,7 +136,21 @@ table.pt3 td { vertical-align: top; } table.pt3 td:last-child { max-width: 280px
 .pen-years tbody th { font-weight: 600; color: var(--ink); font-size: 12px; line-height: 1.3; } .pen-years tr.pen-eff th, .pen-years tr.pen-eff td { color: var(--ink3); font-weight: 400; padding-left: 14px; }
 .pen-years tr.pen-tot th, .pen-years tr.pen-tot td { font-weight: 700; border-top: 2px solid var(--navy); } .pen-years.compact { font-size: 12px; } .pen-years.compact th, .pen-years.compact td { padding: 5px; }
 .pen-basis { font-size: 12.5px; color: var(--ink2); background: #F3F5F8; border: 1px solid var(--line); padding: 8px 14px; margin: 10px 0 16px; line-height: 1.5; } .pen-basis p { margin: 3px 0; }
-.pen-bridge { margin-bottom: 10px; } .fin th .sub { display: block; font-size: 10px; text-transform: none; letter-spacing: 0; color: var(--ink3); font-weight: 400; }
+.pen-bridge { margin-bottom: 10px; }
+details.mx > summary { cursor: pointer; list-style: none; color: var(--navy); }
+details.mx > summary::-webkit-details-marker { display: none; }
+details.mx > summary::before { content: "▸"; display: inline-block; width: 14px; color: #8A96A8; transition: transform .15s; }
+details.mx[open] > summary::before { transform: rotate(90deg); }
+details.mx-l2 { margin-top: 10px; border: 1px solid var(--line); border-left: 3px solid var(--navy); background: var(--paper); border-radius: 5px; padding: 7px 12px; }
+details.mx-l2 > summary { display: flex; align-items: baseline; gap: 10px; font-size: 13px; }
+details.mx-l2 > summary .mx-t { font-weight: 650; } details.mx-l2 > summary b { font-variant-numeric: tabular-nums; }
+details.mx-l2 > summary .mx-s { color: var(--ink3); font-size: 12px; margin-left: auto; }
+details.mx-sub { margin: -4px 0 10px; } details.mx-sub > summary { font-size: 12px; color: #5B6B82; }
+details.mx-l3 { margin-top: 8px; border-top: 1px dashed #C9D1DC; padding-top: 6px; }
+details.mx-l3 > summary { font-size: 12px; color: #5B6B82; font-weight: 600; letter-spacing: .02em; }
+details.mx-cell > summary { display: inline; } details.mx-cell[open] > summary { display: block; }
+details.mx-cell > summary::before { content: none; } details.mx-cell > summary::after { content: " ▾"; font-size: 10px; color: #8A96A8; }
+.fin th.tip { text-decoration: underline dotted #9AA6B8; text-underline-offset: 3px; cursor: help; } .fin th .sub { display: block; font-size: 10px; text-transform: none; letter-spacing: 0; color: var(--ink3); font-weight: 400; }
 .pen-bar { display: inline-block; width: 56px; height: 6px; background: #E6EAF0; margin-right: 8px; vertical-align: middle; } .pen-bar i { display: block; height: 100%; background: var(--navy); }
 a[data-pf-route] { color: #234F7A !important; text-decoration: underline; text-underline-offset: 3px; }
 .contrib-bars { border: 1px solid var(--line); background: var(--paper); border-radius: 4px; padding: 12px 14px; container-type: inline-size; }
@@ -205,7 +219,8 @@ def section(title: str, sub: str = "", anchor: str | None = None, num: str = "")
     aid = f' id="{html.escape(anchor)}"' if anchor else ""
     n = f'<span class="nm">{html.escape(num)}</span>' if num else ""
     st.markdown(f'<div class="sec"{aid}>{n}{html.escape(title)}</div>'
-                + (f'<div class="secsub">{sub}</div>' if sub else ""), unsafe_allow_html=True)
+                + (f'<details class="mx mx-sub"><summary>Подробнее</summary><div class="secsub">{sub}</div></details>' if sub else ""),
+                unsafe_allow_html=True)
 
 
 def kpi_cards(items, big=False):
@@ -227,11 +242,13 @@ def chart(fig, key=None, height=320):
     st.plotly_chart(fig, width="stretch", theme=None, config={"displayModeBar": False, "locale": "ru"}, key=key)
 
 
-def fin_table(head, rows, right=(), total_last=False, cls="", hide=()):
+def fin_table(head, rows, right=(), total_last=False, cls="", hide=(), tips=None):
     """HTML-таблица в банковском стиле: числа вправо, итоговая строка выделена, первая колонка закреплена при прокрутке.
     rows: списки готовых ячеек (str, (str, style) или HTML, начинающийся с «<»). hide — номера колонок, скрываемых на узком экране."""
     hm = lambda i: " hm" if i in hide else ""
-    th = "".join(f'<th class="{"r" if i in right else ""}{hm(i)}">{html.escape(h)}</th>' for i, h in enumerate(head))
+    tips = tips or {}
+    tip = lambda i: f' title="{html.escape(tips[i])}"' if i in tips else ""
+    th = "".join(f'<th class="{"r" if i in right else ""}{hm(i)}{" tip" if i in tips else ""}"{tip(i)}>{html.escape(h)}</th>' for i, h in enumerate(head))
     body = []
     for n, r in enumerate(rows):
         tr = ' class="tot"' if total_last and n == len(rows) - 1 else ""

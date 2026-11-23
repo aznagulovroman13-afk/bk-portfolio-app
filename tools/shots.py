@@ -57,12 +57,17 @@ with sync_playwright() as pw:
 
     p.set_viewport_size({"width": 1440, "height": 1000})
     shot("01_first_screen")
-    p.set_viewport_size({"width": 1440, "height": 1900})
-    time.sleep(1)
-    f.locator(".exec-projects").scroll_into_view_if_needed()
-    p.screenshot(path=OUT + f"01b_project_cards_penalty_{tag}_1440.png", full_page=False)
-    p.set_viewport_size({"width": 1440, "height": 1000})
-    time.sleep(1)
+    # матрёшка: уровень 1 свёрнут → уровень 2 (виды и годы) → уровень 3 (основания)
+    port = f.locator(".exec-summary > details.mx-l2").first
+    port.locator("summary").first.click(); time.sleep(0.5)
+    port.scroll_into_view_if_needed(); shot("01c_portfolio_penalty_level2")
+    port.locator("details.mx-l3 > summary").first.click(); time.sleep(0.5)
+    port.scroll_into_view_if_needed(); shot("01d_portfolio_penalty_level3")
+    card = f.locator(".exec-project").first
+    card.scroll_into_view_if_needed(); shot("01e_project_card_collapsed")
+    card.locator("details.mx-l2 > summary").nth(1).click(); time.sleep(0.5)
+    card.locator("details.mx-l3 > summary").first.click(); time.sleep(0.5)
+    card.scroll_into_view_if_needed(); shot("01f_project_card_expanded")
     for section, anchor, name in (
         ("ЖК", "segments", "02_portfolio_table"),
         ("Причины непередачи", "reasons", "04_reasons"),
@@ -78,8 +83,11 @@ with sync_playwright() as pw:
     f.locator(".pt3").get_by_role("link", name="Деснаречье", exact=True).click()
     f.locator("#drill").wait_for(state="visible")
     shot("09_project_desn")
-    f.get_by_text("Неустойка ЖК по годам", exact=False).first.scroll_into_view_if_needed()
-    shot("09b_project_desn_penalty")
+    pen = f.locator("details.mx-l2").first
+    pen.scroll_into_view_if_needed(); shot("09b_project_desn_penalty_collapsed")
+    pen.locator("summary").first.click(); time.sleep(0.5)
+    pen.locator("details.mx-l3 > summary").first.click(); time.sleep(0.5)
+    pen.scroll_into_view_if_needed(); shot("09c_project_desn_penalty_expanded")
     menu = f.get_by_role("navigation", name="Разделы ЖК")
     for tab, name in (("Шахматка", "10_chess_desn"), ("Замечания", "11_remarks_desn"), ("Подрядчики", "12_contractors_desn")):
         link = menu.get_by_role("link", name=tab, exact=True)

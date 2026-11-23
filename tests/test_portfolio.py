@@ -243,17 +243,17 @@ def test_full_report_after_login_labels_data_mode():
     at = _login()
     sections = {
         "summary": "Сводка по портфелю",
-        "segments": "Структура портфеля по ЖК",
-        "decisions": "Приоритетный объект портфеля",
-        "reasons": "Причины непередачи готовых квартир",
-        "forecast": "Прогноз и целевой темп",
-        "contribution": "Концентрация дневной неустойки по ЖК",
-        "dynamics": "Динамика: неделя к неделе",
-        "matrix": "Просрочка и неустойка по причинам",
-        "remarks": "Реестр замечаний по портфелю",
-        "money": "Финансы: неустойка и стоимость устранения",
-        "orders": "Поручения к согласованию",
-        "notes": "Допущения и методология расчёта",
+        "segments": "ЖК портфеля",
+        "decisions": "Приоритет",
+        "reasons": "Причины непередачи",
+        "forecast": "Прогноз",
+        "contribution": "Концентрация неустойки",
+        "dynamics": "Динамика за неделю",
+        "matrix": "Причины и неустойка",
+        "remarks": "Замечания",
+        "money": "Финансы",
+        "orders": "Поручения",
+        "notes": "Методология",
     }
     for key, heading in sections.items():
         page = _open(at, view=key)
@@ -272,7 +272,7 @@ def test_each_project_gets_identical_set_of_blocks(key):
     overview = _open(at, jk=key)
     for name in ("Обзор", "Шахматка", "Замечания", "Подрядчики", "Финансы", "Динамика"):
         assert name in overview
-    for text in ("Ключевые проблемы ЖК", "Ответственные роли", "Контрольный показатель", "Корпуса", "Открытых замечаний"):
+    for text in ("Ключевые проблемы ЖК", "Ответственные роли", "Контрольный показатель", "Корпуса", "Замечания"):
         assert text in overview
     assert "Сводка по портфелю" not in overview
     assert any(f'jk={key}&amp;tab=chess&amp;corpus=' in m.value for m in at.markdown)
@@ -358,8 +358,8 @@ def test_plan_fact_and_dynamics_are_comparable(B):
 def test_first_screen_shows_annual_transfers_by_project(D):
     at = _login()
     t = _screen_text(at)
-    for label in ("Квартир в просрочке", "Расчётная неустойка за просрочку передачи",
-                  "Срез 20.11.2026", "Передача квартир по годам и ЖК"):
+    for label in ("В просрочке", "Неустойка в день",
+                  "Срез 20.11.2026", "Передачи по годам"):
         assert label in t
     project_cards = next(m.value for m in at.markdown if 'class="exec-projects"' in m.value)
     assert "Что согласовать" not in t and '>Готовы к передаче</span>' not in project_cards
@@ -370,7 +370,7 @@ def test_first_screen_shows_annual_transfers_by_project(D):
         assert name in card
         assert f'/?jk={key}&amp;tab=money#drill' in card
         assert f'/?jk={key}&amp;tab=remarks#drill' in card
-        assert "Неустойка за просрочку передачи" in card and "Открытых замечаний" in card
+        assert "Неустойка в день" in card and "Замечания" in card
         assert re.findall(r'<th scope="row">(20\d{2})</th>', card) == ["2024", "2025", "2026"]
         for year in (2024, 2025):
             assert f'<th scope="row">{year}</th>' + '<td class="is-missing">Нет данных</td>' * 3 in card
@@ -388,7 +388,7 @@ def test_first_screen_shows_annual_transfers_by_project(D):
     assert any("Ожидаемые выплаты по сценарию" in block.value for block in payout.markdown)
     t = _open(at, view="segments")
     order = [p["name"] for p in PF.by_risk(PF.build(pf_demo.build(pf_data.PROJECTS), dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"])]
-    indexes = [t.index(name, t.index("Структура портфеля по ЖК")) for name in order]
+    indexes = [t.index(name, t.index("ЖК портфеля")) for name in order]
     assert indexes == sorted(indexes)
 
 
@@ -609,12 +609,12 @@ def test_headline_and_screen_rows(B):
 def test_directory_and_remarks_sections():
     at = _login()
     directory = _open(at, view="segments")
-    assert "Структура портфеля по ЖК" in directory and "Главное решение и ожидаемый эффект" in directory
+    assert "ЖК портфеля" in directory and "Решение" in directory
     assert "Расширенные показатели по ЖК: неустойка, темп и сроки" in [e.label for e in at.expander]
     for _, name in pf_data.PROJECTS:
         assert name in directory
     remarks = _open(at, view="remarks")
-    for term in ("Реестр замечаний по портфелю", "Всего замечаний", "Открытые замечания",
+    for term in ("Замечания", "Всего замечаний", "Открытые замечания",
                  "Средний срок устранения", "Связь с финансовыми показателями", "Доля просроченных", "С одним неустранённым"):
         assert term in remarks
     assert "Расширенные показатели по замечаниям и квартирам" in [e.label for e in at.expander]
@@ -750,23 +750,32 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
     t = _screen_text(at)
     assert "Портфель ЖК · неустойка" not in t and 'id="penalty-summary"' not in " ".join(m.value for m in at.markdown)
     summary = next(m.value for m in at.markdown if 'class="exec-projects"' in m.value)
-    # портфельный итог — третьей карточкой в ряду показателей
-    assert summary.count('class="exec-metric"') == 3 and "Неустойка начислена за 2024–2026" in summary
+    # уровень 1: короткие заголовки и ключевая цифра; портфельный итог — третьей карточкой
+    assert summary.count('class="exec-metric"') == 3
+    assert '>Неустойка</span><strong>' in summary and ">В просрочке</span>" in summary and ">Неустойка в день</span>" in summary
     for key, name in pf_data.PROJECTS:
         card = summary.split(f'id="exec-project-{key}"', 1)[1].split("</article>", 1)[0]
-        assert f'aria-label="Неустойка по годам, {name}"' in card
-        for s in ("Неустойка за просрочку передачи (ч. 2 ст. 6 214-ФЗ)",
-                  "Неустойка за нарушение сроков устранения недостатков (ч. 8 ст. 7 214-ФЗ)", "не начислено по ПП № 326", "мораторий"):
-            assert s in card, (key, s)
-        assert card.count("не начислено по ПП № 326") == 2
-    # таблица «Структура портфеля по ЖК»: начислено и не начислено по каждому ЖК
+        # уровень 2 (свёрнуто): виды и годы; уровень 3 (вложено): основания
+        l2 = card.split('<details class="mx mx-l2"><summary><span class="mx-t">Неустойка</span>', 1)[1]
+        assert f'aria-label="Неустойка по годам, {name}"' in l2
+        assert ">Просрочка передачи</th>" in l2 and ">Недостатки</th>" in l2 and l2.count(">мораторий</th>") == 2
+        l3 = l2.split('<details class="mx mx-l3"><summary>Основания</summary>', 1)[1]
+        assert "Ч. 2 ст. 6 214-ФЗ" in l3 and "ПП РФ № 326" in l3 and "ПП № 2227" in l3
+        assert " open" not in card.split("<details", 1)[1].split(">", 1)[0]          # по умолчанию свёрнуто
+        assert "Передачи по годам" in card
+    # заголовки в карточках ЖК — не длиннее трёх слов
+    for h in re.findall(r'<(?:dt|th|span class="mx-t")[^>]*>([^<]+)<', summary):
+        assert len(h.split()) <= 3, h
+    # таблица ЖК: короткие колонки, подробности — в подсказке и раскрытии ячейки
     seg = _open(at, view="segments")
-    for s in ("Неустойка начислена 2024–2026, млн ₽", "Не начислено по ПП № 326, млн ₽", "передача (ч. 2 ст. 6)", "недостатки (ч. 8 ст. 7)"):
-        assert s in seg, s
-    # карточка ЖК: годы, две меры и правовое основание
+    raw = " ".join(m.value for m in at.markdown)
+    assert "Неустойка" in seg and "Мораторий" in seg
+    assert 'title="Неустойка начислена за 2024–2026, млн ₽' in raw and 'title="Не начислено по ПП № 326' in raw
+    assert raw.count('<details class="mx mx-cell">') == len(pf_data.PROJECTS) + 1 and "передача " in seg and "недостатки " in seg
+    # страница ЖК: «Неустойка» → виды и годы → основания
     for tab in ("overview", "money"):
         page = _open(at, jk="desn", tab=tab)
-        for s in ("Неустойка ЖК по годам: начислено и не начислено по ПП № 326", "Ч. 2 ст. 6 214-ФЗ", "Ч. 8 ст. 7 214-ФЗ в ред. 266-ФЗ",
+        for s in ("Неустойка", "Просрочка передачи", "Недостатки", "Основания", "Ч. 2 ст. 6 214-ФЗ", "Ч. 8 ст. 7 214-ФЗ в ред. 266-ФЗ",
                   "1/150", "не более этой стоимости", "1% в день", "Ч. 4 ст. 10 в ред. 482-ФЗ", "3% цены договора", "ПП РФ № 326",
                   "22.03.2024 по 31.12.2025", "7,5%", "ПП № 2227", "31.12.2026"):
             assert s in page, (tab, s)
