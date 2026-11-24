@@ -7,7 +7,7 @@ from html import escape
 
 import threading
 
-UX2_SCHEMA = "l3"
+UX2_SCHEMA = "l4"
 _state = threading.local()      # прогон Streamlit — свой поток: флаг версии 2 не влияет на другие сессии
 
 # Палитра версии 2 (контраст текста на белом и на #F5F5F7 ≥ 4.5:1 — проверяется в тестах).
@@ -141,6 +141,12 @@ div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{border-radius:16
 .v2-fill.v2-zero{background:#C7C7CC!important}
 .v2-hero.v2-neutral .v2-number{color:#1D1D1F}
 .v2-first .v2-neutral{grid-column:1 / -1}
+.v2-concl{margin:0 0 8px}
+.v2-concl .v2-hero{padding:20px 26px}
+.v2-concl .v2-number{font-size:clamp(28px,3.2vw,40px);margin:6px 0 4px}
+.v2-concl .v2-hero h2{font-size:clamp(19px,1.8vw,23px)!important}
+.v2-concl .v2-action{gap:8px}
+.v2-concl .v2-action .v2-what{font-size:17px}
 .v2-empty{background:#fff;border:1px dashed #C7C7CC;border-radius:16px;padding:22px;color:#424245;font-size:14px;text-align:center;margin:4px 0 12px}
 .v2-crumbs{font-size:13px!important;margin:0 0 6px}
 .v2-crumbs a{color:#0060C0!important;text-decoration:none!important}
@@ -305,9 +311,8 @@ def _fmt_value(field, v, fmt):
     return f'{fmt(round(v))} ₽' if field == "risk_day" else f'{fmt(v)} {"кв." if field == "overdue_kv" else "шт."}'
 
 
-def render(projects, totals, main_rows, slice_text, link, fmt, mln):
-    """Первый экран версии 2: вывод (главная проблема) → решение → 4 KPI → ЖК по финансовому риску.
-    Все тексты собираются из тех же чисел, что показаны на экране."""
+def _hero(projects, totals, main_rows, link, fmt, mln):
+    """Вывод «главная проблема → решение» — общий для обзора и для сводки версии 2. Возвращает (html, field, ranked, order_note, totals_by)."""
     by_key = {r['key']: r for r in main_rows}
     field, ranked = pick_problem(projects, main_rows)
     total_risk = totals['risk_day']
@@ -356,6 +361,15 @@ def render(projects, totals, main_rows, slice_text, link, fmt, mln):
                 '<h2>Срок передачи по ДДУ нигде не нарушен</h2>'
                 '<p>Неустойка в день — 0 ₽, открытых замечаний нет.</p></div>')
 
+    return hero, field, ranked, order_note, totals_by
+
+
+def render(projects, totals, main_rows, slice_text, link, fmt, mln):
+    """Первый экран версии 2: вывод (главная проблема) → решение → 4 KPI → ЖК по финансовому риску.
+    Все тексты собираются из тех же чисел, что показаны на экране."""
+    by_key = {r['key']: r for r in main_rows}
+    total_risk = totals['risk_day']
+    hero, field, ranked, order_note, totals_by = _hero(projects, totals, main_rows, link, fmt, mln)
     def metric(label, value, raw, cell=None, critical=False, detail=''):
         bad = critical and raw > 0
         cls = 'v2-kpi v2-critical' if bad else ('v2-kpi v2-zero' if raw == 0 else 'v2-kpi')
@@ -398,3 +412,10 @@ def render(projects, totals, main_rows, slice_text, link, fmt, mln):
             + toggle + '<div class="v2-risklist">' + ''.join(rows) + '</div>' + more +
             f'<div class="v2-foot">{order_note} Название ЖК раскрывает карточку ниже; '
             '«Корпуса и квартиры» ведёт к шахматке, квартире и её замечаниям.</div></section>')
+
+
+def conclusion(projects, totals, main_rows, link, fmt, mln):
+    """Сводка версии 2 (на основе версии 1): над плашкой «Итого» — вывод из тех же чисел: главная проблема портфеля,
+    решение, ответственная роль и эффект. Ключевые показатели — в плашке «Итого» версии 1 сразу под выводом."""
+    hero, field, _, _, _ = _hero(projects, totals, main_rows, link, fmt, mln)
+    return f'<section class="v2-overview v2-concl" id="conclusion" aria-label="Главная проблема портфеля"><div class="v2-first">{hero}</div></section>'

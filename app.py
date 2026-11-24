@@ -34,7 +34,7 @@ if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_S
         or getattr(GT, "GANTT_SCHEMA", None) != "g3" or getattr(DR, "DRILL_SCHEMA", None) != "d4" \
         or getattr(R, "ROLES_SCHEMA", None) != "r1" or not hasattr(U, "gloss") or "cell" not in N.ROUTE_FIELDS \
         or getattr(P2, "P2_SCHEMA", None) != "q5" or getattr(UXD, "UX_SCHEMA", None) != "x2" \
-        or getattr(V2, "UX2_SCHEMA", None) != "l3":
+        or getattr(V2, "UX2_SCHEMA", None) != "l4":
     for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR, UXD, V2, P2):
         reload(module)
     if "cell" not in N.ROUTE_FIELDS:
@@ -1101,13 +1101,11 @@ if view == "summary":
                   + [p_ for p_ in display_order if p_["key"] not in MAIN_TOP])
     main_rows = [main_row(p_, DA[p_["key"]], act_d) for p_ in main_order]
     open_card = route.get("card")
-    if DARK:
-        st.markdown(V2.render(projects, tot, main_rows, slice_text, N.link, f, _mln_s), unsafe_allow_html=True)
-        with st.expander("Полная сводка по ЖК: передачи, замечания, неустойки и решения", expanded=bool(open_card)):
-            st.markdown(U.gloss(main_table(main_rows, slice_text, open_more=bool(open_card) and open_card not in MAIN_TOP and open_card != "total")), unsafe_allow_html=True)
-    else:
-        st.markdown(U.gloss(main_table(main_rows, slice_text, open_more=bool(open_card) and open_card not in MAIN_TOP and open_card != "total")),
-                    unsafe_allow_html=True)
+    if DARK:                # версия 2 = структура версии 1 + вывод «главная проблема» из тех же чисел над сводкой
+        st.markdown(V2.conclusion(projects, tot, main_rows, N.link, f, _mln_s), unsafe_allow_html=True)
+        U.section("Сводка по ЖК", anchor="summary")
+    st.markdown(U.gloss(main_table(main_rows, slice_text, open_more=bool(open_card) and open_card not in MAIN_TOP and open_card != "total")),
+                unsafe_allow_html=True)
     for row_, p_ in zip(main_rows, main_order):
         if p_["key"] not in MAIN_TOP and open_card != p_["key"]:
             continue      # карточки свёрнутых ЖК появляются по клику на строку после «Развернуть»
