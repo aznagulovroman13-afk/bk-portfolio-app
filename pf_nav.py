@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import threading
 from urllib.parse import urlencode
 
 import streamlit as st
@@ -31,7 +32,15 @@ PROJECT_VIEWS = {
 ROUTE_FIELDS = ("view", "jk", "tab", "corpus", "unit", "card", "cell")
 
 
+_carry = threading.local()       # параметры версии отчёта (ver=3), добавляемые к ссылкам текущего прогона
+
+
+def set_carry(params):
+    _carry.params = dict(params or {})
+
+
 def link(label, *, content=None, css="", current=False, **route):
+    route = {**getattr(_carry, "params", {}), **route}
     query = urlencode(route)
     href = f"/?{query}" if query else "/"
     if "jk" in route:
@@ -116,8 +125,15 @@ def read_route():
     if result.route is None:
         return current
     route = {key: result.route[key] for key in ROUTE_FIELDS if isinstance(result.route.get(key), str)}
-    if route != current:
+    ver = result.route.get("ver")
+    ver_changed = isinstance(ver, str) and (ver == "3") != (st.query_params.get("ver") == "3")
+    if route != current or ver_changed:
         set_route(**route)
+        if ver_changed:                     # переключение версии 3 ↔ версии 1/2
+            if ver == "3":
+                st.query_params["ver"] = "3"
+            elif "ver" in st.query_params:
+                del st.query_params["ver"]
         st.rerun()
     return route
 

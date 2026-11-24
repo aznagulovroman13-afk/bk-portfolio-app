@@ -23,7 +23,7 @@ import pf_nav as N
 import pf_roles as R
 import pf_ui as U
 
-P2_SCHEMA = "q3"
+P2_SCHEMA = "q4"
 VIEW = "portfolio2"
 TITLE = "Портфель 2"
 
@@ -62,11 +62,14 @@ CSS = """<style>
 </style>"""
 
 
-def menu(view: str | None) -> str:
+def menu(view: str | None, v3: bool = False) -> str:
     """Верхнее меню обеих версий: переключатель «Портфель ЖК / Портфель 2» вместо статичного названия, разделы — как в «Портфеле ЖК»."""
-    p1 = N.link("Версия 1", content='<span class="pv-f">Версия 1</span><span class="pv-s">В1</span>', current=view != VIEW)
-    p2 = N.link("Версия 2", content='<span class="pv-f">Версия 2</span><span class="pv-s">В2</span>', current=view == VIEW, view=VIEW)
-    switch = f'<span class="pf-ver" role="group" aria-label="Версия отчёта">{p1}{p2}</span>'
+    out = {"ver": "1"} if v3 else {}       # из версии 3 — обратно в версии 1 и 2
+    p1 = N.link("Версия 1", content='<span class="pv-f">Версия 1</span><span class="pv-s">В1</span>', current=view != VIEW and not v3, **out)
+    p2 = N.link("Версия 2", content='<span class="pv-f">Версия 2</span><span class="pv-s">В2</span>', current=view == VIEW, view=VIEW, **out)
+    p3 = N.link("Версия 3", content='<span class="pv-f">Версия 3</span><span class="pv-s">В3</span>', current=v3,
+                **({} if v3 else {"view": "portfolio3"}))
+    switch = f'<span class="pf-ver" role="group" aria-label="Версия отчёта">{p1}{p2}{p3}</span>'
     if view == VIEW:       # разделы «Портфеля 2» — переходы внутри страницы
         own = "".join(f'<a href="#{a}">{t}</a>' for a, t in (("p2-table", "Сводка"), ("p2-decisions", "Решения"),
                                                             ("p2-orders", "Поручения"), ("p2-card", "Карточка ЖК"), ("p2-fin", "Финансы")))

@@ -424,6 +424,9 @@ def kpi_cards(items, big=False):
 def chart(fig, key=None, height=320):
     fig.update_layout(template="pf", height=height)
     fig.update_yaxes(automargin=True)
+    import pf_ux_dark as _UXD                  # версия 3: тот же график в тёмной палитре (флаг текущего прогона)
+    if _UXD.active():
+        fig = _UXD.dark_fig(fig)
     st.plotly_chart(fig, width="stretch", theme=None, config={"displayModeBar": False, "locale": "ru", "scrollZoom": False, "doubleClick": False, "responsive": True}, key=key)
 
 

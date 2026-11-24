@@ -25,14 +25,15 @@ import pf_gantt as GT  # noqa: E402
 import pf_drill as DR  # noqa: E402
 import pf_roles as R  # noqa: E402
 import pf_portfolio2 as P2  # noqa: E402
+import pf_ux_dark as UXD  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
 REPORT_SCHEMA = "v31"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
         or getattr(GT, "GANTT_SCHEMA", None) != "g3" or getattr(DR, "DRILL_SCHEMA", None) != "d4" \
         or getattr(R, "ROLES_SCHEMA", None) != "r1" or not hasattr(U, "gloss") or "cell" not in N.ROUTE_FIELDS \
-        or getattr(P2, "P2_SCHEMA", None) != "q3":
-    for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR, P2):
+        or getattr(P2, "P2_SCHEMA", None) != "q4" or getattr(UXD, "UX_SCHEMA", None) != "x1":
+    for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR, UXD, P2):
         reload(module)
     if "cell" not in N.ROUTE_FIELDS:
         try:
@@ -40,8 +41,13 @@ if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_S
         except Exception:  # компонент маршрутов уже зарегистрирован — достаточно новых полей
             N.ROUTE_FIELDS = tuple(dict.fromkeys((*N.ROUTE_FIELDS, "card", "cell")))
 
-st.markdown(U.CSS, unsafe_allow_html=True)
-st.markdown(
+# Версия 3 — тот же отчёт в тёмной теме: вход ?view=portfolio3, дальше по разделам — параметр ver=3.
+V3 = st.query_params.get("view") == UXD.VIEW or st.query_params.get("ver") == "3"
+UXD.set_active(V3)
+getattr(N, "set_carry", lambda params: None)({"ver": "3"} if V3 else {})
+_css = UXD.recolor if V3 else (lambda s: s)
+st.markdown(_css(U.CSS), unsafe_allow_html=True)
+st.markdown(_css(
     '<style>header[data-testid="stHeader"], header[data-testid="stHeader"] * {pointer-events: none !important;} '
     'header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {pointer-events: auto !important;}'
     '.fin.ready-reasons td:first-child {width: 48%;} '
@@ -127,7 +133,7 @@ st.markdown(
     '.weekly .fields > div:nth-child(3) {border-left: 0;}'
     '.weekly .fields > div:nth-child(n+3) {border-top: 1px solid #38506A;}}'
     '@media (max-width: 490px) {.weekly .fields {grid-template-columns: 1fr;}'
-    '.weekly .fields > div + div {border-left: 0; border-top: 1px solid #38506A;}}</style>',
+    '.weekly .fields > div + div {border-left: 0; border-top: 1px solid #38506A;}}</style>'),
     unsafe_allow_html=True)
 
 
@@ -747,9 +753,18 @@ MAIN_OWNER = {p["decisions"][0]["key"]: p["name"] for p in projects if p.get("de
 route = N.read_route()
 project_key = route.get("jk")
 view = route.get("view", "summary")
+if V3 and st.query_params.get("ver") != "3":
+    st.query_params["ver"] = "3"           # разделы версии 3 сохраняют тему при переходах
+if view == UXD.VIEW:
+    view = "summary"                       # версия 3 — главный экран версии 1
 if view not in N.REPORT_VIEWS and view != P2.VIEW:
     view = "summary"
-st.markdown(P2.menu(None if project_key in projects_by_key else view), unsafe_allow_html=True)
+if V3 and view == P2.VIEW:
+    view = "summary"
+st.markdown(_css(P2.menu(None if project_key in projects_by_key else view, v3=V3)) if V3 else
+            P2.menu(None if project_key in projects_by_key else view), unsafe_allow_html=True)
+if V3:
+    st.markdown(UXD.CSS, unsafe_allow_html=True)
 
 sg = lambda v: ("+" if v > 0 else "−" if v < 0 else "") + f(abs(v))
 tr_, to_ = max(tot["risk_day"], 1), max(tot["overdue_kv"], 1)
