@@ -54,7 +54,7 @@ def login_screen(css: str) -> None:
         '.lg{background:#0B1F3A;color:#fff;border-radius:6px 6px 0 0;padding:24px 28px 18px;border-bottom:3px solid #A67C00}'
         '.lg .k{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#C5CEDA;font-weight:600}'
         '.lg .t{font-size:28px;font-weight:700;margin-top:6px;color:#fff}</style>'
-        '<div class="lg"><div class="k">Закрытый отчёт</div><div class="t">Портфель ЖК</div></div>', unsafe_allow_html=True)
+        '<div class="lg"><div class="k">Закрытый отчёт</div><div class="t">Отчёт по заселению</div></div>', unsafe_allow_html=True)
     left = lock_left(st.session_state)
     with st.form("pf_login", border=True):
         pwd = st.text_input("Пароль", type="password", key="pf_pwd", disabled=left > 0)

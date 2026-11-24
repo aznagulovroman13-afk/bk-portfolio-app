@@ -128,7 +128,7 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
 
     report = " ".join(block.value for block in app.markdown)
     summary = report.split('id="summary"', 1)[1]
-    assert "Сводка по портфелю" in summary and 'class="fin main-table"' in summary
+    assert "Сводка по ЖК" in summary and 'class="fin main-table"' in summary
     assert 'href="/?card=zen#card-zen" data-pf-route>Дзен-кварталы' in summary
     zen = summary.split('id="exec-project-zen"', 1)[1].split("</table>", 1)[0]
     bunino = summary.split('id="exec-project-bunino"', 1)[1].split("</table>", 1)[0]
@@ -174,7 +174,7 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     assert "Итого, ₽ в день" in money_report and "тем выше расчётная неустойка в ₽/день" in money_report
 
     open_screen(view="reasons")
-    assert app.selectbox(key="pf_reason_scope").value == "Весь портфель"
+    assert app.selectbox(key="pf_reason_scope").value == "Все ЖК"
     portfolio_reasons = next(block.value for block in app.markdown if '<table class="fin ready-reasons">' in block.value)
     assert "Доля готовых" in portfolio_reasons and "Расчётная неустойка, ₽/день" in portfolio_reasons
     assert '<td class="r">40</td>' in portfolio_reasons

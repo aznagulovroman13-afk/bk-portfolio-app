@@ -127,14 +127,14 @@ def menu(view):
     top_links = "".join(report_link(key, "ЖК" if key == "segments" else None, current=view == key) for key in primary)
     more = "".join(report_link(key, current=view == key) for key in REPORT_VIEWS if key not in primary)
     return (
-        '<nav class="pfnav" aria-label="Разделы портфеля"><b>ПОРТФЕЛЬ ЖК</b>'
+        '<nav class="pfnav" aria-label="Разделы отчёта"><b>ОТЧЁТ ПО ЗАСЕЛЕНИЮ</b>'
         f'{top_links}<details class="more"><summary>Ещё</summary>'
         f'<div class="more-links">{more}</div></details></nav>'
     )
 
 
 def project_path(name, key, tab, corpus=None, unit=None):
-    steps = [report_link("summary", "Портфель"), report_link("segments", "Все ЖК")]
+    steps = [report_link("summary", "Сводка"), report_link("segments", "Все ЖК")]
     if tab == "overview":
         steps.append(f'<span aria-current="page">{html.escape(name)}</span>')
     else:

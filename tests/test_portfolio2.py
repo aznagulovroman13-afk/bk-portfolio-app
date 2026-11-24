@@ -70,7 +70,7 @@ def test_portfolio2_screen_rules_and_reconciliation():
     raw = _md(at)
     t = _text(raw) + " " + " ".join(c.value for c in at.caption) + " " + " ".join(e.label for e in at.expander)
     assert not [w for w in BANNED if w in t], [w for w in BANNED if w in t]
-    assert "Портфель 2" in t and "Сводка по портфелю" not in t
+    assert "Портфель 2" in t and "Сводка по ЖК" not in t
     assert 'class="p2-ok"' in raw and 'class="p2-bad">Расхождение' not in raw            # сверка итогов сходится
     assert "не подтвержден" in t and "расчётная оценка" in t                 # суммы не выдаются за факт
     names = dict(pf_data.PROJECTS)
@@ -102,12 +102,12 @@ def test_portfolio2_screen_rules_and_reconciliation():
 
 
 def test_version_switch_in_both_menus():
-    for route, cur in (({}, "Портфель ЖК"), ({"view": "portfolio2"}, "Портфель 2"), ({"jk": "bunino"}, "Портфель ЖК")):
+    for route, cur in (({}, "Версия 1"), ({"view": "portfolio2"}, "Версия 2"), ({"jk": "bunino"}, "Версия 1")):
         raw = _md(_app(**route))
         nav = re.search(r'<span class="pf-ver".*?</a></span>', raw).group(0)
         assert 'href="/"' in nav and 'href="/?view=portfolio2"' in nav
         assert f'aria-label="{cur}" aria-current="page"' in nav, (route, nav)
-    assert "<b>ПОРТФЕЛЬ ЖК</b>" not in _md(_app())
+    assert "<b>ОТЧЁТ ПО ЗАСЕЛЕНИЮ</b>" not in _md(_app())
 
 
 def test_portfolio2_card_drill_to_house_apartment_and_remarks():
@@ -133,4 +133,4 @@ def test_portfolio2_card_drill_to_house_apartment_and_remarks():
 
 def test_original_summary_unchanged_and_p2_does_not_leak():
     raw = _md(_app())
-    assert "Сводка по портфелю" in raw and 'class="fin main-table"' in raw and 'class="p2-head"' not in raw
+    assert "Сводка по ЖК" in raw and 'class="fin main-table"' in raw and 'class="p2-head"' not in raw

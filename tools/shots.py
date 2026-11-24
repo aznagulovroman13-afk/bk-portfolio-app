@@ -3,7 +3,7 @@ import sys, time, tomllib
 from pathlib import Path
 from playwright.sync_api import expect, sync_playwright
 BASE, OUT, tag = sys.argv[1], sys.argv[2], sys.argv[3]
-READY = "Сводка по портфелю"
+READY = "Сводка по ЖК"
 Path(OUT).mkdir(parents=True, exist_ok=True)
 
 
@@ -42,7 +42,7 @@ with sync_playwright() as pw:
         p.screenshot(path=OUT + name + f"_{tag}_1440.png")
 
     def open_section(label, anchor):
-        nav = f.get_by_role("navigation", name="Разделы портфеля")
+        nav = f.get_by_role("navigation", name="Разделы отчёта")
         link = nav.get_by_role("link", name=label, exact=True)
         if not link.is_visible():
             nav.get_by_text("Ещё", exact=True).click()
@@ -93,7 +93,7 @@ with sync_playwright() as pw:
     tp = f.locator("#cell-total-pen_delay"); tp.wait_for(state="visible", timeout=60000); time.sleep(1)
     tp.screenshot(path=OUT + f"01j_cell_total_pen_delay_{tag}_1440.png")
     p.set_viewport_size({"width": 1440, "height": 1000}); time.sleep(1)
-    tot = f.locator("[data-testid=stExpander]", has_text="Итого портфель ·").first
+    tot = f.locator("[data-testid=stExpander]", has_text="Итого ·").first
     if not tot.locator("details[open]").count():
         tot.locator("summary").first.click()
     time.sleep(2)

@@ -12,7 +12,7 @@ import pf_core as C
 import pf_gantt as GT
 import pf_penalty as PN
 
-DRILL_SCHEMA = "d3"
+DRILL_SCHEMA = "d4"
 KV = "Квартира"
 
 
@@ -189,10 +189,11 @@ MODES = {
     "over": (lambda a: a["over"], ("id", "status", "late", "ddu", "stage", "owner"), "late", None),
     "ddu": (lambda a: a["ddu"] > 0, ("id", "status", "late", "ddu", "stage", "owner"), "ddu", None),
     "rem": (lambda a: a["rem"] > 0, ("id", "status", "open", "rem", "owner"), "rem", None),
+    "open": (lambda a: a["open"] > 0, ("id", "status", "open", "rem", "owner"), "open", None),
 }
 SORT = {"total": lambda a: (-a["total"], a["id"]), "accepted": lambda a: (pd.Timestamp(a["accepted"]), a["id"]),
         "due": lambda a: (a["due"], a["id"]), "late": lambda a: (-a["late"], a["id"]), "ddu": lambda a: (-a["ddu"], a["id"]),
-        "rem": lambda a: (-a["rem"], a["id"])}
+        "rem": lambda a: (-a["rem"], a["id"]), "open": lambda a: (-a["open"], a["id"])}
 
 
 def _row(cells, cls="dr-row"):
@@ -224,6 +225,7 @@ HOUSE_COLS = {
     "over": (("over", "Нарушен срок, кв."), ("maxlate", "Макс. дней"), ("ddu", "Задержка 2026")),
     "ddu": (("ddun", "Квартир"), ("ddu", "Задержка 2026")),
     "rem": (("remn", "Квартир"), ("open", "Замечаний"), ("rem", "Замечания 2026")),
+    "open": (("remn", "Квартир"), ("open", "Открытых замечаний")),
 }
 
 

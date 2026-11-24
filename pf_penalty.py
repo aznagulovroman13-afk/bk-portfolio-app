@@ -132,7 +132,7 @@ def table(D: dict, projects: list[dict]) -> dict:
         r["share"] = r["total"] / grand
     rows.sort(key=lambda r: -r["total"])
     s = lambda f: {y: sum(f(r, y) for r in rows) for y in YEARS}
-    tot = dict(name="Итого по портфелю", ddu=s(lambda r, y: r["ddu"][y]), remarks=s(lambda r, y: r["remarks"][y]),
+    tot = dict(name="Итого", ddu=s(lambda r, y: r["ddu"][y]), remarks=s(lambda r, y: r["remarks"][y]),
                gross={m: s(lambda r, y, m=m: r["gross"][m][y]) for m in ("ddu", "remarks")},
                effect={m: s(lambda r, y, m=m: r["effect"][m][y]) for m in ("ddu", "remarks")},
                effect_total=sum(r["effect_total"] for r in rows), total=grand, share=1.0)

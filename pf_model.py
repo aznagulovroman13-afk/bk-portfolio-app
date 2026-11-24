@@ -1,4 +1,4 @@
-"""Портфель ЖК: расчёты для отчёта генерального директора.
+"""Отчёт по заселению: расчёты для отчёта генерального директора.
 
 Все ЖК считаются одним и тем же конвейером из одной схемы таблиц: помещения, замечания (свёртка), подрядчики.
 Персональных данных нет: только счётчики, корпуса и роли исполнителей (без имён и сроков).
@@ -15,7 +15,7 @@ import pf_remstat as RS
 import pf_stats
 
 DASH = "—"
-REPORT_SCHEMA = "v29"
+REPORT_SCHEMA = "v31"
 PLAN_UPLIFT = 1.10       # план передачи за неделю = средний факт 4 предыдущих недель × 1,10
 RISK_MATERIAL = 0.02     # изменение риска за 7 дней от 2% считаем существенным
 WEEK0 = pd.Timestamp("2026-08-17")     # первая из 12 недель динамики (понедельник)
@@ -309,7 +309,7 @@ def table(projects: list[dict], sort: str = "risk") -> pd.DataFrame:
             "Из них готовы": p["ready"],
             "Доля готовых, %": round(100 * p["ready"] / p["overdue_kv"], 1) if p["overdue_kv"] else 0.0,
             "Расчётная дневная экспозиция, ₽": round(p["risk_day"]),
-            "Доля в экспозиции портфеля, %": round(100 * p["risk_day"] / tr, 1),
+            "Доля от итога, %": round(100 * p["risk_day"] / tr, 1),
             "Открытых замечаний": p["remarks"],
             "Главная проблема": (pr["title"] + f" — {C.fmt_int(pr['n'])} {C.plural(pr['n'], 'квартира', 'квартиры', 'квартир')}") if pr else DASH,
             "Предлагаемая мера": pr["action"] if pr else DASH,
@@ -326,9 +326,9 @@ def portfolio_messages(tot: dict, projects: list[dict]) -> tuple[str, list[str]]
     """Главный вывод и ключевые сообщения по ПОРТФЕЛЮ в целом (ЖК — равные сегменты)."""
     n, rd = tot["overdue_kv"], tot["risk_day"]
     if not projects or not n:
-        return "Просрочки по ДДУ в портфеле нет", []
+        return "Просрочки по ДДУ нет", []
     kw = lambda x: f"{C.fmt_int(x)} {C.plural(x, 'квартира', 'квартиры', 'квартир')}"
-    head = (f"Портфель: просрочена передача {kw(n)} по ДДУ, ≈{C.fmt_money(rd)} расчётной дневной экспозиции; "
+    head = (f"Итого: просрочена передача {kw(n)} по ДДУ, ≈{C.fmt_money(rd)} расчётной дневной экспозиции; "
             f"{C.fmt_pct(tot['ready'] / n)} просрочки закрывается передачей готовых квартир")
     msgs = [f"Готовы к передаче {kw(tot['ready'])} составляют {C.fmt_money(tot['ready_risk'])} дневной экспозиции "
             f"({C.fmt_pct(tot['ready_risk'] / rd if rd else 0)}): наиболее быстрый эффект даёт управленческое решение по этой группе.",
@@ -420,10 +420,10 @@ def headline(projects: list[dict], tot: dict) -> str:
     """Вывод одной фразой для верха экрана."""
     pr = priority(projects)
     if not pr:
-        return "Просрочки по ДДУ в портфеле нет"
+        return "Просрочки по ДДУ нет"
     worse = sum(1 for p in projects if p["risk_vs_target"] > 0)
     p = pr["project"]
-    s = (f"Наибольшая расчётная экспозиция — {pr['name']}: {C.fmt_money(pr['risk_day'])} в день ({C.fmt_pct(pr['share'])} портфеля); просрочена передача {C.fmt_int(p['overdue_kv'])} квартир, "
+    s = (f"Наибольшая расчётная экспозиция — {pr['name']}: {C.fmt_money(pr['risk_day'])} в день ({C.fmt_pct(pr['share'])} от итога); просрочена передача {C.fmt_int(p['overdue_kv'])} квартир, "
          f"из них готовы к передаче {C.fmt_int(p['ready'])}.")
     s += f" С отставанием от целевой динамики за неделю — {worse} из {len(projects)} ЖК."
     return s
@@ -446,7 +446,7 @@ def screen_rows(projects: list[dict]) -> list[dict]:
 def composition(projects: list[dict]) -> list[dict]:
     """Проблемная часть портфеля: доля просроченных квартир сейчас и 7 дней назад; из них готовы."""
     out = []
-    for p in projects + [dict(name="Портфель", units_kv=sum(x["units_kv"] for x in projects), overdue_kv=sum(x["overdue_kv"] for x in projects),
+    for p in projects + [dict(name="Итого", units_kv=sum(x["units_kv"] for x in projects), overdue_kv=sum(x["overdue_kv"] for x in projects),
                               overdue_prev=sum(x["overdue_prev"] for x in projects), ready=sum(x["ready"] for x in projects), total=True)]:
         kv = max(p["units_kv"], 1)
         out.append(dict(name=p["name"], now=p["overdue_kv"] / kv, prev=p["overdue_prev"] / kv, ready=p["ready"] / kv, total=p.get("total", False),

@@ -68,7 +68,7 @@ def compute(A: pd.DataFrame, key: str) -> dict:
 
 
 def combine(rows: list[dict]) -> dict:
-    """Итого по портфелю: суммы по ЖК; средний срок — взвешенный по устранённым, доля просрочки — по остатку."""
+    """Итого: суммы по ЖК; средний срок — взвешенный по устранённым, доля просрочки — по остатку."""
     s = lambda k: int(sum(r[k] for r in rows))
     out = {k: s(k) for k in ("total", "fixed", "cancelled", "suspended", "left", "left_cum", "carry", "overdue", "flats_with", "flats_fixed_any",
                              "flats_all_fixed", "flats_unfixed", "flats_one_unfixed", "flats_total")}

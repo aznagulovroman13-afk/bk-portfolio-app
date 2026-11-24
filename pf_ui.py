@@ -1,4 +1,4 @@
-"""Оформление «Портфеля ЖК»: тёмная navy/metallic тема, большие цифры, без служебных меток."""
+"""Оформление «Отчёта по заселению»: тёмная navy/metallic тема, большие цифры, без служебных меток."""
 from __future__ import annotations
 
 import html
@@ -254,17 +254,28 @@ abbr[title] { text-decoration: underline dotted #8a97aa; cursor: help; }
   .mt-total b, .mt-total .tgi span { font-size: 19px; } .mt-total .ti.key b { font-size: 26px; } .mt-total .tn b { font-size: 18px; }
   .mt-total .ti[data-k="decide"] b, .mt-total .ti[data-k="resp"] b { font-size: 15px; } .mt-l2 { flex-direction: column; gap: 2px; } }
 /* динамика: сетка мини-графиков под сводкой */
-.dyn-block { margin: 0 0 16px; }
-.dy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
-.dy-c { background: #fff; border: 1px solid #D5DBE3; border-radius: 5px; padding: 8px 10px; min-width: 0; }
-.dy-c.dy-tot { background: #F2F5F9; border-color: #C9D2DF; }
-.dy-n { font-size: 12.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dy-s svg { display: block; width: 100%; max-width: 170px; height: auto; margin: 4px 0 2px; }
-.dy-v { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; } .dy-v b { font-size: 16px; color: #14213D; font-variant-numeric: tabular-nums; }
-.dy-v .u { color: #7A8597; font-size: .78em; font-weight: 400; } .dy-v .sub { font-size: 11px; color: #596577; }
-.dy-v .sub.wr { color: #A52C28; } .dy-v .sub.improved { color: #2F6B3A; }
-.dy-t { font-size: 11px; color: #596577; margin-top: 2px; } .dy-t.hl-bad { color: #A52C28; font-weight: 600; } .dy-t.hl-good { color: #2F6B3A; font-weight: 600; }
-@media (max-width: 640px) { .dy-grid { grid-template-columns: 1fr 1fr; gap: 6px; } .dy-c { padding: 7px 8px; } }
+.main-table td.jk { min-width: 190px; }
+.mt-dy { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.mt-dy .dy-s svg { display: block; width: 92px; height: auto; }
+.mt-dy .dy-w { display: flex; flex-direction: column; line-height: 1.25; }
+.mt-dy .sub { font-size: 11px; color: #596577; white-space: nowrap; } .mt-dy .sub.wr { color: #A52C28; } .mt-dy .sub.improved { color: #2F6B3A; }
+.mt-dy .dy-t { font-size: 11px; color: #596577; white-space: nowrap; } .mt-dy .dy-t.hl-bad { color: #A52C28; font-weight: 650; } .mt-dy .dy-t.hl-good { color: #2F6B3A; font-weight: 600; }
+.mt-total .ti.tdy .mt-dy { margin-top: 6px; } .mt-total .ti.tdy .dy-s svg { width: 120px; }
+.pt3 td .mt-dy { margin-top: 3px; }
+@media (max-width: 640px) { .main-table td.jk { min-width: 150px; } .mt-dy { gap: 6px; } .mt-dy .dy-s svg { width: 64px; } .mt-dy .sub, .mt-dy .dy-t { font-size: 10.5px; } }
+@media (max-width: 640px) {
+  .main-port .tw { overflow-x: visible; }
+  .main-table, .main-table tbody { display: block; width: 100%; min-width: 0 !important; }
+  .main-table thead { display: none; }
+  .main-table tbody tr { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 10px 4px; border-bottom: 1px solid #C9D2DF; }
+  .main-table tbody tr.mt-hidden { display: none; }
+  .main-table tbody td { display: block; padding: 0; border: none !important; text-align: left; min-width: 0 !important; white-space: normal; }
+  .main-table tbody td.jk, .main-table tbody td.decide, .main-table tbody td.resp { grid-column: 1 / -1; }
+  .main-table tbody td[data-l]::before { content: attr(data-l); display: block; font-size: 10.5px; color: #596577; letter-spacing: .03em; text-transform: uppercase; font-weight: 500; }
+  .main-table tbody tr.mt-toggle { display: block; padding: 0; } .main-table tbody tr.mt-toggle td { display: block; }
+  .main-table td.resp { white-space: normal; } .main-table tbody td.r { text-align: left; }
+}
+@media (max-width: 640px) { .mt-more:checked ~ .tw .main-table tr.mt-hidden { display: grid; } }
 .mt-more { display: none; } .main-table tr.mt-hidden { display: none; } .mt-more:checked ~ .tw .main-table tr.mt-hidden { display: table-row; }
 .main-table tr.mt-toggle td { padding: 0; border-bottom: 1px solid #d5dbe5; }
 .main-table tr.mt-toggle label { display: block; cursor: pointer; padding: 7px 10px; color: #23406e; font-size: 12px; font-weight: 600; letter-spacing: .02em; }

@@ -23,7 +23,7 @@ import pf_nav as N
 import pf_roles as R
 import pf_ui as U
 
-P2_SCHEMA = "q2"
+P2_SCHEMA = "q3"
 VIEW = "portfolio2"
 TITLE = "Портфель 2"
 
@@ -64,15 +64,15 @@ CSS = """<style>
 
 def menu(view: str | None) -> str:
     """Верхнее меню обеих версий: переключатель «Портфель ЖК / Портфель 2» вместо статичного названия, разделы — как в «Портфеле ЖК»."""
-    p1 = N.link("Портфель ЖК", content='<span class="pv-f">Портфель ЖК</span><span class="pv-s">П1</span>', current=view != VIEW)
-    p2 = N.link(TITLE, content='<span class="pv-f">Портфель 2</span><span class="pv-s">П2</span>', current=view == VIEW, view=VIEW)
+    p1 = N.link("Версия 1", content='<span class="pv-f">Версия 1</span><span class="pv-s">В1</span>', current=view != VIEW)
+    p2 = N.link("Версия 2", content='<span class="pv-f">Версия 2</span><span class="pv-s">В2</span>', current=view == VIEW, view=VIEW)
     switch = f'<span class="pf-ver" role="group" aria-label="Версия отчёта">{p1}{p2}</span>'
     if view == VIEW:       # разделы «Портфеля 2» — переходы внутри страницы
         own = "".join(f'<a href="#{a}">{t}</a>' for a, t in (("p2-table", "Сводка"), ("p2-decisions", "Решения"),
                                                             ("p2-orders", "Поручения"), ("p2-card", "Карточка ЖК"), ("p2-fin", "Финансы")))
-        return CSS + f'<nav class="pfnav" aria-label="Разделы портфеля 2">{switch}{own}</nav>'
+        return CSS + f'<nav class="pfnav" aria-label="Разделы версии 2">{switch}{own}</nav>'
     base = N.menu(view if view in N.REPORT_VIEWS else None)
-    return CSS + base.replace("<b>ПОРТФЕЛЬ ЖК</b>", switch, 1)
+    return CSS + base.replace("<b>ОТЧЁТ ПО ЗАСЕЛЕНИЮ</b>", switch, 1)
 
 
 # ---------------------------------------------------------------- форматирование
