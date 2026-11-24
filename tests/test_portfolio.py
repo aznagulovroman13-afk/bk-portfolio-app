@@ -1067,6 +1067,8 @@ def test_portfolio_total_bar_above_table_links_to_breakdown():
     assert body.count("за неделю</span>") == len(pf_data.PROJECTS) and "целевого темпа" in body
     assert all(("ниже целевого темпа" in tr) == ('dy-t hl-bad' in tr) for tr in body.split("</tr>")[:-1])
     assert "кв.</span>" in raw and "млн ₽</span>" in raw and "шт.</span>" in raw and "hl-bad" in raw
+    for h in ("Передано 2026", "Остаток 2026", "Нарушен срок передачи", "Замечания", "За задержку", "За замечания"):
+        assert re.search(rf'>{h}<span class="unit">[^<]+</span></th>', raw), h       # у каждой числовой колонки — единица
     assert raw.index('Нарушен срок передачи<span class="unit">') < raw.index(">Замечания<span") < raw.index("Неустойка, млн ₽")
     assert 'class="gd-strip"' not in raw and "<tr class=\"tot\">" not in raw
     for k in ("overdue", "pen_delay"):

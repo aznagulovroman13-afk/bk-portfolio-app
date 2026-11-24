@@ -1,7 +1,7 @@
-"""Версия 3 «Отчёта по заселению»: тёмная тема поверх того же отчёта (маршрут ?view=portfolio3, далее — ver=3).
+"""Версия 2 «Отчёта по заселению»: тёмная тема поверх того же отчёта (маршрут ?view=portfolio2, далее — ver=2).
 
 Основа — UX-пакет к приложению (палитра, карточки KPI с цветной левой границей, тёмные таблицы, палитра графиков).
-В отличие от пакета, тема не подключается глобально: CSS выводится только в версии 3, а графики перекрашиваются
+В отличие от пакета, тема не подключается глобально: CSS выводится только в версии 2, а графики перекрашиваются
 в момент вывода (U.chart) по флагу текущего прогона — версии 1 и 2 не меняются. Данные и расчёты — те же, что в версии 1.
 """
 from __future__ import annotations
@@ -11,8 +11,9 @@ import threading
 
 import plotly.graph_objects as go
 
-VIEW = "portfolio3"
-UX_SCHEMA = "x1"
+VIEW = "portfolio2"
+VER = "2"
+UX_SCHEMA = "x2"
 BG, CARD, BORDER, TEXT, MUTED = '#0f1419', '#1a2332', '#2a3648', '#e8eef7', '#8b9bb4'
 BLUE, GREEN, RED, ORANGE, PURPLE = '#3b82f6', '#22c55e', '#ef4444', '#f59e0b', '#a78bfa'
 
@@ -113,7 +114,7 @@ a[data-pf-route],.pf-path a,.pf-links a {color:#93c5fd!important}
 :focus-visible {outline-color:#93c5fd!important}
 @media(max-width:1100px) {.exec-metrics,.p2-kpis {grid-template-columns:repeat(2,minmax(0,1fr))!important}.exec-projects {grid-template-columns:1fr!important}}
 @media(prefers-reduced-motion:reduce) {.kcard,.exec-metric,.exec-project,.p2-kpi {transition:none!important;transform:none!important}}
-/* Версия 3: дополнения к теме пакета — виджеты, сводка, мини-графики, шахматка */
+/* Версия 2: дополнения к теме пакета — виджеты, сводка, мини-графики, шахматка */
 html,body {background:var(--bg)!important}
 h1,h2,h3,h4,p,li,label,.note,.src,.cell-note,.cell-ttl,.exec-date,[data-testid="stMarkdownContainer"] {color:var(--ink)}
 .note,.src,.cell-note,.exec-date,.mt-legend,[data-testid="stCaptionContainer"],.main-port .mt-l2 span {color:var(--ink2)!important}
@@ -132,7 +133,7 @@ svg.sp polyline[stroke="#5B7BA6"] {stroke:#60a5fa} svg.sp circle[fill="#5B7BA6"]
 svg.sp polyline[stroke="#B3261E"] {stroke:#f87171} svg.sp circle[fill="#B3261E"] {fill:#f87171}
 .cb {color:#14213D} .cb * {color:inherit}      /* шахматка — светлая вставка: статусы квартир читаются в исходных цветах */
 .priority-label,.db-gd {background:rgba(245,158,11,.15)!important;color:#fbbf24!important;border-color:#594a29!important}
-/* виджеты Streamlit (тема приложения — светлая, поэтому только для версии 3) */
+/* виджеты Streamlit (тема приложения — светлая, поэтому только для версии 2) */
 [data-testid="stSidebar"] * {color:var(--ink)}
 [data-baseweb="select"] > div,[data-baseweb="input"],[data-baseweb="input"] input,[data-testid="stNumberInput"] input,[data-baseweb="base-input"] {background:var(--paper)!important;color:var(--ink)!important;border-color:var(--line)!important}
 [data-baseweb="popover"] ul,[data-baseweb="menu"] {background:var(--paper)!important} [data-baseweb="menu"] li {color:var(--ink)!important}

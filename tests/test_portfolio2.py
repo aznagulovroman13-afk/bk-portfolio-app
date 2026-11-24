@@ -1,4 +1,4 @@
-"""«Портфель 2» (?view=portfolio2): логика выбора мер и затрат из архива, экран, переключатель версий, переходы до квартиры и замечаний."""
+"""«Версия 3», бывший «Портфель 2» (?view=portfolio3): логика выбора мер и затрат из архива, экран, переключатель версий, переходы до квартиры и замечаний."""
 from __future__ import annotations
 
 import html as H
@@ -66,17 +66,17 @@ def _text(raw):
 
 
 def test_portfolio2_screen_rules_and_reconciliation():
-    at = _app(view="portfolio2")
+    at = _app(view="portfolio3")
     raw = _md(at)
     t = _text(raw) + " " + " ".join(c.value for c in at.caption) + " " + " ".join(e.label for e in at.expander)
     assert not [w for w in BANNED if w in t], [w for w in BANNED if w in t]
-    assert "Портфель 2" in t and "Сводка по ЖК" not in t
+    assert "Версия 3" in t and "Портфель 2" not in t and "Сводка по ЖК" not in t
     assert 'class="p2-ok"' in raw and 'class="p2-bad">Расхождение' not in raw            # сверка итогов сходится
     assert "не подтвержден" in t and "расчётная оценка" in t                 # суммы не выдаются за факт
     names = dict(pf_data.PROJECTS)
     table = raw.split('id="p2-table"', 1)[1].split("</table>", 1)[0]
     for key in names:
-        assert f"view=portfolio2&amp;card={key}" in table                    # каждый ЖК ведёт в карточку
+        assert f"view=portfolio3&amp;card={key}" in table                    # каждый ЖК ведёт в карточку
     assert table.count("<tr") == len(names) + 2 and "не суммируются" in table
     assert "не оценено" not in t and "Готовы" not in t and "готовы к передаче" not in t
     head = table.split("</thead>", 1)[0]
@@ -102,17 +102,18 @@ def test_portfolio2_screen_rules_and_reconciliation():
 
 
 def test_version_switch_in_both_menus():
-    for route, cur in (({}, "Версия 1"), ({"view": "portfolio2"}, "Версия 2"), ({"jk": "bunino"}, "Версия 1")):
+    for route, cur in (({}, "Версия 1"), ({"view": "portfolio3"}, "Версия 3"), ({"jk": "bunino"}, "Версия 1")):
         raw = _md(_app(**route))
         nav = re.search(r'<span class="pf-ver".*?</a></span>', raw).group(0)
-        assert 'href="/"' in nav and 'href="/?view=portfolio2"' in nav
+        assert 'href="/"' in nav and 'href="/?view=portfolio3"' in nav and 'href="/?view=portfolio2"' in nav
+        assert nav.index("Версия 1") < nav.index("Версия 2") < nav.index("Версия 3")
         assert f'aria-label="{cur}" aria-current="page"' in nav, (route, nav)
     assert "<b>ОТЧЁТ ПО ЗАСЕЛЕНИЮ</b>" not in _md(_app())
 
 
 def test_portfolio2_card_drill_to_house_apartment_and_remarks():
     """Портфель 2 → ЖК (карточка) → корпус → квартира → замечания; общие страницы ЖК открываются по ссылкам карточки."""
-    at = _app(view="portfolio2", card="bunino")
+    at = _app(view="portfolio3", card="bunino")
     raw = _md(at)
     assert 'id="p2-card-bunino"' in raw and at.selectbox(key="p2_card").value == "bunino"
     assert raw.count('<details class="dr-house') == 7 and "dr-apt" in raw and "dr-l4" in raw

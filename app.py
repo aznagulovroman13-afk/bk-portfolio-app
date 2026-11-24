@@ -32,7 +32,7 @@ REPORT_SCHEMA = "v31"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
         or getattr(GT, "GANTT_SCHEMA", None) != "g3" or getattr(DR, "DRILL_SCHEMA", None) != "d4" \
         or getattr(R, "ROLES_SCHEMA", None) != "r1" or not hasattr(U, "gloss") or "cell" not in N.ROUTE_FIELDS \
-        or getattr(P2, "P2_SCHEMA", None) != "q4" or getattr(UXD, "UX_SCHEMA", None) != "x1":
+        or getattr(P2, "P2_SCHEMA", None) != "q5" or getattr(UXD, "UX_SCHEMA", None) != "x2":
     for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR, UXD, P2):
         reload(module)
     if "cell" not in N.ROUTE_FIELDS:
@@ -41,11 +41,11 @@ if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_S
         except Exception:  # компонент маршрутов уже зарегистрирован — достаточно новых полей
             N.ROUTE_FIELDS = tuple(dict.fromkeys((*N.ROUTE_FIELDS, "card", "cell")))
 
-# Версия 3 — тот же отчёт в тёмной теме: вход ?view=portfolio3, дальше по разделам — параметр ver=3.
-V3 = st.query_params.get("view") == UXD.VIEW or st.query_params.get("ver") == "3"
-UXD.set_active(V3)
-getattr(N, "set_carry", lambda params: None)({"ver": "3"} if V3 else {})
-_css = UXD.recolor if V3 else (lambda s: s)
+# Версия 2 — тот же отчёт в тёмной теме: вход ?view=portfolio2, дальше по разделам — параметр ver=2.
+DARK = st.query_params.get("view") == UXD.VIEW or st.query_params.get("ver") == UXD.VER
+UXD.set_active(DARK)
+getattr(N, "set_carry", lambda params: None)({"ver": UXD.VER} if DARK else {})
+_css = UXD.recolor if DARK else (lambda s: s)
 st.markdown(_css(U.CSS), unsafe_allow_html=True)
 st.markdown(_css(
     '<style>header[data-testid="stHeader"], header[data-testid="stHeader"] * {pointer-events: none !important;} '
@@ -496,15 +496,15 @@ def main_table(rows, slice_label, open_more=False):
             'нажмите на цифру — разбивка по домам и квартирам</span></div>'
             '<div class="tw"><table class="fin main-table"><thead>'
             '<tr><th rowspan="2">ЖК</th><th class="r tip" rowspan="2" title="Передано квартир по передаточным актам в 2026 году">Передано 2026<span class="unit">кв.</span></th>'
-            '<th class="r sep tip" rowspan="2" title="Квартиры со сроком по ДДУ в 2026 году, ещё не переданные">Остаток 2026</th>'
+            '<th class="r sep tip" rowspan="2" title="Квартиры со сроком по ДДУ в 2026 году, ещё не переданные">Остаток 2026<span class="unit">кв.</span></th>'
             '<th class="r tip" rowspan="2" title="Квартиры, не переданные по передаточному акту, у которых наступил и нарушен срок передачи по ДДУ, на дату среза">Нарушен срок передачи<span class="unit">кв.</span></th>'
             '<th class="r tip" rowspan="2" title="Открытые замечания по квартирам ЖК, на дату среза">Замечания<span class="unit">шт.</span></th>'
             '<th class="grp sep" colspan="2" title="Начислено с учётом моратория ПП № 326">Неустойка, млн ₽<span class="unit">начислено</span></th>'
             '<th class="sep tip" rowspan="2" title="Главное решение ЖК: эффект за 4 недели до затрат и сокращение медианной задержки передачи">Что решить</th>'
             '<th class="sep tip" rowspan="2" title="Роль, получающая поручение по главному решению; отвечает за критический этап задержки (диаграмма Ганта)">Ответственный</th></tr>'
             '<tr>'
-            '<th class="r sep tip" title="За просрочку передачи, ч. 2 ст. 6 214-ФЗ">За задержку</th>'
-            '<th class="r tip" title="За нарушение сроков устранения недостатков, ч. 8 ст. 7 214-ФЗ">За замечания</th></tr>'
+            '<th class="r sep tip" title="За просрочку передачи, ч. 2 ст. 6 214-ФЗ">За задержку<span class="unit">млн ₽</span></th>'
+            '<th class="r tip" title="За нарушение сроков устранения недостатков, ч. 8 ст. 7 214-ФЗ">За замечания<span class="unit">млн ₽</span></th></tr>'
             f'</thead><tbody>{body}</tbody></table></div>'
             f'<p class="exec-date mt-legend"><span class="lg-bad">■</span> нарушен срок от {HL_OVERDUE_BAD} кв., замечаний от {HL_REM_BAD} шт., ниже целевого темпа, неустойка за задержку от {_mln(HL_PEN_BAD, 0)} млн ₽ · '
             f'<span class="lg-good">■</span> нет нарушений, замечаний меньше {HL_REM_GOOD} шт., передано в 2026 от {HL_T2026_GOOD} кв., снижение за неделю · '
@@ -753,17 +753,17 @@ MAIN_OWNER = {p["decisions"][0]["key"]: p["name"] for p in projects if p.get("de
 route = N.read_route()
 project_key = route.get("jk")
 view = route.get("view", "summary")
-if V3 and st.query_params.get("ver") != "3":
-    st.query_params["ver"] = "3"           # разделы версии 3 сохраняют тему при переходах
+if DARK and st.query_params.get("ver") != UXD.VER:
+    st.query_params["ver"] = UXD.VER       # разделы тёмной версии 2 сохраняют тему при переходах
 if view == UXD.VIEW:
-    view = "summary"                       # версия 3 — главный экран версии 1
+    view = "summary"                       # версия 2 — главный экран версии 1
 if view not in N.REPORT_VIEWS and view != P2.VIEW:
     view = "summary"
-if V3 and view == P2.VIEW:
+if DARK and view == P2.VIEW:
     view = "summary"
-st.markdown(_css(P2.menu(None if project_key in projects_by_key else view, v3=V3)) if V3 else
+st.markdown(_css(P2.menu(None if project_key in projects_by_key else view, dark=DARK)) if DARK else
             P2.menu(None if project_key in projects_by_key else view), unsafe_allow_html=True)
-if V3:
+if DARK:
     st.markdown(UXD.CSS, unsafe_allow_html=True)
 
 sg = lambda v: ("+" if v > 0 else "−" if v < 0 else "") + f(abs(v))
@@ -1072,7 +1072,7 @@ def gd_strip():
         for it in GD_ITEMS)
     return (f'<section class="gd-strip" id="gd-strip"><div class="gd-ttl">Нужно решение ГД · {len(GD_ITEMS)}</div>'
             f'<ol>{rows}</ol><div class="gd-note">Эффект — снижение неустойки за 4 недели до затрат; контроль — на следующем срезе.</div></section>')
-if view == P2.VIEW:            # «Портфель 2» — альтернативная версия на тех же данных и расчётах
+if view == P2.VIEW:            # «Версия 3» (бывший «Портфель 2») — альтернативная версия на тех же данных и расчётах
     P2.render(dict(projects=projects, totals=tot, DA=DA, PEN=PEN, GANTT=GANTT, slice_text=slice_text, route=route,
                    main_row=lambda p_: main_row(p_, DA[p_["key"]], act_d), drill=drill_data))
     st.stop()

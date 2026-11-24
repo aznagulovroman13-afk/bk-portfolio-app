@@ -1,4 +1,4 @@
-"""«Портфель 2» — альтернативная версия отчёта ГД в том же приложении (маршрут ?view=portfolio2).
+"""«Версия 3» (бывший «Портфель 2») — альтернативная версия отчёта ГД в том же приложении (маршрут ?view=portfolio3).
 
 Основа — архив стороннего автора (pages/Портфель_2.py): главный экран с концентрацией дневного риска,
 независимый выбор меры с наибольшим расчётным эффектом по каждому ЖК (мера может повторяться между ЖК),
@@ -23,9 +23,9 @@ import pf_nav as N
 import pf_roles as R
 import pf_ui as U
 
-P2_SCHEMA = "q4"
-VIEW = "portfolio2"
-TITLE = "Портфель 2"
+P2_SCHEMA = "q5"
+VIEW = "portfolio3"
+TITLE = "Версия 3"
 
 CSS = """<style>
 .pf-ver { display: inline-flex; margin-right: 14px; border: 1px solid #3B5374; border-radius: 5px; overflow: hidden; flex: none; }
@@ -62,18 +62,18 @@ CSS = """<style>
 </style>"""
 
 
-def menu(view: str | None, v3: bool = False) -> str:
+def menu(view: str | None, dark: bool = False) -> str:
     """Верхнее меню обеих версий: переключатель «Портфель ЖК / Портфель 2» вместо статичного названия, разделы — как в «Портфеле ЖК»."""
-    out = {"ver": "1"} if v3 else {}       # из версии 3 — обратно в версии 1 и 2
-    p1 = N.link("Версия 1", content='<span class="pv-f">Версия 1</span><span class="pv-s">В1</span>', current=view != VIEW and not v3, **out)
-    p2 = N.link("Версия 2", content='<span class="pv-f">Версия 2</span><span class="pv-s">В2</span>', current=view == VIEW, view=VIEW, **out)
-    p3 = N.link("Версия 3", content='<span class="pv-f">Версия 3</span><span class="pv-s">В3</span>', current=v3,
-                **({} if v3 else {"view": "portfolio3"}))
+    out = {"ver": "1"} if dark else {}     # из тёмной версии 2 — обратно в версии 1 и 3
+    p1 = N.link("Версия 1", content='<span class="pv-f">Версия 1</span><span class="pv-s">В1</span>', current=view != VIEW and not dark, **out)
+    p2 = N.link("Версия 2", content='<span class="pv-f">Версия 2</span><span class="pv-s">В2</span>', current=dark,
+                **({} if dark else {"view": "portfolio2"}))
+    p3 = N.link("Версия 3", content='<span class="pv-f">Версия 3</span><span class="pv-s">В3</span>', current=view == VIEW, view=VIEW, **out)
     switch = f'<span class="pf-ver" role="group" aria-label="Версия отчёта">{p1}{p2}{p3}</span>'
     if view == VIEW:       # разделы «Портфеля 2» — переходы внутри страницы
         own = "".join(f'<a href="#{a}">{t}</a>' for a, t in (("p2-table", "Сводка"), ("p2-decisions", "Решения"),
                                                             ("p2-orders", "Поручения"), ("p2-card", "Карточка ЖК"), ("p2-fin", "Финансы")))
-        return CSS + f'<nav class="pfnav" aria-label="Разделы версии 2">{switch}{own}</nav>'
+        return CSS + f'<nav class="pfnav" aria-label="Разделы версии 3">{switch}{own}</nav>'
     base = N.menu(view if view in N.REPORT_VIEWS else None)
     return CSS + base.replace("<b>ОТЧЁТ ПО ЗАСЕЛЕНИЮ</b>", switch, 1)
 

@@ -32,7 +32,7 @@ PROJECT_VIEWS = {
 ROUTE_FIELDS = ("view", "jk", "tab", "corpus", "unit", "card", "cell")
 
 
-_carry = threading.local()       # параметры версии отчёта (ver=3), добавляемые к ссылкам текущего прогона
+_carry = threading.local()       # параметры версии отчёта (ver=2), добавляемые к ссылкам текущего прогона
 
 
 def set_carry(params):
@@ -126,12 +126,12 @@ def read_route():
         return current
     route = {key: result.route[key] for key in ROUTE_FIELDS if isinstance(result.route.get(key), str)}
     ver = result.route.get("ver")
-    ver_changed = isinstance(ver, str) and (ver == "3") != (st.query_params.get("ver") == "3")
+    ver_changed = isinstance(ver, str) and (ver == "2") != (st.query_params.get("ver") == "2")
     if route != current or ver_changed:
         set_route(**route)
-        if ver_changed:                     # переключение версии 3 ↔ версии 1/2
-            if ver == "3":
-                st.query_params["ver"] = "3"
+        if ver_changed:                     # переключение тёмной версии 2 ↔ версии 1/3
+            if ver == "2":
+                st.query_params["ver"] = "2"
             elif "ver" in st.query_params:
                 del st.query_params["ver"]
         st.rerun()

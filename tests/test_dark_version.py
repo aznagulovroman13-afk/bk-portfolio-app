@@ -1,4 +1,4 @@
-"""Версия 3 (?view=portfolio3, далее ver=3): тот же отчёт, что версия 1, в тёмной теме; версии 1 и 2 не меняются."""
+"""Версия 2 (?view=portfolio2, далее ver=2): тот же отчёт, что версия 1, в тёмной теме; версии 1 и 3 не меняются."""
 from __future__ import annotations
 
 import json
@@ -47,26 +47,26 @@ def test_v3_route_same_report_dark_theme():
     for s in ('id="portfolio-total"', "Раскрытие по ЖК", "Отчёт по заселению"):
         assert s in v3
     nav = re.search(r'<span class="pf-ver".*?</a></span>', v3).group(0)
-    assert 'aria-label="Версия 3" aria-current="page"' in nav
-    assert 'href="/?ver=1"' in nav and re.search(r'href="/\?(ver=1&amp;view=portfolio2|view=portfolio2&amp;ver=1)"', nav)    # возврат в версии 1 и 2
+    assert 'aria-label="Версия 2" aria-current="page"' in nav and nav.index("Версия 1") < nav.index("Версия 2") < nav.index("Версия 3")
+    assert 'href="/?ver=1"' in nav and re.search(r'href="/\?(ver=1&amp;view=portfolio3|view=portfolio3&amp;ver=1)"', nav)    # возврат в версии 1 и 3
     links = re.findall(r'href="(/\?[^"]*)" data-pf-route', _body(v3))
-    assert links and all("ver=3" in h or "ver=1" in h for h in links)                # переходы сохраняют версию 3
+    assert links and all("ver=2" in h or "ver=1" in h for h in links)                # переходы сохраняют версию 2
     assert not BANNED.search(_body(v3)) and "gd-strip" not in _body(v3)
 
 
 def test_v3_drill_and_charts_are_dark_v1_unchanged():
-    at = _app(ver="3", jk="bunino")
+    at = _app(ver="2", jk="bunino")
     raw = _md(at)
     assert "--bg:#0f1419" in raw and "Шахматка" in raw
     assert _fig_bg(at) and all(bg == UXD.CARD for bg in _fig_bg(at))            # Plotly — тёмный фон
-    card = _app(ver="3", card="bunino", cell="overdue")
+    card = _app(ver="2", card="bunino", cell="overdue")
     assert 'id="cell-bunino-overdue"' in _md(card) and _fig_bg(card) and all(bg == UXD.CARD for bg in _fig_bg(card))
-    v1 = _app(card="bunino")                                                    # после версии 3 версия 1 — светлая
+    v1 = _app(card="bunino")                                                    # после версии 2 версия 1 — светлая
     assert _fig_bg(v1) and all(bg != UXD.CARD for bg in _fig_bg(v1)) and "--bg:#0f1419" not in _md(v1)
     nav = re.search(r'<span class="pf-ver".*?</a></span>', _md(v1)).group(0)
-    assert 'href="/?view=portfolio3"' in nav and 'aria-label="Версия 1" aria-current="page"' in nav
-    p2 = _md(_app(view="portfolio2"))
-    assert "--bg:#0f1419" not in p2 and 'aria-label="Версия 2" aria-current="page"' in p2
+    assert 'href="/?view=portfolio2"' in nav and 'aria-label="Версия 1" aria-current="page"' in nav
+    p3 = _md(_app(view="portfolio3"))                                          # бывший «Портфель 2» — светлый, как раньше
+    assert "--bg:#0f1419" not in p3 and 'aria-label="Версия 3" aria-current="page"' in p3 and 'class="p2-head"' in p3
 
 
 def test_dark_fig_recolors_light_palette():
