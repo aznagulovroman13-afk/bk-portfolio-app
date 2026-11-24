@@ -330,6 +330,57 @@ div[data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 4
 div[data-testid="stExpander"] details { background: var(--paper); border: 1px solid var(--line); border-radius: 4px; }
 [data-testid="stButtonGroup"] button { border-radius: 4px !important; }
 @media (max-width: 900px) { .dec { grid-template-columns: 1fr; } .dec > div { border-right: none; border-bottom: 1px solid var(--line); } }
+/* ===== Отчёт по заселению: дизайн на всю ширину (сетка 8 px) ===== */
+:root { --bk-pad: clamp(16px, 2.2vw, 32px); --r8: 8px; --sh1: 0 1px 2px rgba(11,31,58,.06), 0 4px 16px rgba(11,31,58,.05); --row: #E6EAF0; --hov: #F5F8FC; }
+.stMainBlockContainer, .block-container { max-width: 100% !important; padding: 64px var(--bk-pad) 64px var(--bk-pad) !important; }
+.rh { border-radius: var(--r8); padding: 24px 32px; margin: 0 0 24px; box-shadow: var(--sh1); }
+.main-port .exec-date { margin: 0 0 8px; font-size: 13px; color: var(--ink3); }
+/* плашка «Итого» — первый уровень, сетка 12 колонок на всю ширину */
+.mt-total { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 24px 32px; align-items: start;
+  background: var(--paper); border: 1px solid var(--line); border-left: 6px solid var(--navy); border-radius: var(--r8);
+  box-shadow: var(--sh1); padding: 24px 32px; margin: 8px 0 32px; }
+.mt-total > * { grid-column: span 2; min-width: 0; }
+.mt-total > .tg { grid-column: span 6; } .mt-total > [data-k="decide"], .mt-total > [data-k="resp"] { grid-column: span 3; }
+.mt-total > .tg, .mt-total > [data-k="decide"], .mt-total > [data-k="resp"] { border-top: 1px solid var(--row); padding-top: 16px; }
+.mt-total .ti.key { border-left: none; padding-left: 0; }
+.mt-total .tl { font-size: 12px; letter-spacing: .06em; color: var(--ink3); margin-bottom: 8px; }
+.mt-total b, .mt-total .tgi span { font-size: 32px; line-height: 1.1; letter-spacing: -.01em; }
+.mt-total .ti.key b { font-size: 40px; } .mt-total .tn b { font-size: 24px; }
+.mt-total .tgi { gap: 32px; } .mt-total .tgi span { font-size: 28px; }
+.mt-total .ti[data-k="decide"] b, .mt-total .ti[data-k="resp"] b { font-size: 18px; padding-top: 0; }
+.mt-total .tdy .mt-dy { margin-top: 0; } .mt-total .tdy .dy-s svg { width: 112px; height: 32px; }
+.mt-total .tdy .sub { font-size: 13px; } .mt-total .tdy .dy-t { font-size: 12px; }
+@media (max-width: 1180px) { .mt-total { grid-template-columns: repeat(6, minmax(0, 1fr)); } .mt-total > .tg { grid-column: span 6; } }
+@media (min-width: 641px) { .pfnav { padding-left: 56px; } }
+/* второй уровень — таблица по ЖК */
+.main-port .mt-l2 { margin: 0 0 16px; padding-bottom: 8px; gap: 16px; border-bottom: 2px solid var(--navy); }
+.main-port .mt-l2 b { font-size: 18px; letter-spacing: -.005em; } .main-port .mt-l2 span { font-size: 13px; }
+.main-port .tw, .pt3-wrap { border-radius: var(--r8); box-shadow: var(--sh1); }
+.main-table, .fin.pt3 { border: 1px solid var(--line); border-radius: var(--r8); border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.main-table th, .fin.pt3 th { padding: 12px 16px; font-size: 12px; letter-spacing: .05em; color: var(--ink); background: #F3F5F8; border-bottom: 1px solid var(--line); vertical-align: bottom; }
+.main-table thead tr:first-child th.grp { border-bottom: 1px solid var(--row); }
+.main-table td, .fin.pt3 td { padding: 16px; border-bottom: 1px solid var(--row); vertical-align: middle; font-variant-numeric: tabular-nums; }
+.main-table td.r, .fin.pt3 td.r { text-align: right; } .main-table td.r .u { margin-left: 2px; }
+.main-table tbody tr:last-child td, .fin.pt3 tbody tr:last-child td { border-bottom: none; }
+.main-table tbody tr:not(.mt-toggle):hover td, .fin.pt3 tbody tr:hover td { background: var(--hov); }
+.main-table td.sep, .main-table th.sep { border-left: 1px solid var(--row); }
+.main-table td.jk { min-width: 240px; } .main-table td.jk > a { font-size: 14.5px; }
+.main-table td.key { font-size: 16px; } .main-table td { font-size: 14px; }
+.main-table td.decide { min-width: 220px; font-size: 13px; } .main-table td.resp { font-size: 13px; }
+.mt-dy { gap: 12px; margin-top: 8px; } .mt-dy .dy-s svg { width: 96px; height: 28px; }
+.fin.pt3 td .mt-dy { margin-top: 8px; }
+.mt-legend { margin: 16px 0 24px; font-size: 12.5px; }
+/* карточки и раскрытия — единые скругления и тени */
+div[data-testid="stExpander"] details { border-radius: var(--r8); box-shadow: var(--sh1); }
+.cell-panel, .dec-block, details.mx-l2, .gantt-l1, .pen-basis { border-radius: var(--r8); }
+.cell-panel, .dec-block { box-shadow: var(--sh1); padding: 16px 24px; margin: 8px 0 16px; }
+div[data-testid="stPlotlyChart"], div[data-testid="stDataFrame"] { border-radius: var(--r8); box-shadow: var(--sh1); }
+@media (max-width: 640px) { .stMainBlockContainer, .block-container { padding: 56px 16px 48px !important; }
+  .mt-total { grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; } .mt-total > * { grid-column: span 1; }
+  .mt-total > .tn, .mt-total > .key, .mt-total > .tdy, .mt-total > .tg { grid-column: span 2; }
+  .mt-total > [data-k="decide"], .mt-total > [data-k="resp"] { grid-column: span 1; }
+  .mt-total b, .mt-total .tgi span { font-size: 22px; } .mt-total .ti.key b { font-size: 28px; }
+  .main-table, .fin.pt3 { border-collapse: collapse; } .main-table td, .main-table th { padding: 0; } .main-table tbody tr { padding: 12px 8px; } }
 </style>
 """
 
