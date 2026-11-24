@@ -162,6 +162,19 @@ div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{border-radius:16
   .v2-concl .v2-sub,.v2-concl .v2-foot{display:none}
   .v2-concl .v2-action .v2-what{font-size:16px}
   .v2-concl .v2-first{gap:8px}
+  .v2-concl .v2-facts{display:flex;flex-direction:column;gap:2px}
+  .v2-concl .v2-fact{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px}
+  .v2-concl .v2-fact b{margin-top:0;font-size:14px}
+  .v2-concl .v2-fact .v2-effect{font-size:17px}
+  .v2-concl .v2-hero p{font-size:13px}
+  .v2-concl .v2-action{gap:4px}
+  .mt-total{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;gap:10px 14px!important;padding:14px!important}
+  .mt-total > *{grid-column:auto!important;min-width:0}
+  .mt-total > .tn,.mt-total > .tdy,.mt-total > .tg{grid-column:1 / -1!important}
+  .mt-total .tgi{display:flex;flex-wrap:wrap;gap:4px 16px}
+  .mt-total .tgi span{align-items:center}
+  .mt-total .ti[data-k="decide"] b,.mt-total .ti[data-k="resp"] b{white-space:normal;display:block}
+  .mt-total a.cell{min-height:40px}
 }
 .v2-empty{background:#fff;border:1px dashed #C7C7CC;border-radius:16px;padding:22px;color:#424245;font-size:14px;text-align:center;margin:4px 0 12px}
 .v2-crumbs{font-size:13px!important;margin:0 0 6px}
