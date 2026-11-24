@@ -48,38 +48,37 @@ def _num(s):
     return int(re.sub(r"\D", "", s))
 
 
-def test_v2_route_light_overview_same_numbers():
+def test_v2_built_from_v1_structure():
     v1_at, v2_at = _app(), _app(view=UXD.VIEW)
     v1, v2 = _md(v1_at), _md(v2_at)
-    assert V2_MARK in v2 and V2_MARK not in v1 and "--bg:#0f1419" not in v2               # светлая тема — только в версии 2
-    assert _table(v1) == _table(v2)                                                       # полная сводка: те же цифры, что в версии 1
-    body = _body(v2)
-    for s in ('class="v2-hero v2-prob"', 'class="v2-hero v2-action"', "Главная проблема портфеля", "Управленческое решение", "Ответственный",
-              "Финансовый эффект за 4 недели", "ЖК по финансовому риску", "Отчёт по заселению", 'id="portfolio-total"'):
-        assert s in body, s
+    assert V2_MARK in v2 and V2_MARK not in v1 and "--bg:#0f1419" not in v2               # светлое оформление — только в версии 2
+    assert _table(v1) == _table(v2)                                                       # сводка версии 1: те же блоки и цифры
+    b1, b2 = _body(v1), _body(v2)
+    for s in ('id="portfolio-total"', "Раскрытие по ЖК", "Сводка по ЖК", 'class="exec-control"', 'aria-label="Открыть раздел из сводки"',
+              "Отчёт по заселению", "Главная проблема портфеля", "Управленческое решение", "Ответственный", "Финансовый эффект за 4 недели"):
+        assert s in b2, s
+    assert "v2-risklist" not in b2 and "v2-kpis" not in b2                               # обзор из архива с главного экрана убран
+    assert [e.label for e in v1_at.expander] == [e.label for e in v2_at.expander]        # те же карточки ЖК и блоки, что в версии 1
+    assert b2.index('id="conclusion"') < b2.index("Сводка по ЖК") < b2.index('id="portfolio-total"')
     nav = re.search(r'<span class="pf-ver".*?</a></span>', v2).group(0)
     assert 'aria-label="Версия 2" aria-current="page"' in nav and nav.index("Версия 1") < nav.index("Версия 2") < nav.index("Версия 3")
     assert 'href="/?ver=1"' in nav and re.search(r'href="/\?(ver=1&amp;view=portfolio3|view=portfolio3&amp;ver=1)"', nav)
-    links = re.findall(r'href="(/\?[^"]*)" data-pf-route', body)
+    links = re.findall(r'href="(/\?[^"]*)" data-pf-route', b2)
     assert links and all("ver=2" in h or "ver=1" in h for h in links)                     # переходы сохраняют версию 2
-    assert not BANNED.search(body) and "gd-strip" not in body
+    assert not BANNED.search(b2) and "gd-strip" not in b2
     assert all(c.value.find("Демо") < 0 for c in v2_at.caption)
-    # KPI версии 2 = итоги версии 1 (просрочка, дневная неустойка)
-    kpi = re.findall(r'<div class="v2-kpi[^"]*"><span class="v2-label">([^<]+)</span><strong>(.*?)</strong>', body)
-    vals = {k: _num(re.sub(r"<[^>]+>", "", v)) for k, v in kpi}
-    assert set(vals) == {"Нарушен срок передачи, кв.", "Неустойка в день, ₽", "Передано в 2026, кв.", "Остаток 2026, кв."}
-    tot = re.search(r'Неустойка в день <strong>([^<]+) ₽</strong>', _body(v1)).group(1)
-    assert vals["Неустойка в день, ₽"] == _num(tot)
 
 
-def test_v2_ranking_by_daily_risk_and_drill_down():
-    body = _body(_md(_app(view=UXD.VIEW)))
-    amounts = [_num(a) for a in re.findall(r'<div class="v2-amount">([^<]+) ₽', body)]
-    assert len(amounts) == 10 and amounts == sorted(amounts, reverse=True)
-    lead = re.search(r'class="v2-row v2-top".*?href="/\?([^"]+)"', body).group(1)
-    key = re.search(r"card=([a-z0-9_]+)", lead).group(1)
+def _lead_key(body):
+    hero = re.search(r'<div class="v2-hero v2-prob".*?</div><div class="v2-hero v2-action">', body, re.S).group(0)
+    return re.search(r'card=([a-z0-9_]+)', hero).group(1), hero
+
+
+def test_v2_drill_down_all_levels():
+    key, _ = _lead_key(_body(_md(_app(view=UXD.VIEW))))
     card = _app(ver="2", card=key)                                                        # портфель → ЖК (карточка)
-    assert f'id="card-{key}"' in _md(card) and _fig_bg(card) and all(bg != UXD.CARD for bg in _fig_bg(card))
+    craw = _md(card)
+    assert f'id="card-{key}"' in craw and 'class="pf-path v2-crumbs"' in craw and _fig_bg(card) and all(bg != UXD.CARD for bg in _fig_bg(card))
     cell = _app(ver="2", card=key, cell="decide")
     assert f'id="card-{key}"' in _md(cell) and "Что решить" in _body(_md(cell))       # «Открыть решение» → блок решения ЖК
     chess = _app(ver="2", jk=key, tab="chess")                                            # ЖК → корпус
@@ -224,23 +223,19 @@ def test_problem_fallback_when_main_metric_zero():
 
 def test_headline_consistent_with_numbers_on_screen():
     body = _body(_md(_app(view=UXD.VIEW)))
-    hero = re.search(r'<div class="v2-hero v2-prob" data-field="risk_day">(.*?)</div><div class="v2-hero v2-action">', body, re.S).group(1)
-    lead_name = re.search(r"<h2>([^:<]+):", hero).group(1)
+    key, hero = _lead_key(body)
+    assert 'data-field="risk_day"' in hero
     big = _num(re.search(r'<span class="v2-number">([^<]+)', hero).group(1))
-    rows = re.findall(r'<div class="v2-name"><a [^>]*>([^<]+)</a>.*?<div class="v2-amount">([^<]+) ₽', body, re.S)
-    assert rows[0][0] == lead_name and _num(rows[0][1]) == big                        # заголовок = первая строка рейтинга
-    total = sum(_num(a) for _, a in rows)
-    kpi_risk = _num(re.search(r'Неустойка в день, ₽</span><strong>([^<]+)</strong>', body).group(1))
-    assert abs(total - kpi_risk) <= len(rows)                                          # сумма строк = KPI (округление)
+    total = _num(re.search(r'Неустойка в день <strong>([^<]+) ₽</strong>', body).group(1))   # строка «Неустойка в день» сводки версии 1
     share = float(re.search(r"<p>([\d,]+)% дневной неустойки", hero).group(1).replace(",", "."))
-    assert abs(share - 100 * big / kpi_risk) < 0.06
+    assert abs(share - 100 * big / total) < 0.06 and share <= 100
     x, y = map(_num, re.search(r"([\d\s\xa0]+) из ([\d\s\xa0]+) кв\.", hero).groups())
-    kpi_over = _num(re.search(r'Нарушен срок передачи, кв\.</span><strong><a [^>]*>([^<]+)</a>', body).group(1))
-    assert 0 < x <= y == kpi_over
-    widths = [float(w) for w in re.findall(r'class="v2-fill[^"]*" style="width:([\d.]+)%"', body)]
-    assert widths and max(widths) <= 100 and abs(sum(widths) - 100) < 0.5
-    assert body.count("v2-extra") == len(rows) - 5 and 'for="v2-more"' in body          # на телефоне ЖК после 5-го — по «Ещё»
-
+    plaque = re.search(r'<div class="mt-total" id="portfolio-total".*?</table>', body, re.S).group(0)
+    assert str(y) in re.sub(r"[\s\xa0]", "", re.sub(r"<[^>]+>", " ", plaque))              # итог просрочки = плашка «Итого»
+    card = _body(_md(_app(ver="2", card=key)))
+    card = card[card.index(f'id="card-{key}"'):]
+    m = re.search(r'<dt>Нарушен срок передачи, кв\.</dt><dd>([^<]+)</dd>.*?<dt>Неустойка в день</dt><dd>([^<]+) ₽</dd>', card, re.S)
+    assert _num(m.group(1)) == x <= y and _num(m.group(2)) == big                         # заголовок = цифры карточки ЖК
 
 def test_empty_chart_note_and_crumbs_module():
     import plotly.graph_objects as go
