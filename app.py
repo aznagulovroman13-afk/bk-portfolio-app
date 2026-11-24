@@ -31,7 +31,7 @@ REPORT_SCHEMA = "v27"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
         or getattr(GT, "GANTT_SCHEMA", None) != "g3" or getattr(DR, "DRILL_SCHEMA", None) != "d3" \
         or getattr(R, "ROLES_SCHEMA", None) != "r1" or not hasattr(U, "gloss") or "cell" not in N.ROUTE_FIELDS \
-        or getattr(P2, "P2_SCHEMA", None) != "q1":
+        or getattr(P2, "P2_SCHEMA", None) != "q2":
     for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR, P2):
         reload(module)
     if "cell" not in N.ROUTE_FIELDS:

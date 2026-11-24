@@ -23,19 +23,28 @@ def measure(key="unilateral", effect=2_000_000):
 
 
 def test_archive_rules_repeat_measure_and_unknown_budget():
-    """Тест из архива: мера с наибольшим эффектом выбирается в каждом ЖК независимо; неизвестный бюджет — не ноль."""
+    """Тест из архива (адаптирован): мера выбирается в каждом ЖК независимо и может повторяться; затраты всегда в рублях;
+    выбор — по наибольшему эффекту после затрат, убыточная мера не выбирается при наличии плюсовой."""
     for _ in range(3):
-        p = {"cands": [measure(effect=2_000_000), measure("realloc", effect=1_500_000)], "reasons": {"expired": {"n": 100, "risk": 200_000}}}
+        p = {"cands": [measure(effect=2_000_000), measure("realloc", effect=500_000)], "reasons": {"expired": {"n": 100, "risk": 200_000}}}
         assert P2.best_decision(p)["measure"]["key"] == "unilateral"
     p = {"reasons": {"expired": {"n": 100, "risk": 200_000}}}
     cost, why = P2.budget_estimate(p, measure(effect=1_400_000))
     assert cost == 900_000 and "тариф" in why, (cost, why)
     cost, why = P2.budget_estimate(p, measure("unknown"))
-    assert cost is None and "не оценены" in why
-    assert P2.fmt_mln(None) == "не оценено" and P2.fmt_rub(None) == "не оценено"
+    assert cost > 0 and "тариф" in why                                    # без тарифа — средняя ставка, не пусто
     assert P2.fmt_mln(-110_000) == "−0,11 млн ₽"
-    d = P2.best_decision({"cands": [measure("unknown", effect=10)], "reasons": {}})
-    assert d["cost"] is None and d["net"] is None
+    # убыточная по затратам мера (большой эффект, ещё большие затраты) уступает плюсовой
+    loss = dict(measure("crew", effect=370_000), cost=480_000)
+    plus = measure("calls", effect=240_000)
+    d = P2.best_decision({"cands": [loss, plus], "reasons": {"expired": {"n": 100, "risk": 200_000}}})
+    assert d["measure"]["key"] == "calls" and d["net"] > 0
+    d = P2.best_decision({"cands": [measure("unknown", effect=10)], "reasons": {}, "overdue_kv": 5, "risk_day": 10_000})
+    assert d["cost"] > 0 and d["net"] == d["effect"] - d["cost"]
+    for key in ("notify", "called", "reply", "noshow", "edo", "batch", "compensation", "escalation", "sla", "sprint", "cross", "crew",
+                "unilateral", "realloc", "onestop", "brigades", "calls"):
+        assert P2.RATES[key] > 0, key
+    assert P2.day_week(1_000_000) == "1,00 / 7,00"
 
 
 def _app(**route):
@@ -68,8 +77,21 @@ def test_portfolio2_screen_rules_and_reconciliation():
     table = raw.split('id="p2-table"', 1)[1].split("</table>", 1)[0]
     for key in names:
         assert f"view=portfolio2&amp;card={key}" in table                    # каждый ЖК ведёт в карточку
-    assert table.count("<tr") == len(names) + 2 and "не суммируется" in table
-    assert "не оценено" in table and ">0 ₽<" not in table
+    assert table.count("<tr") == len(names) + 2 and "не суммируются" in table
+    assert "не оценено" not in t and "Готовы" not in t and "готовы к передаче" not in t
+    head = table.split("</thead>", 1)[0]
+    assert "день / нед." in head and "Готовы" not in head
+    tot = table.split('<tr class="tot">', 1)[1].split("</tr>", 1)[0]
+    assert tot.count("<td") == 5 and 'colspan="5"' in tot and "<td></td>" not in table and '"></td>' not in table
+    for row in re.findall(r"<tr><td>.*?</tr>", table):
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row)
+        assert len(cells) == 9 and all(_text(c).strip() for c in cells), row
+        assert re.fullmatch(r"\d+,\d\d / \d+,\d\d", _text(cells[2]).strip()), cells[2]
+        assert "−" not in cells[8]                                               # эффект после затрат не отрицательный
+    kpis = raw.split('class="p2-kpis"', 1)[1].split('class="p2-focus"', 1)[0]
+    assert kpis.count('class="p2-kpi"') == 3 and "Неустойка за день / неделю" in kpis and re.search(r"\d,\d\d / \d+,\d млн ₽", kpis)
+    focus = raw.split('class="p2-focus"', 1)[1].split("</div>", 1)[0]
+    assert "₽/день / " in focus and "млн ₽/нед." in focus and "готовы к передаче" not in focus
     for sec in ("p2-decisions", "p2-orders"):
         part = raw.split(f'id="{sec}"', 1)[1].split("</table>", 1)[0]
         assert not DATE.search(_text(part)), sec                              # без дат у решений и поручений
