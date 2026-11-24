@@ -88,7 +88,7 @@ div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{border-radius:16
 .v2-overview a:hover{text-decoration:underline!important;text-underline-offset:3px}
 .v2-overview a:focus-visible{outline:2px solid #0060C0;outline-offset:3px;border-radius:4px}
 .v2-cta a{font-size:15px;font-weight:500}
-.v2-cta a::after,.v2-go::after{content:"\00a0›"}
+.v2-cta a::after,.v2-go::after{content:"\\00a0›"}
 .v2-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .v2-kpi{min-width:0;padding:18px 20px}
 .v2-kpi strong{display:block;font-size:clamp(26px,2.6vw,36px);font-weight:700;letter-spacing:-.035em;line-height:1.15;font-variant-numeric:tabular-nums;margin:8px 0 2px}
@@ -128,6 +128,8 @@ div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{border-radius:16
 .u,.unit,.cb .fn,.cb h5,.dr-h,.cell-ttl,.db-ttl,.db-grid .db-l,.mt-total .tl,.dec .k,.prio .pl{color:#5E5E63!important}
 .cb .c{width:52px!important;height:44px!important;font-size:12px!important}
 .db-gd{background:#7A5A00!important;color:#fff!important}
+.dec-block .db-grid > div:nth-child(2) > b{color:#1F6E35!important}
+.card-anchor,#drill,[id^="cell-"]{scroll-margin-top:64px}
 .stMarkdown svg text{font-size:12px!important}
 .dr-over,.dr-over i,.label,.ladder .s,.ladder .l,.main-table th,.main-table th .unit,.stMarkdown th{font-size:12px!important}
 .dr-houses .dr-row{font-size:12px!important}
@@ -170,6 +172,7 @@ div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{border-radius:16
   .v2-hero h2{font-size:21px!important}
   .exec-control a,.pf-links a{min-height:44px;display:inline-flex!important;align-items:center}
   .v2-kpi a{display:flex!important;width:100%}
+  .card-anchor,#drill,[id^="cell-"]{scroll-margin-top:120px}
   .card-open a,.fin a,.cb a.c{min-height:44px;display:inline-flex!important;align-items:center}
   .cb a.c{display:flex!important;flex-direction:column;justify-content:center}
   [data-baseweb="select"] > div{min-height:44px}
