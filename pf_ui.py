@@ -225,6 +225,46 @@ abbr[title] { text-decoration: underline dotted #8a97aa; cursor: help; }
 .mt-total a.cell { color: #14213D !important; }
 @media (max-width: 640px) { .mt-total { gap: 6px 14px; padding: 8px 10px; } .mt-total b, .mt-total .tgi span { font-size: 14px; }
   .mt-total .tgi { gap: 10px; flex-wrap: wrap; } .mt-total .tn { flex-basis: 100%; } }
+/* сводка: иерархия и выборочные акценты */
+.main-table th { font-size: 12.5px; letter-spacing: .03em; color: #14213D; padding-top: 10px; padding-bottom: 10px; }
+.main-table thead tr:nth-child(2) th { font-size: 12px; color: #3A4658; }
+.main-table th .unit { font-size: 11.5px; }
+.main-table td { font-size: 13.5px; } .main-table td.r { white-space: nowrap; }
+.main-table td .u, .mt-total .u { color: #7A8597; font-size: .78em; font-weight: 400; }
+.main-table td.key { font-weight: 700; font-size: 14.5px; }
+.main-table td.hl-bad a.cell, .mt-total .hl-bad a.cell { color: #A52C28 !important; font-weight: 700; border-bottom-color: #E2B3B0; }
+.main-table td.hl-good a.cell, .mt-total .hl-good a.cell { color: #2F6B3A !important; font-weight: 700; border-bottom-color: #B7D3BC; }
+.mt-total .ti.key { border-left: 1px solid #C9D2DF; padding-left: 14px; } .mt-total .ti.key b { font-size: 22px; line-height: 1.1; }
+.mt-total .tl { font-size: 11px; }
+.mt-legend { font-size: 12px; } .lg-bad { color: #A52C28; } .lg-good { color: #2F6B3A; }
+@media (max-width: 640px) { .main-table th { font-size: 11.5px; } .main-table td { font-size: 12.5px; } .mt-total .ti.key b { font-size: 19px; }
+  .mt-total .ti.key { border-left: none; padding-left: 0; } }
+/* сводка — первый уровень: крупная плашка итогов; таблица по ЖК — второй уровень */
+.mt-total { gap: 14px 30px; padding: 16px 22px 18px; margin: 10px 0 18px; border-left-width: 6px; background: #EEF2F7;
+  box-shadow: 0 1px 2px rgba(11,31,58,.06); }
+.mt-total .tl { font-size: 12px; letter-spacing: .05em; margin-bottom: 4px; color: #4A5568; }
+.mt-total b, .mt-total .tgi span { font-size: 26px; line-height: 1.15; font-weight: 700; }
+.mt-total .tgi { gap: 18px; } .mt-total .tgi i { font-size: 12px; }
+.mt-total .tn b { font-size: 22px; } .mt-total .tn .tl { font-size: 12px; }
+.mt-total .ti.key b { font-size: 34px; }
+.mt-total .ti[data-k="decide"] b, .mt-total .ti[data-k="resp"] b { font-size: 18px; padding-top: 6px; }
+.mt-l2 { display: flex; align-items: baseline; gap: 12px; margin: 4px 0 6px; padding-bottom: 4px; border-bottom: 1px solid #C9D2DF; }
+.mt-l2 b { font-size: 15px; color: #14213D; } .mt-l2 span { font-size: 12px; color: #596577; }
+@media (max-width: 640px) { .mt-total { padding: 12px 12px 14px; gap: 10px 18px; }
+  .mt-total b, .mt-total .tgi span { font-size: 19px; } .mt-total .ti.key b { font-size: 26px; } .mt-total .tn b { font-size: 18px; }
+  .mt-total .ti[data-k="decide"] b, .mt-total .ti[data-k="resp"] b { font-size: 15px; } .mt-l2 { flex-direction: column; gap: 2px; } }
+/* динамика: сетка мини-графиков под сводкой */
+.dyn-block { margin: 0 0 16px; }
+.dy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.dy-c { background: #fff; border: 1px solid #D5DBE3; border-radius: 5px; padding: 8px 10px; min-width: 0; }
+.dy-c.dy-tot { background: #F2F5F9; border-color: #C9D2DF; }
+.dy-n { font-size: 12.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dy-s svg { display: block; width: 100%; max-width: 170px; height: auto; margin: 4px 0 2px; }
+.dy-v { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; } .dy-v b { font-size: 16px; color: #14213D; font-variant-numeric: tabular-nums; }
+.dy-v .u { color: #7A8597; font-size: .78em; font-weight: 400; } .dy-v .sub { font-size: 11px; color: #596577; }
+.dy-v .sub.wr { color: #A52C28; } .dy-v .sub.improved { color: #2F6B3A; }
+.dy-t { font-size: 11px; color: #596577; margin-top: 2px; } .dy-t.hl-bad { color: #A52C28; font-weight: 600; } .dy-t.hl-good { color: #2F6B3A; font-weight: 600; }
+@media (max-width: 640px) { .dy-grid { grid-template-columns: 1fr 1fr; gap: 6px; } .dy-c { padding: 7px 8px; } }
 .mt-more { display: none; } .main-table tr.mt-hidden { display: none; } .mt-more:checked ~ .tw .main-table tr.mt-hidden { display: table-row; }
 .main-table tr.mt-toggle td { padding: 0; border-bottom: 1px solid #d5dbe5; }
 .main-table tr.mt-toggle label { display: block; cursor: pointer; padding: 7px 10px; color: #23406e; font-size: 12px; font-weight: 600; letter-spacing: .02em; }

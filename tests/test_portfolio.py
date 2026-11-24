@@ -21,6 +21,9 @@ import pf_stats  # noqa: E402
 
 def _plain_cells(table):
     """Ячейки сводки — ссылки на панели детализации; для сверки чисел снимаем обёртку ссылки."""
+    table = re.sub(r'<section class="dyn-block".*?</section>', "", table, flags=re.S)   # блок динамики над таблицей
+    table = re.sub(r'<span class="u">[^<]*</span>', "", table)                 # единицы у чисел
+    table = re.sub(r'<td class="r[^"]*">', '<td class="r">', table)               # подсветка и акценты
     return re.sub(r'<a href="[^"]*" data-pf-route class="cell">(.*?)</a>', r"\1", table)
 
 
@@ -349,8 +352,8 @@ def test_first_screen_shows_annual_transfers_by_project(D):
     at = _login()
     t = _screen_text(at)
     raw = " ".join(m.value for m in at.markdown)
-    for label in ("Передача по годам", "Остаток 2026", "Нарушен срок передачи", "Неустойка", "За задержку", "За замечания",
-                  "Срез 20.11.2026", "Итого портфель", "Передачи по годам"):
+    for label in ("Передано 2026", "Остаток 2026", "Нарушен срок передачи", "Неустойка", "За задержку", "За замечания",
+                  "Срез 20.11.2026", "Итого портфель", "Передачи по годам", "Динамика", "Раскрытие по ЖК"):
         assert label in t, label
     assert "Что согласовать" not in t and "Нет данных" not in t
     table = _plain_cells(next(m.value for m in at.markdown if 'class="fin main-table"' in m.value))
@@ -763,7 +766,7 @@ def test_penalty_is_attached_to_each_project_not_a_separate_block(D):
             assert 'id="mt-more" class="mt-more" checked' in table and cards[name].proto.expanded
         row = table.split(f'#card-{key}"', 1)[1].split("</tr>", 1)[0]
         tds = re.findall(r'<td class="r[^"]*">([^<]+)</td>', row)
-        assert len(tds) == 7
+        assert len(tds) == 5
         e = cards[name]
         inner = " ".join(m.value for m in e.markdown)
         assert e.get("plotly_chart")                                    # уровень 2 — диаграмма Ганта
@@ -851,23 +854,20 @@ def test_main_table_totals_are_consistent(D):
         rows[name] = [num(v) for v in re.findall(r'<td class="r[^"]*">([^<]+)</td>', tr)]
     bar = table.split('id="portfolio-total"', 1)[1].split("<table", 1)[0]
     tot = [num(re.search(rf'data-k="{k}"[^>]*>(?:<span class="tl">[^<]*</span><b>|<i>[^<]*</i>)([^<]+)<', bar).group(1))
-           for k in ("t2024", "t2025", "t2026", "left2026", "overdue", "pen_delay", "pen_remarks")]
+           for k in ("t2026", "left2026", "overdue", "pen_delay", "pen_remarks")]
     assert set(rows) == {n for _, n in pf_data.PROJECTS}
-    for i in range(5):
+    for i in range(3):
         assert tot[i] == sum(r[i] for r in rows.values())
-    for i in (5, 6):
+    for i in (3, 4):
         assert tot[i] == pytest.approx(sum(r[i] for r in rows.values()), abs=0.15)
     model = PF.build(D, dict(P0, prices={k: v * 1e6 for k, v in PF.DEFAULT_PRICES.items()}))["projects"]
     pen = {r["key"]: r for r in PN.table(D, model)["rows"]}
     names = dict(pf_data.PROJECTS)
     for p in model:
         r = rows[names[p["key"]]]
-        assert r[4] == p["overdue_kv"]
-        assert r[5] == pytest.approx(sum(pen[p["key"]]["ddu"].values()) / 1e6, abs=0.051)
-        assert r[6] == pytest.approx(sum(pen[p["key"]]["remarks"].values()) / 1e6, abs=0.051)
-        h = PN.history_factors(p["key"])
-        assert (r[0] > 0) == (h[2024] > 0) and (r[1] > 0) == (h[2025] > 0)
-        assert (r[0] > 0) <= (pen[p["key"]]["ddu"][2024] > 0)
+        assert r[2] == p["overdue_kv"]
+        assert r[3] == pytest.approx(sum(pen[p["key"]]["ddu"].values()) / 1e6, abs=0.051)
+        assert r[4] == pytest.approx(sum(pen[p["key"]]["remarks"].values()) / 1e6, abs=0.051)
 
 
 def test_responsible_party_matches_gantt_critical_stage(D):
@@ -952,7 +952,7 @@ def test_every_main_table_cell_drills_down():
     """Каждая ячейка сводки — ссылка на панель; панель ЖК раскрывается до домов и квартир, панель «Итого» — по ЖК."""
     at = _login()
     raw = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
-    cells = ("t2024", "t2025", "t2026", "left2026", "overdue", "pen_delay", "pen_remarks", "resp")
+    cells = ("t2026", "left2026", "overdue", "pen_delay", "pen_remarks", "resp")
     for key, _ in list(pf_data.PROJECTS) + [("total", "Итого")]:
         for c in cells:
             assert f'href="/?card={key}&amp;cell={c}#card-{key}" data-pf-route class="cell"' in raw, (key, c)
@@ -1003,7 +1003,7 @@ def test_v23_decision_column_strip_card_and_roles(D):
     assert not any('class="gd-strip"' in m.value for m in at.markdown)       # полоса над таблицей убрана
     m_ = re.search(r"Нужно решение ГД: (\d+)", raw)
     assert m_ and 2 <= int(m_.group(1)) <= 3
-    assert ">Что решить" in raw and "начислено 2024–2026" in raw
+    assert ">Что решить" in raw and "начислено" in raw and "2024–2026" not in raw.split('id="dyn-block"', 1)[0]
     names = dict(pf_data.PROJECTS)
     decs = re.findall(r'cell=decide#card-(\w+)" data-pf-route class="cell" aria-label="([^"]+)"><b>[^<]+</b><span class="sub">−[\d,]+ млн ₽ за 4 нед\. · −\d+ дн\.</span>', raw)
     assert len(decs) == len(names) and len({d for _, d in decs}) == len(decs)      # у каждого ЖК своё решение
@@ -1013,13 +1013,13 @@ def test_v23_decision_column_strip_card_and_roles(D):
     # сумма неустойки в заголовке карточки = сумма ячеек таблицы
     cells = _plain_cells(raw)
     for e in at.expander:
-        m = re.search(r"неустойка 2024–2026 ([\d ,]+) млн ₽", e.label)
+        m = re.search(r"неустойка ([\d ,]+) млн ₽", e.label)
         if not m:
             continue
         key = next(k for k, v in names.items() if e.label.startswith(v))
         row = cells.split(f'#card-{key}"', 1)[1].split("</tr>", 1)[0]
         tds = re.findall(r'<td class="r[^"]*">([^<]+)</td>', row)
-        shown = float(tds[5].replace(" ", "").replace(",", ".")) + float(tds[6].replace(" ", "").replace(",", "."))
+        shown = float(tds[3].replace(" ", "").replace(",", ".")) + float(tds[4].replace(" ", "").replace(",", "."))
         assert abs(float(m.group(1).replace(" ", "").replace(",", ".")) - shown) < 0.051, (key, e.label, tds)
         inner = " ".join(x.value for x in e.markdown)
         assert inner.lstrip().startswith('<section class="dec-block"'), key
@@ -1057,9 +1057,13 @@ def test_portfolio_total_bar_above_table_links_to_breakdown():
     at = _login()
     raw = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
     bar = raw.split('id="portfolio-total"', 1)[1].split("<table", 1)[0]
-    for k in ("t2024", "t2025", "t2026", "left2026", "overdue", "pen_delay", "pen_remarks", "decide", "resp"):
+    for k in ("t2026", "left2026", "overdue", "pen_delay", "pen_remarks", "decide", "resp"):
         assert f'href="/?card=total&amp;cell={k}#card-total" data-pf-route class="cell"' in bar, k
-    assert "Итого портфель" in bar and "Нужно решение ГД:" in bar and "Передача по годам" in bar and "Нарушен срок передачи, кв." in bar
+    assert "Итого портфель" in bar and "Нужно решение ГД:" in bar and "Передано 2026" in bar and "Нарушен срок передачи" in bar
+    assert "2024" not in bar and "2025" not in bar and "cell=t2024" not in raw and "cell=t2025" not in raw
+    assert raw.index('id="portfolio-total"') < raw.index('id="dyn-block"') < raw.index("Раскрытие по ЖК") < raw.index("<table")
+    assert raw.count('class="dy-c') == len(pf_data.PROJECTS) + 1 and raw.count("<svg") >= len(pf_data.PROJECTS)
+    assert "кв.</span>" in raw and "млн ₽</span>" in raw and "hl-bad" in raw
     assert 'class="gd-strip"' not in raw and "<tr class=\"tot\">" not in raw
     for k in ("overdue", "pen_delay"):
         _open(at, card="total", cell=k)

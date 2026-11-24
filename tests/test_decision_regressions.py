@@ -134,7 +134,7 @@ def test_report_auth_and_first_screen_on_synthetic_data(monkeypatch, request):
     bunino = summary.split('id="exec-project-bunino"', 1)[1].split("</table>", 1)[0]
     assert '/?jk=zen#drill" data-pf-route>Страница ЖК' in summary
     assert "Что согласовать" not in summary and "Цель по остатку просрочки" not in summary
-    assert "Передача по годам" in summary and "Передачи по годам" in summary and "Срез <b>11.11.2026</b>" in summary
+    assert "Передано 2026" in summary and "Передачи по годам" in summary and "Срез <b>11.11.2026</b>" in summary
     assert '<th scope="row">2026</th><td>3</td><td>0</td><td>3</td>' in zen
     assert '<th scope="row">2026</th><td>3</td><td>1</td><td>1</td>' in bunino
     assert 'Результат указан по 2 из 3' in summary.split('id="exec-project-bunino"', 1)[1].split("</details>", 1)[0]
