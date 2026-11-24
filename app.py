@@ -34,7 +34,7 @@ if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_S
         or getattr(GT, "GANTT_SCHEMA", None) != "g3" or getattr(DR, "DRILL_SCHEMA", None) != "d4" \
         or getattr(R, "ROLES_SCHEMA", None) != "r1" or not hasattr(U, "gloss") or "cell" not in N.ROUTE_FIELDS \
         or getattr(P2, "P2_SCHEMA", None) != "q5" or getattr(UXD, "UX_SCHEMA", None) != "x2" \
-        or getattr(V2, "UX2_SCHEMA", None) != "l2":
+        or getattr(V2, "UX2_SCHEMA", None) != "l3":
     for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR, UXD, V2, P2):
         reload(module)
     if "cell" not in N.ROUTE_FIELDS:
@@ -47,6 +47,7 @@ if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_S
 # DARK — исторический флаг маршрута версии 2; тёмная палитра pf_ux_dark больше не включается.
 DARK = st.query_params.get("view") == UXD.VIEW or st.query_params.get("ver") == UXD.VER
 UXD.set_active(False)
+V2.set_active(DARK)       # флаг прогона: правила версии 2 в общих функциях (пустые графики), версии 1 и 3 не затрагиваются
 getattr(N, "set_carry", lambda params: None)({"ver": UXD.VER} if DARK else {})
 _css = lambda s: s
 st.markdown(_css(U.CSS), unsafe_allow_html=True)
@@ -793,8 +794,15 @@ if project_key in projects_by_key:
         if not matches.empty:
             unit = matches.iloc[0]
 
-    st.markdown(N.project_path(p["name"], project_key, tab, corpus,
-                               DT.unit_title(unit) if unit is not None else None), unsafe_allow_html=True)
+    if DARK:                # версия 2: путь матрёшки Портфель › ЖК › Корпус › Квартира › Замечания на каждом уровне
+        st.markdown(V2.crumbs(N.link, p["name"], project_key, corpus if tab == "chess" else None,
+                              DT.unit_title(unit) if unit is not None else None,
+                              tab_label=None if tab in ("overview", "chess") else N.PROJECT_VIEWS[tab],
+                              remarks=int(d["remark_items"]["Объект"].eq(unit["Объект"]).sum()) if unit is not None else None),
+                    unsafe_allow_html=True)
+    else:
+        st.markdown(N.project_path(p["name"], project_key, tab, corpus,
+                                   DT.unit_title(unit) if unit is not None else None), unsafe_allow_html=True)
     st.header(p["name"], anchor="drill")
     st.caption(f"Срез {dd(d['calc_date'])}" if DARK else f"Демо-данные · Срез {dd(d['calc_date'])}")
     st.markdown(N.project_menu(project_key, tab), unsafe_allow_html=True)
@@ -1106,6 +1114,8 @@ if view == "summary":
         st.markdown(f'<div id="card-{p_["key"]}" class="card-anchor"></div>', unsafe_allow_html=True)
         with st.expander(f'{p_["name"]} · нарушен срок передачи {f(row_["overdue"])} кв. · неустойка {pen_shown(row_)} млн ₽',
                          expanded=open_card == p_["key"]):
+            if DARK:
+                st.markdown(V2.card_crumbs(N.link, p_["name"], p_["key"]), unsafe_allow_html=True)
             project_card_l2(p_, row_, route.get("cell") if open_card == p_["key"] else None)
     st.markdown('<div id="card-total" class="card-anchor"></div>', unsafe_allow_html=True)
     with st.expander(f'Итого · сроки и неустойка по видам', expanded=open_card == "total"):

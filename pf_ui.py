@@ -427,6 +427,12 @@ def chart(fig, key=None, height=320):
     import pf_ux_dark as _UXD                  # версия 3: тот же график в тёмной палитре (флаг текущего прогона)
     if _UXD.active():
         fig = _UXD.dark_fig(fig)
+    import pf_ux_v2 as _V2                     # версия 2: пустой график — подпись вместо пустой рамки (флаг текущего прогона)
+    if _V2.active() and _V2.fig_empty(fig):
+        st.markdown(_V2.empty_html(), unsafe_allow_html=True)
+        return
+    if _V2.active():
+        fig = _V2.min_font_fig(fig)
     st.plotly_chart(fig, width="stretch", theme=None, config={"displayModeBar": False, "locale": "ru", "scrollZoom": False, "doubleClick": False, "responsive": True}, key=key)
 
 
