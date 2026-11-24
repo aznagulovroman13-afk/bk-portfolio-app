@@ -98,7 +98,7 @@ div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{border-radius:16
 .v2-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:10px}
 .v2-title{font-size:22px!important;font-weight:700!important;letter-spacing:-.02em;margin:0!important;padding:0!important;color:#1D1D1F!important}
 .v2-path{display:flex;flex-wrap:wrap;gap:4px 6px;font-size:12px;color:#6B6B70;list-style:none;margin:0;padding:0}
-.v2-path li+li::before{content:"›";margin-right:6px;color:#AEAEB2}
+.v2-path li+li::before{content:"›";margin-right:6px;color:#6B6B70}
 .v2-path li:first-child{color:#1D1D1F;font-weight:600}
 .v2-risklist{padding:4px 24px}
 .v2-row{display:grid;grid-template-columns:28px minmax(0,1.3fr) minmax(0,1fr) minmax(120px,.6fr);align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid #EDEDF0}
