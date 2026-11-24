@@ -358,7 +358,8 @@ def test_first_screen_shows_annual_transfers_by_project(D):
     visible = re.findall(r'<tr><td><a [^>]*>([^<]+)</a>', table)
     assert visible == ["Бунинские кварталы", "Скандинавия Центр", "Дзен-кварталы"]
     assert table.count('<tr class="mt-hidden">') == 7 and "▾ Развернуть · ещё 7 ЖК" in table and "▴ Свернуть" in table
-    assert table.index("Развернуть") < table.index("Итого портфель")
+    assert table.index('id="portfolio-total"') < table.index("<table") and "Итого портфель" not in table.split("<table", 1)[1]
+    assert '<tr class="tot">' not in table                                      # итог — плашка над таблицей, без дубля внизу
     for key, name in pf_data.PROJECTS:
         assert f'href="/?card={key}#card-{key}" data-pf-route>{name}</a>' in table
         if f'id="exec-project-{key}"' not in raw:          # свёрнутый ЖК: карточка по клику на строку
@@ -848,7 +849,9 @@ def test_main_table_totals_are_consistent(D):
     for tr in re.findall(r"<tr(?! class=\"mt-toggle)[^>]*>(.*?)</tr>", table.split("<tbody>", 1)[1]):
         name = re.search(r">([^<]+)</a>", tr).group(1)
         rows[name] = [num(v) for v in re.findall(r'<td class="r[^"]*">([^<]+)</td>', tr)]
-    tot = rows.pop("Итого портфель")
+    bar = table.split('id="portfolio-total"', 1)[1].split("<table", 1)[0]
+    tot = [num(re.search(rf'data-k="{k}"[^>]*>(?:<span class="tl">[^<]*</span><b>|<i>[^<]*</i>)([^<]+)<', bar).group(1))
+           for k in ("t2024", "t2025", "t2026", "left2026", "overdue", "pen_delay", "pen_remarks")]
     assert set(rows) == {n for _, n in pf_data.PROJECTS}
     for i in range(5):
         assert tot[i] == sum(r[i] for r in rows.values())
@@ -1046,3 +1049,19 @@ def test_v23_total_decide_panel_lists_every_project():
     assert raw.split('class="gd-list"', 1)[1].split("</ol>", 1)[0].count("<li>") == n
     for key in dict(pf_data.PROJECTS):
         assert f"card={key}&amp;cell=decide" in raw
+
+
+
+def test_portfolio_total_bar_above_table_links_to_breakdown():
+    """«Итого портфель» — плашка над таблицей: те же итоги, каждая цифра открывает разбивку по ЖК."""
+    at = _login()
+    raw = next(m.value for m in at.markdown if 'class="fin main-table"' in m.value)
+    bar = raw.split('id="portfolio-total"', 1)[1].split("<table", 1)[0]
+    for k in ("t2024", "t2025", "t2026", "left2026", "overdue", "pen_delay", "pen_remarks", "decide", "resp"):
+        assert f'href="/?card=total&amp;cell={k}#card-total" data-pf-route class="cell"' in bar, k
+    assert "Итого портфель" in bar and "Нужно решение ГД:" in bar and "Передача по годам" in bar and "Нарушен срок передачи, кв." in bar
+    assert 'class="gd-strip"' not in raw and "<tr class=\"tot\">" not in raw
+    for k in ("overdue", "pen_delay"):
+        _open(at, card="total", cell=k)
+        e = next(e for e in at.expander if e.label.startswith("Итого портфель"))
+        assert f'id="cell-total-{k}"' in " ".join(m.value for m in e.markdown)

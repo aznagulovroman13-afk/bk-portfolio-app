@@ -27,7 +27,7 @@ import pf_roles as R  # noqa: E402
 import pf_portfolio2 as P2  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
-REPORT_SCHEMA = "v27"
+REPORT_SCHEMA = "v28"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
         or getattr(GT, "GANTT_SCHEMA", None) != "g3" or getattr(DR, "DRILL_SCHEMA", None) != "d3" \
         or getattr(R, "ROLES_SCHEMA", None) != "r1" or not hasattr(U, "gloss") or "cell" not in N.ROUTE_FIELDS \
@@ -376,7 +376,7 @@ MAIN_TOP = ("bunino", "scandc", "zen")     # три ЖК главного экр
 
 def main_table(rows, slice_label, open_more=False):
     """Уровень 1: главная таблица портфеля по эскизу — ЖК × передача по годам × остаток × просрочка × неустойка.
-    Видны три ЖК (MAIN_TOP), остальные раскрываются строкой «Развернуть»; «Итого портфель» — всегда по всем ЖК."""
+    Видны три ЖК (MAIN_TOP), остальные раскрываются строкой «Развернуть»; «Итого портфель» — плашка над таблицей, всегда по всем ЖК."""
     tot = {k: sum(r[k] for r in rows) for k in ("t2024", "t2025", "t2026", "left2026", "overdue", "pen_delay", "pen_remarks", "effect")}
     def cells(r):
         key = r.get("key", "total")
@@ -403,11 +403,26 @@ def main_table(rows, slice_label, open_more=False):
         body += (f'<tr class="mt-toggle"><td colspan="10"><label for="mt-more">'
                  f'<span class="mt-open">▾ Развернуть · ещё {len(more)} ЖК</span><span class="mt-close">▴ Свернуть</span></label></td></tr>')
     gd_lbl = f"Нужно решение ГД: {len(GD_ITEMS)}"
-    body += (f'<tr class="tot"><td>{N.link("Итого портфель", card="total")}</td>{cells(tot)}<td class="sep decide">{N.link(gd_lbl, css="cell", card="total", cell="decide")}</td>'
-             f'<td class="sep resp">{N.link("По ЖК", css="cell", card="total", cell="resp")}</td></tr>')
+    tl = lambda v, cell: N.link(v, css="cell", card="total", cell=cell)
+    item = lambda label, value, k, tip="": (f'<div class="ti" data-k="{k}"' + (f' title="{html.escape(tip)}"' if tip else "")
+                                           + f'><span class="tl">{label}</span><b>{value}</b></div>')
+    total_bar = ('<div class="mt-total" id="portfolio-total" aria-label="Итого портфель">'
+                 f'<div class="ti tn"><span class="tl">{len(rows)} ЖК</span><b>{N.link("Итого портфель", card="total")}</b></div>'
+                 '<div class="tg"><span class="tl">Передача по годам</span><div class="tgi">'
+                 + "".join(f'<span data-k="{k}"><i>{lbl}</i>{tl(f(tot[k]), k)}</span>' for k, lbl in MAIN_COLS) + '</div></div>'
+                 + item("Остаток 2026", tl(f(tot["left2026"]), "left2026"), "left2026", "Квартиры со сроком по ДДУ в 2026 году, ещё не переданные")
+                 + item("Нарушен срок передачи, кв.", tl(f(tot["overdue"]), "overdue"), "overdue",
+                        "Не переданы по передаточному акту, срок передачи по ДДУ нарушен, на дату среза")
+                 + '<div class="tg" title="Начислено за 2024–2026; период моратория ПП № 326 исключён"><span class="tl">Неустойка, млн ₽ · 2024–2026</span><div class="tgi">'
+                 f'<span data-k="pen_delay"><i>за задержку</i>{tl(_mln(tot["pen_delay"]), "pen_delay")}</span>'
+                 f'<span data-k="pen_remarks"><i>за замечания</i>{tl(_mln(tot["pen_remarks"]), "pen_remarks")}</span></div></div>'
+                 + item("Что решить", tl(gd_lbl, "decide"), "decide")
+                 + item("Ответственные", tl("По ЖК", "resp"), "resp")
+                 + '</div>')
     return ('<section class="main-port" id="main-portfolio">'
             f'<input type="checkbox" id="mt-more" class="mt-more"{" checked" if open_more else ""}>'
             f'<p class="exec-date">Срез <b>{slice_label}</b> · {len(rows)} ЖК · неустойка в млн ₽ с учётом моратория</p>'
+            + total_bar +
             '<div class="tw"><table class="fin main-table"><thead>'
             '<tr><th rowspan="2">ЖК</th><th class="grp" colspan="3" title="Передано квартир по передаточным актам">Передача по годам</th>'
             '<th class="r sep tip" rowspan="2" title="Квартиры со сроком по ДДУ в 2026 году, ещё не переданные">Остаток 2026</th>'
