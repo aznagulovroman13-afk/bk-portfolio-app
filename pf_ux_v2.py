@@ -147,6 +147,22 @@ div[data-testid="stPlotlyChart"],div[data-testid="stDataFrame"]{border-radius:16
 .v2-concl .v2-hero h2{font-size:clamp(19px,1.8vw,23px)!important}
 .v2-concl .v2-action{gap:8px}
 .v2-concl .v2-action .v2-what{font-size:17px}
+.mt-total .ti.tdy{min-width:0;overflow:hidden}
+.mt-total .ti.tdy .mt-dy{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 8px}
+.mt-total .ti.tdy .dy-w{display:flex;flex-direction:column;white-space:normal;min-width:0}
+.mt-total .ti.tdy .dy-s svg{max-width:100%}
+.mt-total .tgi i,.mt-total .u,.mt-total .unit{font-size:12px!important}
+@media(max-width:640px){
+  .v2-concl .v2-hero{padding:16px 18px;border-radius:16px}
+  .v2-concl .v2-number{font-size:30px}
+  .v2-concl .v2-hero h2{font-size:19px!important}
+  .v2-concl .v2-cta{margin-top:4px}
+  .v2-concl .v2-facts{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+  .v2-concl .v2-fact .v2-effect{font-size:19px}
+  .v2-concl .v2-sub,.v2-concl .v2-foot{display:none}
+  .v2-concl .v2-action .v2-what{font-size:16px}
+  .v2-concl .v2-first{gap:8px}
+}
 .v2-empty{background:#fff;border:1px dashed #C7C7CC;border-radius:16px;padding:22px;color:#424245;font-size:14px;text-align:center;margin:4px 0 12px}
 .v2-crumbs{font-size:13px!important;margin:0 0 6px}
 .v2-crumbs a{color:#0060C0!important;text-decoration:none!important}
