@@ -26,14 +26,16 @@ import pf_drill as DR  # noqa: E402
 import pf_roles as R  # noqa: E402
 import pf_portfolio2 as P2  # noqa: E402
 import pf_ux_dark as UXD  # noqa: E402
+import pf_ux_v2 as V2  # noqa: E402
 
 # Streamlit может выполнить новый app.py в процессе, где ещё загружены старые модули.
 REPORT_SCHEMA = "v31"
 if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_SCHEMA", None) != "p4" \
         or getattr(GT, "GANTT_SCHEMA", None) != "g3" or getattr(DR, "DRILL_SCHEMA", None) != "d4" \
         or getattr(R, "ROLES_SCHEMA", None) != "r1" or not hasattr(U, "gloss") or "cell" not in N.ROUTE_FIELDS \
-        or getattr(P2, "P2_SCHEMA", None) != "q5" or getattr(UXD, "UX_SCHEMA", None) != "x2":
-    for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR, UXD, P2):
+        or getattr(P2, "P2_SCHEMA", None) != "q5" or getattr(UXD, "UX_SCHEMA", None) != "x2" \
+        or getattr(V2, "UX2_SCHEMA", None) != "l2":
+    for module in (R, U, DC, DT, pf_demo, PF, PN, GT, DR, UXD, V2, P2):
         reload(module)
     if "cell" not in N.ROUTE_FIELDS:
         try:
@@ -41,11 +43,12 @@ if getattr(PF, "REPORT_SCHEMA", None) != REPORT_SCHEMA or getattr(PN, "PENALTY_S
         except Exception:  # компонент маршрутов уже зарегистрирован — достаточно новых полей
             N.ROUTE_FIELDS = tuple(dict.fromkeys((*N.ROUTE_FIELDS, "card", "cell")))
 
-# Версия 2 — тот же отчёт в тёмной теме: вход ?view=portfolio2, дальше по разделам — параметр ver=2.
+# Версия 2 — тот же отчёт в светлом минималистичном оформлении (pf_ux_v2): вход ?view=portfolio2, дальше — параметр ver=2.
+# DARK — исторический флаг маршрута версии 2; тёмная палитра pf_ux_dark больше не включается.
 DARK = st.query_params.get("view") == UXD.VIEW or st.query_params.get("ver") == UXD.VER
-UXD.set_active(DARK)
+UXD.set_active(False)
 getattr(N, "set_carry", lambda params: None)({"ver": UXD.VER} if DARK else {})
-_css = UXD.recolor if DARK else (lambda s: s)
+_css = lambda s: s
 st.markdown(_css(U.CSS), unsafe_allow_html=True)
 st.markdown(_css(
     '<style>header[data-testid="stHeader"], header[data-testid="stHeader"] * {pointer-events: none !important;} '
@@ -764,7 +767,7 @@ if DARK and view == P2.VIEW:
 st.markdown(_css(P2.menu(None if project_key in projects_by_key else view, dark=DARK)) if DARK else
             P2.menu(None if project_key in projects_by_key else view), unsafe_allow_html=True)
 if DARK:
-    st.markdown(UXD.CSS, unsafe_allow_html=True)
+    st.markdown(V2.CSS, unsafe_allow_html=True)
 
 sg = lambda v: ("+" if v > 0 else "−" if v < 0 else "") + f(abs(v))
 tr_, to_ = max(tot["risk_day"], 1), max(tot["overdue_kv"], 1)
@@ -793,7 +796,7 @@ if project_key in projects_by_key:
     st.markdown(N.project_path(p["name"], project_key, tab, corpus,
                                DT.unit_title(unit) if unit is not None else None), unsafe_allow_html=True)
     st.header(p["name"], anchor="drill")
-    st.caption(f"Демо-данные · Срез {dd(d['calc_date'])}")
+    st.caption(f"Срез {dd(d['calc_date'])}" if DARK else f"Демо-данные · Срез {dd(d['calc_date'])}")
     st.markdown(N.project_menu(project_key, tab), unsafe_allow_html=True)
 
     if tab == "overview":
@@ -1078,9 +1081,11 @@ if view == P2.VIEW:            # «Версия 3» (бывший «Портфе
     st.stop()
 
 if view == "summary":
-    st.markdown('<div class="rh exec-header"><div class="kick">Отчёт для генерального директора · Демо-данные</div>'
+    st.markdown('<div class="rh exec-header"><div class="kick">Отчёт для генерального директора'
+                + ('' if DARK else ' · Демо-данные') + '</div>'
                 '<div class="ttl">Отчёт по заселению</div></div>', unsafe_allow_html=True)
-    U.section("Сводка по ЖК", anchor="summary")
+    if not DARK:
+        U.section("Сводка по ЖК", anchor="summary")
     first_projects = ("bunino", "scandc", "scands")
     display_order = [projects_by_key[key] for key in first_projects if key in projects_by_key]
     display_order.extend(project for project in projects if project["key"] not in first_projects)
@@ -1088,8 +1093,13 @@ if view == "summary":
                   + [p_ for p_ in display_order if p_["key"] not in MAIN_TOP])
     main_rows = [main_row(p_, DA[p_["key"]], act_d) for p_ in main_order]
     open_card = route.get("card")
-    st.markdown(U.gloss(main_table(main_rows, slice_text, open_more=bool(open_card) and open_card not in MAIN_TOP and open_card != "total")),
-                unsafe_allow_html=True)
+    if DARK:
+        st.markdown(V2.render(projects, tot, main_rows, slice_text, N.link, f, _mln_s), unsafe_allow_html=True)
+        with st.expander("Полная сводка по ЖК: передачи, замечания, неустойки и решения", expanded=bool(open_card)):
+            st.markdown(U.gloss(main_table(main_rows, slice_text, open_more=bool(open_card) and open_card not in MAIN_TOP and open_card != "total")), unsafe_allow_html=True)
+    else:
+        st.markdown(U.gloss(main_table(main_rows, slice_text, open_more=bool(open_card) and open_card not in MAIN_TOP and open_card != "total")),
+                    unsafe_allow_html=True)
     for row_, p_ in zip(main_rows, main_order):
         if p_["key"] not in MAIN_TOP and open_card != p_["key"]:
             continue      # карточки свёрнутых ЖК появляются по клику на строку после «Развернуть»
